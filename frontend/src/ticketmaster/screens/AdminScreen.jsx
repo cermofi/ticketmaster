@@ -42,7 +42,6 @@ function Admin({ user }) {
   const [directoryFilters, setDirectoryFilters] = useState({
     search: '',
     partner_id: '',
-    active: 'active',
     user_kind: '',
     role: ''
   });
@@ -432,7 +431,7 @@ function DirectoryPanel({
   onDeleteUser
 }) {
   const updateFilter = (key, value) => setFilters({ ...filters, [key]: value });
-  const resetFilters = () => setFilters({ search: '', partner_id: '', active: 'active', user_kind: '', role: '' });
+  const resetFilters = () => setFilters({ search: '', partner_id: '', user_kind: '', role: '' });
   const visibleCount = view === 'partners' ? partnerRows.length : view === 'clients' ? clientRows.length : userRows.length;
   return (
     <>
@@ -473,14 +472,6 @@ function DirectoryPanel({
         )}
         {view === 'users' && (
           <>
-            <FormGroup>
-              <Label>Status</Label>
-              <Input type="select" value={filters.active} onChange={(event) => updateFilter('active', event.target.value)}>
-                <option value="">Any</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </Input>
-            </FormGroup>
             <FormGroup>
               <Label>Kind</Label>
               <Input type="select" value={filters.user_kind} onChange={(event) => updateFilter('user_kind', event.target.value)}>
@@ -817,18 +808,12 @@ function filterUsers(rows, partnerNames, filters) {
   return rows.filter((row) => {
     const role = userRole(row);
     return (
-      matchesActive(row, filters.active)
       && (!filters.partner_id || row.partner_id === filters.partner_id)
       && (!filters.user_kind || row.kind === filters.user_kind)
       && (!filters.role || role === filters.role)
       && matchesSearch([row.email, row.name, row.kind, role, partnerNames.get(row.partner_id)], filters.search)
     );
   });
-}
-
-function matchesActive(row, value) {
-  if (!value) return true;
-  return value === 'active' ? row.active : !row.active;
 }
 
 function matchesSearch(values, search) {
