@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import secrets
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -213,22 +214,40 @@ def deactivate_partner(db: Session, *, partner_id: str, actor: User | None = Non
     partner = db.get(Partner, partner_id)
     if not partner:
         raise NotFoundError("Partner not found")
-    linked_clients = db.scalar(select(func.count()).select_from(Client).where(Client.partner_id == partner.id))
-    linked_users = db.scalar(select(func.count()).select_from(User).where(User.partner_id == partner.id))
-    linked_tickets = db.scalar(select(func.count()).select_from(Ticket).where(Ticket.partner_id == partner.id))
-    blockers = []
-    if linked_clients:
-        blockers.append(f"{linked_clients} client(s)")
-    if linked_users:
-        blockers.append(f"{linked_users} partner user(s)")
-    if linked_tickets:
-        blockers.append(f"{linked_tickets} ticket(s)")
-    if blockers:
-        raise ValidationError("Partner can be deactivated only after removing all linked clients, partner users and tickets: " + ", ".join(blockers))
+    client_rows = list(db.scalars(select(Client).where(Client.partner_id == partner.id)).all())
+    user_rows = list(db.scalars(select(User).where(User.partner_id == partner.id)).all())
+    ticket_rows = list(db.scalars(select(Ticket).where(Ticket.partner_id == partner.id)).all())
+
+    for client in client_rows:
+        for assignment in db.scalars(select(ClientAssignment).where(ClientAssignment.client_id == client.id)).all():
+            db.delete(assignment)
+        client.active = False
+    for user in user_rows:
+        user.active = False
+        user.invitation_token = None
+    for ticket in ticket_rows:
+        ticket.partner_id = None
+        if ticket.client_id and any(client.id == ticket.client_id for client in client_rows):
+            ticket.client_id = None
+        ticket.updated_at = datetime.now(timezone.utc)
     old = {"active": partner.active}
     partner.active = False
     db.flush()
-    audit(db, entity_type="Partner", entity_id=partner.id, action="partner.deactivate", actor=actor, source=source, old_value=old, new_value={"active": False})
+    audit(
+        db,
+        entity_type="Partner",
+        entity_id=partner.id,
+        action="partner.deactivate",
+        actor=actor,
+        source=source,
+        old_value=old,
+        new_value={
+            "active": False,
+            "clients_deactivated": len(client_rows),
+            "users_deactivated": len(user_rows),
+            "tickets_detached": len(ticket_rows),
+        },
+    )
     return partner
 
 
@@ -276,6 +295,9 @@ def deactivate_client(db: Session, *, client_id: str, actor: User | None = None,
     client = db.get(Client, client_id)
     if not client:
         raise NotFoundError("Client not found")
+    active_assignments = db.scalar(select(func.count()).select_from(ClientAssignment).where(ClientAssignment.client_id == client.id))
+    if active_assignments:
+        raise ValidationError("Client cannot be deactivated while it has responsible users assigned")
     old = {"active": client.active}
     client.active = False
     db.flush()

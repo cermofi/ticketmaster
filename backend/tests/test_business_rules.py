@@ -148,20 +148,34 @@ def test_transfer_owner_requires_same_partner_and_client_assignment(db, fixture_
         tickets.transfer_owner(db, ticket=ticket, actor=fixture_data["responsible_a"], new_owner_ref=fixture_data["responsible_b"].email, source="test")
 
 
-def test_partner_cannot_be_deactivated_when_it_has_clients_users_or_tickets(db, fixture_data):
-    with pytest.raises(ValidationError):
-        admin.deactivate_partner(db, partner_id=fixture_data["partner_a"].id, actor=fixture_data["admin"], source="test")
+def test_partner_deactivation_cleans_up_clients_users_and_detaches_tickets(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+    ticket_id = ticket.id
+
+    partner = admin.deactivate_partner(db, partner_id=fixture_data["partner_a"].id, actor=fixture_data["admin"], source="test")
+
+    assert partner.active is False
+    assert fixture_data["client_a"].active is False
+    assert fixture_data["responsible_a"].active is False
+    assert fixture_data["technical_a"].active is False
+
+    detached_ticket = db.get(Ticket, ticket_id)
+    assert detached_ticket is not None
+    assert detached_ticket.partner_id is None
+    assert detached_ticket.client_id is None
 
 
 def test_tickets_survive_other_entity_deactivations(db, fixture_data):
     ticket = create_partner_ticket(db, fixture_data)
     ticket_id = ticket.id
 
+    with pytest.raises(ValidationError):
+        admin.deactivate_client(db, client_id=fixture_data["client_a"].id, actor=fixture_data["admin"], source="test")
+
+    assignment = admin.list_client_assignments(db, client_id=fixture_data["client_a"].id)[0]
+    admin.remove_client_assignment(db, assignment_id=assignment.id, actor=fixture_data["admin"], source="test")
     admin.deactivate_client(db, client_id=fixture_data["client_a"].id, actor=fixture_data["admin"], source="test")
     admin.deactivate_user_by_id(db, user_id=fixture_data["technical_a"].id, actor=fixture_data["admin"], source="test")
-
-    with pytest.raises(ValidationError):
-        admin.deactivate_partner(db, partner_id=fixture_data["partner_a"].id, actor=fixture_data["admin"], source="test")
 
     assert db.get(Ticket, ticket_id) is not None
     assert db.scalar(select(Ticket).where(Ticket.id == ticket_id)) is not None
