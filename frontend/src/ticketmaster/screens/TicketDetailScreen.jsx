@@ -81,6 +81,7 @@ function TicketDetail({ user }) {
   const resolverTeams = asArray(meta?.resolver_teams);
   const canTransferOwner = !ticket?.internal && responsibleUsers.length > 0;
   const showActions = user.kind === 'internal' || canTransferOwner;
+  const canAddCommunication = ticket?.status !== 'Closed';
 
   return (
     <div className="tm-screen">
@@ -110,16 +111,18 @@ function TicketDetail({ user }) {
             <section className="tm-panel">
               <h2>Communication</h2>
               <CommentList comments={comments} />
-              <CommentForm
-                title="Add comment"
-                value={commentBody}
-                setValue={setCommentBody}
-                onSubmit={() => action(async () => {
-                  await api.post(`/tickets/${ticket.id}/comments`, { body: commentBody });
-                  setCommentBody('');
-                })}
-              />
-              {user.kind === 'internal' && (
+              {canAddCommunication && (
+                <CommentForm
+                  title="Add comment"
+                  value={commentBody}
+                  setValue={setCommentBody}
+                  onSubmit={() => action(async () => {
+                    await api.post(`/tickets/${ticket.id}/comments`, { body: commentBody });
+                    setCommentBody('');
+                  })}
+                />
+              )}
+              {canAddCommunication && user.kind === 'internal' && (
                 <CommentForm
                   title="Internal note"
                   value={internalNoteBody}
