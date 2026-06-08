@@ -1,0 +1,231 @@
+x-app-environment: &app-environment
+  DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-ticketmaster}:${POSTGRES_PASSWORD:-ticketmaster}@pgbouncer:6432/${POSTGRES_DB:-ticketmaster}
+  REDIS_URL: redis://redis:6379/0
+  QUEUE_ENABLED: ${QUEUE_ENABLED:-true}
+  SENTRY_DSN: ${SENTRY_DSN:-}
+  SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+  SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.05}
+  ELASTICSEARCH_ENABLED: ${ELASTICSEARCH_ENABLED:-true}
+  ELASTICSEARCH_URL: http://elasticsearch:9200
+  ELASTICSEARCH_INDEX: ${ELASTICSEARCH_INDEX:-ticketmaster-tickets}
+  CLAMAV_ENABLED: ${CLAMAV_ENABLED:-true}
+  CLAMAV_HOST: clamav
+  CLAMAV_PORT: 3310
+  WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ticketmaster}
+      POSTGRES_USER: ${POSTGRES_USER:-ticketmaster}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ticketmaster}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ticketmaster} -d ${POSTGRES_DB:-ticketmaster}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  pgbouncer:
+    build:
+      context: ./pgbouncer
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-ticketmaster}
+      POSTGRES_USER: ${POSTGRES_USER:-ticketmaster}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ticketmaster}
+      PGBOUNCER_MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-500}
+      PGBOUNCER_DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-25}
+      PGBOUNCER_RESERVE_POOL_SIZE: ${PGBOUNCER_RESERVE_POOL_SIZE:-5}
+    expose:
+      - "6432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U ${POSTGRES_USER:-ticketmaster} -d ${POSTGRES_DB:-ticketmaster}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      xpack.ml.enabled: "false"
+      ES_JAVA_OPTS: ${ES_JAVA_OPTS:--Xms512m -Xmx512m}
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "127.0.0.1:9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://127.0.0.1:9200/_cluster/health?wait_for_status=yellow&timeout=1s' >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 30
+
+  clamav:
+    image: clamav/clamav:stable
+    restart: unless-stopped
+    volumes:
+      - clamav_data:/var/lib/clamav
+    expose:
+      - "3310"
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --version >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+
+  mailpit:
+    image: axllent/mailpit:v1.21
+    restart: unless-stopped
+    expose:
+      - "8025"
+      - "1025"
+
+  api:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    environment: *app-environment
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    restart: unless-stopped
+    expose:
+      - "8000"
+    volumes:
+      - uploads:/app/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/api/ready >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  worker:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    environment: *app-environment
+    command: ["sh", "-c", "ticketmaster-cli db migrate && ticketmaster-worker"]
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    restart: unless-stopped
+    volumes:
+      - uploads:/app/uploads
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3006:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9091:9090"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "127.0.0.1:3007:3000"
+    depends_on:
+      - prometheus
+      - loki
+      - elasticsearch
+
+  loki:
+    image: grafana/loki:2.9.8
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+    expose:
+      - "3100"
+
+  promtail:
+    image: grafana/promtail:2.9.8
+    restart: unless-stopped
+    command: ["-config.file=/etc/promtail/promtail.yml"]
+    volumes:
+      - ./promtail/promtail.yml:/etc/promtail/promtail.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+
+volumes:
+  postgres_data:
+  uploads:
+  redis_data:
+  elasticsearch_data:
+  clamav_data:
+  prometheus_data:
+  grafana_data:
+  loki_data:

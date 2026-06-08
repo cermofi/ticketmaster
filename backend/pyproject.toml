@@ -1,0 +1,32 @@
+[project]
+name = "ticketmaster"
+version = "0.1.0"
+description = "TicketMaster MVP backend and CLI"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi==0.115.6",
+  "uvicorn[standard]==0.34.0",
+  "sqlalchemy==2.0.36",
+  "psycopg2-binary==2.9.10",
+  "python-multipart==0.0.20",
+  "httpx==0.28.1",
+  "prometheus-client==0.21.1",
+  "redis==5.2.1",
+  "sentry-sdk[fastapi]==2.19.2",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest==8.3.4",
+]
+
+[project.scripts]
+ticketmaster-cli = "ticketmaster.cli.main:main"
+ticketmaster-worker = "ticketmaster.worker:main"
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["ticketmaster*"]

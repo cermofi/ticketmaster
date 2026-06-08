@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50" role="img" aria-label="TicketMaster">
+  <rect width="50" height="50" rx="8" fill="#17202a"/>
+  <path d="M12 13h26a4 4 0 0 1 4 4v3a5 5 0 0 0 0 10v3a4 4 0 0 1-4 4H12a4 4 0 0 1-4-4v-3a5 5 0 0 0 0-10v-3a4 4 0 0 1 4-4Z" fill="#14b8a6"/>
+  <path d="M23 19h5v18h-5zM16 19h19v4H16z" fill="#ffffff"/>
+</svg>

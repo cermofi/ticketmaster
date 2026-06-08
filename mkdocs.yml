@@ -1,0 +1,27 @@
+site_name: TicketMaster Documentation
+site_description: Detailni produktova, technicka a provozni dokumentace aplikace TicketMaster.
+site_author: TicketMaster Team
+theme:
+  name: mkdocs
+markdown_extensions:
+  - admonition
+  - fenced_code
+  - sane_lists
+  - tables
+  - toc:
+      permalink: true
+nav:
+  - Overview: index.md
+  - Product Guide: product.md
+  - Architecture: architecture.md
+  - UI Guide: ui.md
+  - API Reference: api.md
+  - RBAC & Workflow: rbac.md
+  - Docker & Deployment: deployment.md
+  - Configuration: configuration.md
+  - Operations & Monitoring: operations.md
+  - Security: security.md
+  - CLI: cli.md
+  - GitLab Integration: gitlab-integration.md
+  - Development: development.md
+  - Testing: testing.md

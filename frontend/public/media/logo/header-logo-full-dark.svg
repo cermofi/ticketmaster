@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="150" height="50" viewBox="0 0 150 50" role="img" aria-label="TicketMaster">
+  <rect width="150" height="50" rx="8" fill="#17202a"/>
+  <path d="M18 13h28a4 4 0 0 1 4 4v3a5 5 0 0 0 0 10v3a4 4 0 0 1-4 4H18a4 4 0 0 1-4-4v-3a5 5 0 0 0 0-10v-3a4 4 0 0 1 4-4Z" fill="#14b8a6"/>
+  <path d="M29 19h5v18h-5zM22 19h19v4H22z" fill="#ffffff"/>
+  <text x="58" y="31" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" fill="#f8fafc">TicketMaster</text>
+</svg>
