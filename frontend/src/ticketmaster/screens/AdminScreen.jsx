@@ -808,7 +808,7 @@ function filterUsers(rows, partnerNames, filters) {
   return rows.filter((row) => {
     const role = userRole(row);
     return (
-      && (!filters.partner_id || row.partner_id === filters.partner_id)
+      (!filters.partner_id || row.partner_id === filters.partner_id)
       && (!filters.user_kind || row.kind === filters.user_kind)
       && (!filters.role || role === filters.role)
       && matchesSearch([row.email, row.name, row.kind, role, partnerNames.get(row.partner_id)], filters.search)
