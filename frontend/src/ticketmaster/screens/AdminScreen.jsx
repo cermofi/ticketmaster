@@ -124,16 +124,6 @@ function Admin({ user }) {
     setEditingClient(null);
   });
 
-  const deletePartner = (partner) => {
-    if (!window.confirm(`Delete partner "${partner.name}"? This will delete linked clients and users and keep tickets.`)) return;
-    submit(() => api.delete(`/partners/${partner.id}`));
-  };
-
-  const deleteClient = (client) => {
-    if (!window.confirm(`Delete client "${client.name}"? Tickets will stay in the system.`)) return;
-    submit(() => api.delete(`/clients/${client.id}`));
-  };
-
   const saveUser = (payload) => submit(async () => {
     await api.patch(`/users/${editingUser.id}`, payload);
     setEditingUser(null);
@@ -173,9 +163,7 @@ function Admin({ user }) {
             userRows={filteredUsers}
             counts={{ partners: partners.length, clients: clients.length, users: users.length }}
             currentUser={user}
-            onDeletePartner={deletePartner}
             onEditClient={setEditingClient}
-            onDeleteClient={deleteClient}
             onEditUser={setEditingUser}
             onDeleteUser={deleteUser}
           />
@@ -439,9 +427,7 @@ function DirectoryPanel({
   userRows,
   counts,
   currentUser,
-  onDeletePartner,
   onEditClient,
-  onDeleteClient,
   onEditUser,
   onDeleteUser
 }) {
@@ -518,14 +504,14 @@ function DirectoryPanel({
           </Button>
         </div>
       </div>
-      {view === 'partners' && <PartnersTable rows={partnerRows} onDelete={onDeletePartner} />}
-      {view === 'clients' && <ClientsTable rows={clientRows} partners={partners} onEdit={onEditClient} onDelete={onDeleteClient} />}
+      {view === 'partners' && <PartnersTable rows={partnerRows} />}
+      {view === 'clients' && <ClientsTable rows={clientRows} partners={partners} onEdit={onEditClient} />}
       {view === 'users' && <UsersTable rows={userRows} partners={partners} currentUser={currentUser} onEdit={onEditUser} onDelete={onDeleteUser} />}
     </>
   );
 }
 
-function PartnersTable({ rows, onDelete }) {
+function PartnersTable({ rows }) {
   return (
     <div className="tm-table-wrap">
       <Table hover responsive className="tm-table">
@@ -533,7 +519,6 @@ function PartnersTable({ rows, onDelete }) {
           <tr>
             <th>Key</th>
             <th>Name</th>
-            <th className="text-end">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -541,21 +526,16 @@ function PartnersTable({ rows, onDelete }) {
             <tr key={row.id}>
               <td>{row.key}</td>
               <td>{row.name}</td>
-              <td className="text-end">
-                <Button size="sm" outline color="danger" title="Delete partner" onClick={() => onDelete(row)}>
-                  <i className="bi bi-trash" />
-                </Button>
-              </td>
             </tr>
           ))}
-          {rows.length === 0 && <EmptyRow colSpan="3" title="No partners found" message="Try changing the directory filters." />}
+          {rows.length === 0 && <EmptyRow colSpan="2" title="No partners found" message="Try changing the directory filters." />}
         </tbody>
       </Table>
     </div>
   );
 }
 
-function ClientsTable({ rows, partners, onEdit, onDelete }) {
+function ClientsTable({ rows, partners, onEdit }) {
   const partnerNames = useMemo(() => new Map(partners.map((partner) => [partner.id, partner.name])), [partners]);
   return (
     <div className="tm-table-wrap">
@@ -575,14 +555,9 @@ function ClientsTable({ rows, partners, onEdit, onDelete }) {
               <td>{row.name}</td>
               <td>{partnerNames.get(row.partner_id) || row.partner_id}</td>
               <td className="text-end">
-                <div className="d-inline-flex gap-2">
-                  <Button size="sm" outline color="secondary" title="Edit client" onClick={() => onEdit(row)}>
-                    <i className="bi bi-pencil" />
-                  </Button>
-                  <Button size="sm" outline color="danger" title="Delete client" onClick={() => onDelete(row)}>
-                    <i className="bi bi-trash" />
-                  </Button>
-                </div>
+                <Button size="sm" outline color="secondary" title="Edit client" onClick={() => onEdit(row)}>
+                  <i className="bi bi-pencil" />
+                </Button>
               </td>
             </tr>
           ))}
