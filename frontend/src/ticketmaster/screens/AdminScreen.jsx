@@ -268,8 +268,7 @@ function ActionPanel({
       { id: 'internal-user', label: 'Internal user', icon: 'bi-person-badge' }
     ] : []),
     { id: 'client', label: 'Client', icon: 'bi-briefcase' },
-    { id: 'partner-user', label: 'Partner user', icon: 'bi-person-plus' },
-    { id: 'assignment', label: 'Odpovědná osoba', icon: 'bi-diagram-3' }
+    { id: 'partner-user', label: 'Partner user', icon: 'bi-person-plus' }
   ];
   const currentAction = actions.some((action) => action.id === activeAction) ? activeAction : actions[0].id;
 
