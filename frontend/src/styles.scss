@@ -103,6 +103,10 @@ body.tm-partner-session a[href="#/audit"] {
   display: none !important;
 }
 
+body:not(.tm-partner-session) a[href="#/partner-overview"] {
+  display: none !important;
+}
+
 body.tm-login-session #app-brandimage,
 body.tm-login-session #app-sidebar,
 body.tm-login-session #app-header,
