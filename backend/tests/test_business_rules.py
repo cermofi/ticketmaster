@@ -140,14 +140,24 @@ def test_resolver_cannot_return_ticket_to_queue(db, fixture_data):
         tickets.unassign_ticket(db, ticket=ticket, actor=fixture_data["l1"], source="test")
 
 
-def test_l1_to_l2_and_l2_to_l3_escalation(db, fixture_data):
+def test_assigned_ticket_cannot_change_resolver_team(db, fixture_data):
     ticket = create_partner_ticket(db, fixture_data)
     tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", source="test")
-    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["l1"], team="L2", source="test")
-    assert ticket.resolver_team == "L2"
 
-    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["l2"], team="L3", source="test")
-    assert ticket.resolver_team == "L3"
+    with pytest.raises(ValidationError):
+        tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L2", source="test")
+
+    assert ticket.resolver_team == "L1"
+
+
+def test_assigned_ticket_can_change_assignee_within_resolver_team(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", source="test")
+
+    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", assignee_ref=fixture_data["l1"].email, source="test")
+
+    assert ticket.resolver_team == "L1"
+    assert ticket.assignee_id == fixture_data["l1"].id
 
 
 def test_l3_in_progress_requires_gitlab_issue(db, fixture_data):

@@ -79,6 +79,7 @@ function TicketDetail({ user }) {
   const availableTransitions = asArray(ticket?.available_transitions);
   const participants = asArray(ticket?.participants);
   const resolverTeams = asArray(meta?.resolver_teams);
+  const assignmentTeam = ticket?.resolver_team || assignment.team;
   const canTransferOwner = !ticket?.internal && responsibleUsers.length > 0;
   const showActions = user.kind === 'internal' || canTransferOwner;
   const canAddCommunication = ticket?.status !== 'Closed';
@@ -182,19 +183,23 @@ function TicketDetail({ user }) {
                       <h3>Assignment</h3>
                       <Form onSubmit={(event) => {
                         event.preventDefault();
-                        action(() => api.post(`/tickets/${ticket.id}/assign`, assignment));
+                        action(() => api.post(`/tickets/${ticket.id}/assign`, { ...assignment, team: assignmentTeam }));
                       }}>
                         <FormGroup>
                           <Label>Resolver team</Label>
-                          <Input type="select" value={assignment.team} onChange={(event) => setAssignment({ ...assignment, team: event.target.value })}>
-                            {resolverTeams.map((team) => <option key={team}>{team}</option>)}
-                          </Input>
+                          {ticket.resolver_team ? (
+                            <div className="tm-readonly-field">{ticket.resolver_team}</div>
+                          ) : (
+                            <Input type="select" value={assignment.team} onChange={(event) => setAssignment({ ...assignment, team: event.target.value })}>
+                              {resolverTeams.map((team) => <option key={team}>{team}</option>)}
+                            </Input>
+                          )}
                         </FormGroup>
                         <FormGroup>
                           <Label>Assignee</Label>
                           <Input type="select" value={assignment.assignee || ''} onChange={(event) => setAssignment({ ...assignment, assignee: event.target.value })}>
                             <option value="">Unassigned</option>
-                            {internalUsers.filter((row) => row.internal_role === assignment.team).map((row) => <option key={row.id} value={row.email}>{row.name}</option>)}
+                            {internalUsers.filter((row) => row.internal_role === assignmentTeam).map((row) => <option key={row.id} value={row.email}>{row.name}</option>)}
                           </Input>
                         </FormGroup>
                         <Button color="primary" className="w-100" type="submit">

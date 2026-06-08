@@ -356,6 +356,8 @@ def assign_ticket(
         raise ValidationError("Closed tickets cannot be assigned")
     if team not in RESOLVER_TEAMS:
         raise ValidationError("Invalid resolver team")
+    if ticket.resolver_team and ticket.resolver_team != team:
+        raise ValidationError("Ticket resolver team cannot be changed")
     if actor:
         _require_assign_permission(actor, ticket, team)
     assignee = None
@@ -568,9 +570,7 @@ def _require_assign_permission(actor: User, ticket: Ticket, target_team: str) ->
         raise PermissionDenied("Only internal users can assign tickets")
     if actor.internal_role in {"Admin", "DeliveryManager"}:
         return
-    if actor.internal_role == "L1" and ticket.resolver_team == "L1" and target_team == "L2":
-        return
-    if actor.internal_role == "L2" and ticket.resolver_team == "L2" and target_team == "L3":
+    if ticket.resolver_team == actor.internal_role and target_team == actor.internal_role:
         return
     raise PermissionDenied("Resolver team assignment is not allowed for this role")
 
