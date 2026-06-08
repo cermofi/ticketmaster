@@ -1,0 +1,7 @@
+ALTER TABLE partners DROP COLUMN IF EXISTS active;
+ALTER TABLE clients DROP COLUMN IF EXISTS active;
+
+ALTER TABLE tickets ALTER COLUMN created_by_id DROP NOT NULL;
+ALTER TABLE comments ALTER COLUMN author_id DROP NOT NULL;
+ALTER TABLE comment_revisions ALTER COLUMN changed_by_user_id DROP NOT NULL;
+ALTER TABLE attachments ALTER COLUMN uploaded_by_id DROP NOT NULL;

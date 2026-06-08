@@ -67,24 +67,13 @@ function Admin({ user }) {
     load();
   }, []);
 
-  const activePartners = useMemo(() => partners.filter((partner) => partner.active), [partners]);
-  const activeClients = useMemo(() => clients.filter((client) => client.active), [clients]);
   const partnerNames = useMemo(() => new Map(partners.map((partner) => [partner.id, partner.name])), [partners]);
-  const filteredPartners = useMemo(
-    () => filterPartners(partners, directoryFilters),
-    [partners, directoryFilters]
-  );
-  const filteredClients = useMemo(
-    () => filterClients(clients, partnerNames, directoryFilters),
-    [clients, partnerNames, directoryFilters]
-  );
-  const filteredUsers = useMemo(
-    () => filterUsers(users, partnerNames, directoryFilters),
-    [users, partnerNames, directoryFilters]
-  );
+  const filteredPartners = useMemo(() => filterPartners(partners, directoryFilters), [partners, directoryFilters]);
+  const filteredClients = useMemo(() => filterClients(clients, partnerNames, directoryFilters), [clients, partnerNames, directoryFilters]);
+  const filteredUsers = useMemo(() => filterUsers(users, partnerNames, directoryFilters), [users, partnerNames, directoryFilters]);
   const selectedAssignmentClient = useMemo(
-    () => activeClients.find((client) => client.id === assignment.client_id),
-    [activeClients, assignment.client_id]
+    () => clients.find((client) => client.id === assignment.client_id),
+    [clients, assignment.client_id]
   );
   const selectedAssignmentClientExists = useMemo(
     () => clients.some((client) => client.id === assignment.client_id),
@@ -136,8 +125,13 @@ function Admin({ user }) {
   });
 
   const deletePartner = (partner) => {
-    if (!window.confirm(`Deactivate partner "${partner.name}"? This will deactivate linked clients and users and detach tickets.`)) return;
+    if (!window.confirm(`Delete partner "${partner.name}"? This will delete linked clients and users and keep tickets.`)) return;
     submit(() => api.delete(`/partners/${partner.id}`));
+  };
+
+  const deleteClient = (client) => {
+    if (!window.confirm(`Delete client "${client.name}"? Tickets will stay in the system.`)) return;
+    submit(() => api.delete(`/clients/${client.id}`));
   };
 
   const saveUser = (payload) => submit(async () => {
@@ -181,6 +175,7 @@ function Admin({ user }) {
             currentUser={user}
             onDeletePartner={deletePartner}
             onEditClient={setEditingClient}
+            onDeleteClient={deleteClient}
             onEditUser={setEditingUser}
             onDeleteUser={deleteUser}
           />
@@ -190,8 +185,8 @@ function Admin({ user }) {
             user={user}
             activeAction={activeAction}
             setActiveAction={setActiveAction}
-            activePartners={activePartners}
-            activeClients={activeClients}
+            partners={partners}
+            clients={clients}
             partnerName={partnerName}
             setPartnerName={setPartnerName}
             clientForm={clientForm}
@@ -246,8 +241,8 @@ function ActionPanel({
   user,
   activeAction,
   setActiveAction,
-  activePartners,
-  activeClients,
+  partners,
+  clients,
   partnerName,
   setPartnerName,
   clientForm,
@@ -351,7 +346,7 @@ function ActionPanel({
             });
           }}>
             <h3>Create client</h3>
-            <PartnerSelect partners={activePartners} value={clientForm.partner_id} onChange={(value) => setClientForm({ ...clientForm, partner_id: value })} />
+            <PartnerSelect partners={partners} value={clientForm.partner_id} onChange={(value) => setClientForm({ ...clientForm, partner_id: value })} />
             <FormGroup>
               <Label>Name</Label>
               <Input value={clientForm.name} onChange={(event) => setClientForm({ ...clientForm, name: event.target.value })} autoComplete="organization" />
@@ -372,7 +367,7 @@ function ActionPanel({
             });
           }}>
             <h3>Invite partner user</h3>
-            <PartnerSelect partners={activePartners} value={partnerUser.partner_id} onChange={(value) => setPartnerUser({ ...partnerUser, partner_id: value })} />
+            <PartnerSelect partners={partners} value={partnerUser.partner_id} onChange={(value) => setPartnerUser({ ...partnerUser, partner_id: value })} />
             <FormGroup>
               <Label>E-mail</Label>
               <Input value={partnerUser.email} onChange={(event) => setPartnerUser({ ...partnerUser, email: event.target.value })} autoComplete="email" />
@@ -405,7 +400,7 @@ function ActionPanel({
               <Label>Client</Label>
               <Input type="select" value={assignment.client_id} onChange={(event) => setAssignment({ client_id: event.target.value, user_id: '' })}>
                 <option value="">Select client</option>
-                {activeClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
+                {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
               </Input>
             </FormGroup>
             <FormGroup>
@@ -446,6 +441,7 @@ function DirectoryPanel({
   currentUser,
   onDeletePartner,
   onEditClient,
+  onDeleteClient,
   onEditUser,
   onDeleteUser
 }) {
@@ -489,16 +485,16 @@ function DirectoryPanel({
             </Input>
           </FormGroup>
         )}
-        <FormGroup>
-          <Label>Status</Label>
-          <Input type="select" value={filters.active} onChange={(event) => updateFilter('active', event.target.value)}>
-            <option value="">Any</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </Input>
-        </FormGroup>
         {view === 'users' && (
           <>
+            <FormGroup>
+              <Label>Status</Label>
+              <Input type="select" value={filters.active} onChange={(event) => updateFilter('active', event.target.value)}>
+                <option value="">Any</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </Input>
+            </FormGroup>
             <FormGroup>
               <Label>Kind</Label>
               <Input type="select" value={filters.user_kind} onChange={(event) => updateFilter('user_kind', event.target.value)}>
@@ -523,7 +519,7 @@ function DirectoryPanel({
         </div>
       </div>
       {view === 'partners' && <PartnersTable rows={partnerRows} onDelete={onDeletePartner} />}
-      {view === 'clients' && <ClientsTable rows={clientRows} partners={partners} onEdit={onEditClient} />}
+      {view === 'clients' && <ClientsTable rows={clientRows} partners={partners} onEdit={onEditClient} onDelete={onDeleteClient} />}
       {view === 'users' && <UsersTable rows={userRows} partners={partners} currentUser={currentUser} onEdit={onEditUser} onDelete={onDeleteUser} />}
     </>
   );
@@ -546,7 +542,7 @@ function PartnersTable({ rows, onDelete }) {
               <td>{row.key}</td>
               <td>{row.name}</td>
               <td className="text-end">
-                <Button size="sm" outline color="danger" title="Deactivate partner" onClick={() => onDelete(row)}>
+                <Button size="sm" outline color="danger" title="Delete partner" onClick={() => onDelete(row)}>
                   <i className="bi bi-trash" />
                 </Button>
               </td>
@@ -559,7 +555,7 @@ function PartnersTable({ rows, onDelete }) {
   );
 }
 
-function ClientsTable({ rows, partners, onEdit }) {
+function ClientsTable({ rows, partners, onEdit, onDelete }) {
   const partnerNames = useMemo(() => new Map(partners.map((partner) => [partner.id, partner.name])), [partners]);
   return (
     <div className="tm-table-wrap">
@@ -569,7 +565,6 @@ function ClientsTable({ rows, partners, onEdit }) {
             <th>Key</th>
             <th>Name</th>
             <th>Partner</th>
-            <th>Active</th>
             <th className="text-end">Actions</th>
           </tr>
         </thead>
@@ -579,15 +574,19 @@ function ClientsTable({ rows, partners, onEdit }) {
               <td>{row.key}</td>
               <td>{row.name}</td>
               <td>{partnerNames.get(row.partner_id) || row.partner_id}</td>
-              <td><ActiveBadge active={row.active} /></td>
               <td className="text-end">
-                <Button size="sm" outline color="secondary" title="Edit client" onClick={() => onEdit(row)}>
-                  <i className="bi bi-pencil" />
-                </Button>
+                <div className="d-inline-flex gap-2">
+                  <Button size="sm" outline color="secondary" title="Edit client" onClick={() => onEdit(row)}>
+                    <i className="bi bi-pencil" />
+                  </Button>
+                  <Button size="sm" outline color="danger" title="Delete client" onClick={() => onDelete(row)}>
+                    <i className="bi bi-trash" />
+                  </Button>
+                </div>
               </td>
             </tr>
           ))}
-          {rows.length === 0 && <EmptyRow colSpan="5" title="No clients found" message="Try changing the directory filters." />}
+          {rows.length === 0 && <EmptyRow colSpan="4" title="No clients found" message="Try changing the directory filters." />}
         </tbody>
       </Table>
     </div>
@@ -829,16 +828,12 @@ function userRole(row) {
 }
 
 function filterPartners(rows, filters) {
-  return rows.filter((row) => (
-    matchesActive(row, filters.active)
-    && matchesSearch([row.key, row.name], filters.search)
-  ));
+  return rows.filter((row) => matchesSearch([row.key, row.name], filters.search));
 }
 
 function filterClients(rows, partnerNames, filters) {
   return rows.filter((row) => (
-    matchesActive(row, filters.active)
-    && (!filters.partner_id || row.partner_id === filters.partner_id)
+    (!filters.partner_id || row.partner_id === filters.partner_id)
     && matchesSearch([row.key, row.name, partnerNames.get(row.partner_id)], filters.search)
   ));
 }

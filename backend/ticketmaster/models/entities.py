@@ -46,7 +46,6 @@ class Partner(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     key: Mapped[str] = mapped_column(String(80), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
     users: Mapped[list[User]] = relationship(back_populates="partner")
@@ -60,7 +59,6 @@ class Client(Base):
     key: Mapped[str] = mapped_column(String(80), unique=True, nullable=False, index=True)
     partner_id: Mapped[str] = mapped_column(ForeignKey("partners.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
     partner: Mapped[Partner] = relationship(back_populates="clients")
@@ -83,7 +81,7 @@ class Ticket(Base):
     partner_id: Mapped[str | None] = mapped_column(ForeignKey("partners.id"), nullable=True, index=True)
     client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True, index=True)
     owner_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
-    created_by_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_by_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     internal: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     type: Mapped[str] = mapped_column(String(80), nullable=False)
     priority: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -122,7 +120,7 @@ class Comment(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     ticket_id: Mapped[str] = mapped_column(ForeignKey("tickets.id"), nullable=False, index=True)
-    author_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    author_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     visibility: Mapped[str] = mapped_column(String(30), nullable=False, default="comment")
     body: Mapped[str] = mapped_column(Text, nullable=False)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -138,7 +136,7 @@ class CommentRevision(Base):
     comment_id: Mapped[str] = mapped_column(ForeignKey("comments.id"), nullable=False, index=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     action: Mapped[str] = mapped_column(String(40), nullable=False)
-    changed_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    changed_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
@@ -148,7 +146,7 @@ class Attachment(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     ticket_id: Mapped[str] = mapped_column(ForeignKey("tickets.id"), nullable=False, index=True)
     comment_id: Mapped[str | None] = mapped_column(ForeignKey("comments.id"), nullable=True)
-    uploaded_by_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    uploaded_by_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     filename: Mapped[str] = mapped_column(String(260), nullable=False)
     content_type: Mapped[str] = mapped_column(String(160), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)

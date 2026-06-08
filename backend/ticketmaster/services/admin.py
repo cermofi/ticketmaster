@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ticketmaster.core.config import settings
 from ticketmaster.core.security import hash_password
-from ticketmaster.models import Client, ClientAssignment, Partner, Ticket, User
+from ticketmaster.models import Attachment, AuditLog, Client, ClientAssignment, Comment, CommentRevision, Partner, Ticket, TicketParticipant, TicketWatcher, User
 from ticketmaster.models.constants import INTERNAL_ROLES, PARTNER_ROLES
 from ticketmaster.models.entities import new_id
 from ticketmaster.services.audit import audit
@@ -203,51 +203,70 @@ def create_partner(db: Session, *, name: str, actor: User | None = None, source:
     while db.scalar(select(Partner).where(Partner.key == key)):
         key = f"{key_base}-{suffix}"
         suffix += 1
-    partner = Partner(id=new_id(), key=key, name=name, active=True)
+    partner = Partner(id=new_id(), key=key, name=name)
     db.add(partner)
     db.flush()
     audit(db, entity_type="Partner", entity_id=partner.id, action="partner.create", actor=actor, source=source, new_value={"key": key, "name": name})
     return partner
 
 
-def deactivate_partner(db: Session, *, partner_id: str, actor: User | None = None, source: str = "ui") -> Partner:
+def delete_partner(db: Session, *, partner_id: str, actor: User | None = None, source: str = "ui") -> Partner:
     partner = db.get(Partner, partner_id)
     if not partner:
         raise NotFoundError("Partner not found")
+    now = datetime.now(timezone.utc)
     client_rows = list(db.scalars(select(Client).where(Client.partner_id == partner.id)).all())
     user_rows = list(db.scalars(select(User).where(User.partner_id == partner.id)).all())
-    ticket_rows = list(db.scalars(select(Ticket).where(Ticket.partner_id == partner.id)).all())
+    client_ids = {client.id for client in client_rows}
+    user_ids = {user.id for user in user_rows}
+    partner_ticket_rows = list(db.scalars(select(Ticket).where(Ticket.partner_id == partner.id)).all())
 
-    for client in client_rows:
-        for assignment in db.scalars(select(ClientAssignment).where(ClientAssignment.client_id == client.id)).all():
+    if client_ids:
+        for assignment in db.scalars(select(ClientAssignment).where(ClientAssignment.client_id.in_(client_ids))).all():
             db.delete(assignment)
-        client.active = False
-    for user in user_rows:
-        user.active = False
-        user.invitation_token = None
-    for ticket in ticket_rows:
-        ticket.partner_id = None
-        if ticket.client_id and any(client.id == ticket.client_id for client in client_rows):
+        for ticket in db.scalars(select(Ticket).where(Ticket.client_id.in_(client_ids))).all():
             ticket.client_id = None
-        ticket.updated_at = datetime.now(timezone.utc)
-    old = {"active": partner.active}
-    partner.active = False
+            ticket.updated_at = now
+        for client in client_rows:
+            db.delete(client)
+
+    if user_ids:
+        for assignment in db.scalars(select(ClientAssignment).where(ClientAssignment.user_id.in_(user_ids))).all():
+            db.delete(assignment)
+        for participant in db.scalars(select(TicketParticipant).where(TicketParticipant.user_id.in_(user_ids))).all():
+            db.delete(participant)
+        for watcher in db.scalars(select(TicketWatcher).where(TicketWatcher.user_id.in_(user_ids))).all():
+            db.delete(watcher)
+        for ticket in db.scalars(select(Ticket).where(Ticket.owner_id.in_(user_ids))).all():
+            ticket.owner_id = None
+            ticket.updated_at = now
+        for ticket in db.scalars(select(Ticket).where(Ticket.created_by_id.in_(user_ids))).all():
+            ticket.created_by_id = None
+            ticket.updated_at = now
+        for ticket in db.scalars(select(Ticket).where(Ticket.assignee_id.in_(user_ids))).all():
+            ticket.assignee_id = None
+            ticket.updated_at = now
+        for comment in db.scalars(select(Comment).where(Comment.author_id.in_(user_ids))).all():
+            comment.author_id = None
+        for revision in db.scalars(select(CommentRevision).where(CommentRevision.changed_by_user_id.in_(user_ids))).all():
+            revision.changed_by_user_id = None
+        for attachment in db.scalars(select(Attachment).where(Attachment.uploaded_by_id.in_(user_ids))).all():
+            attachment.uploaded_by_id = None
+        for audit_row in db.scalars(select(AuditLog).where(AuditLog.changed_by_user_id.in_(user_ids))).all():
+            audit_row.changed_by_user_id = None
+        for user in user_rows:
+            db.delete(user)
+
+    for ticket in partner_ticket_rows:
+        ticket.partner_id = None
+        if ticket.client_id in client_ids:
+            ticket.client_id = None
+        ticket.updated_at = now
+
+    old = {"name": partner.name, "key": partner.key}
+    db.delete(partner)
     db.flush()
-    audit(
-        db,
-        entity_type="Partner",
-        entity_id=partner.id,
-        action="partner.deactivate",
-        actor=actor,
-        source=source,
-        old_value=old,
-        new_value={
-            "active": False,
-            "clients_deactivated": len(client_rows),
-            "users_deactivated": len(user_rows),
-            "tickets_detached": len(ticket_rows),
-        },
-    )
+    audit(db, entity_type="Partner", entity_id=partner.id, action="partner.delete", actor=actor, source=source, old_value=old, new_value={"clients_deleted": len(client_rows), "users_deleted": len(user_rows), "tickets_detached": len(partner_ticket_rows)})
     return partner
 
 
@@ -260,7 +279,7 @@ def create_client(db: Session, *, partner_key_or_id: str, name: str, actor: User
     while db.scalar(select(Client).where(Client.key == key)):
         key = f"{key_base}-{suffix}"
         suffix += 1
-    client = Client(id=new_id(), key=key, partner_id=partner.id, name=name, active=True)
+    client = Client(id=new_id(), key=key, partner_id=partner.id, name=name)
     db.add(client)
     db.flush()
     audit(db, entity_type="Client", entity_id=client.id, action="client.create", actor=actor, source=source, new_value={"partner_id": partner.id, "key": key, "name": name})
@@ -272,36 +291,36 @@ def update_client(
     *,
     client_id: str,
     name: str | None = None,
-    active: bool | None = None,
     actor: User | None = None,
     source: str = "ui",
 ) -> Client:
     client = db.get(Client, client_id)
     if not client:
         raise NotFoundError("Client not found")
-    old = {"name": client.name, "active": client.active}
+    old = {"name": client.name}
     if name is not None:
         client.name = _clean_required(name, "Name")
-    if active is not None:
-        client.active = active
-    new = {"name": client.name, "active": client.active}
+    new = {"name": client.name}
     db.flush()
     if old != new:
         audit(db, entity_type="Client", entity_id=client.id, action="client.update", actor=actor, source=source, old_value=old, new_value=new)
     return client
 
 
-def deactivate_client(db: Session, *, client_id: str, actor: User | None = None, source: str = "ui") -> Client:
+def delete_client(db: Session, *, client_id: str, actor: User | None = None, source: str = "ui") -> Client:
     client = db.get(Client, client_id)
     if not client:
         raise NotFoundError("Client not found")
     active_assignments = db.scalar(select(func.count()).select_from(ClientAssignment).where(ClientAssignment.client_id == client.id))
     if active_assignments:
-        raise ValidationError("Client cannot be deactivated while it has responsible users assigned")
-    old = {"active": client.active}
-    client.active = False
+        raise ValidationError("Client cannot be removed while it has responsible users assigned")
+    old = {"name": client.name, "partner_id": client.partner_id}
+    for ticket in db.scalars(select(Ticket).where(Ticket.client_id == client.id)).all():
+        ticket.client_id = None
+        ticket.updated_at = datetime.now(timezone.utc)
+    db.delete(client)
     db.flush()
-    audit(db, entity_type="Client", entity_id=client.id, action="client.deactivate", actor=actor, source=source, old_value=old, new_value={"active": False})
+    audit(db, entity_type="Client", entity_id=client.id, action="client.delete", actor=actor, source=source, old_value=old, new_value={"deleted": True})
     return client
 
 
@@ -400,8 +419,6 @@ def assign_responsible_to_client(
 ) -> ClientAssignment:
     client = resolve_client(db, client_key_or_id)
     user = resolve_user(db, user_email_or_id)
-    if not client.active:
-        raise ValidationError("Client must be active")
     if not user.active:
         raise ValidationError("Responsible user must be active")
     if user.kind != "partner" or user.partner_role != "responsible":

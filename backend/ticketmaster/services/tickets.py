@@ -112,8 +112,6 @@ def create_partner_ticket(
     client = None
     if client_id:
         client = resolve_client(db, client_id)
-        if not client.active:
-            raise ValidationError("Client must be active")
         if client.partner_id != actor.partner_id:
             raise ValidationError("Client must belong to the ticket owner's partner")
         assignment = db.scalar(select(ClientAssignment).where(ClientAssignment.client_id == client.id, ClientAssignment.user_id == actor.id))

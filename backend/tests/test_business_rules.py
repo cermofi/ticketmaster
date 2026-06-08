@@ -4,10 +4,10 @@ import pytest
 from sqlalchemy import select
 
 from ticketmaster.core.security import hash_password
-from ticketmaster.models import CommentRevision, GitLabLink, Ticket
+from ticketmaster.models import Client, CommentRevision, GitLabLink, Partner, Ticket, User
 from ticketmaster.services import auth
 from ticketmaster.services import admin, tickets
-from ticketmaster.services.errors import ConflictError, PermissionDenied, ValidationError
+from ticketmaster.services.errors import ConflictError, NotFoundError, PermissionDenied, ValidationError
 
 
 def create_partner_ticket(db, data):
@@ -148,37 +148,58 @@ def test_transfer_owner_requires_same_partner_and_client_assignment(db, fixture_
         tickets.transfer_owner(db, ticket=ticket, actor=fixture_data["responsible_a"], new_owner_ref=fixture_data["responsible_b"].email, source="test")
 
 
-def test_partner_deactivation_cleans_up_clients_users_and_detaches_tickets(db, fixture_data):
+def test_partner_delete_removes_partner_clients_users_and_detaches_tickets(db, fixture_data):
     ticket = create_partner_ticket(db, fixture_data)
     ticket_id = ticket.id
+    partner_id = fixture_data["partner_a"].id
+    client_id = fixture_data["client_a"].id
+    responsible_id = fixture_data["responsible_a"].id
+    technical_id = fixture_data["technical_a"].id
 
-    partner = admin.deactivate_partner(db, partner_id=fixture_data["partner_a"].id, actor=fixture_data["admin"], source="test")
+    admin.delete_partner(db, partner_id=partner_id, actor=fixture_data["admin"], source="test")
 
-    assert partner.active is False
-    assert fixture_data["client_a"].active is False
-    assert fixture_data["responsible_a"].active is False
-    assert fixture_data["technical_a"].active is False
+    assert db.get(Partner, partner_id) is None
+    assert db.get(Client, client_id) is None
+    assert db.get(User, responsible_id) is None
+    assert db.get(User, technical_id) is None
 
     detached_ticket = db.get(Ticket, ticket_id)
     assert detached_ticket is not None
     assert detached_ticket.partner_id is None
     assert detached_ticket.client_id is None
+    assert detached_ticket.owner_id is None
+    assert detached_ticket.created_by_id is None
 
 
-def test_tickets_survive_other_entity_deactivations(db, fixture_data):
+def test_tickets_survive_client_deletion_and_require_no_responsible_users(db, fixture_data):
     ticket = create_partner_ticket(db, fixture_data)
     ticket_id = ticket.id
 
     with pytest.raises(ValidationError):
-        admin.deactivate_client(db, client_id=fixture_data["client_a"].id, actor=fixture_data["admin"], source="test")
+        admin.delete_client(db, client_id=fixture_data["client_a"].id, actor=fixture_data["admin"], source="test")
 
     assignment = admin.list_client_assignments(db, client_id=fixture_data["client_a"].id)[0]
     admin.remove_client_assignment(db, assignment_id=assignment.id, actor=fixture_data["admin"], source="test")
-    admin.deactivate_client(db, client_id=fixture_data["client_a"].id, actor=fixture_data["admin"], source="test")
-    admin.deactivate_user_by_id(db, user_id=fixture_data["technical_a"].id, actor=fixture_data["admin"], source="test")
+    client_id = fixture_data["client_a"].id
 
+    admin.delete_client(db, client_id=client_id, actor=fixture_data["admin"], source="test")
+
+    assert db.get(Client, client_id) is None
+    detached_ticket = db.get(Ticket, ticket_id)
+    assert detached_ticket is not None
+    assert detached_ticket.client_id is None
+    assert detached_ticket.partner_id == fixture_data["partner_a"].id
     assert db.get(Ticket, ticket_id) is not None
     assert db.scalar(select(Ticket).where(Ticket.id == ticket_id)) is not None
+
+    with pytest.raises(NotFoundError):
+        admin.assign_responsible_to_client(
+            db,
+            client_key_or_id=client_id,
+            user_email_or_id=fixture_data["responsible_a"].id,
+            actor=fixture_data["dm"],
+            source="test",
+        )
 
 
 def test_workflow_transition_matrix(db, fixture_data):
@@ -309,16 +330,18 @@ def test_comment_edit_and_soft_delete_is_admin_dm_only(db, fixture_data):
     assert db.scalar(select(CommentRevision).where(CommentRevision.comment_id == comment.id, CommentRevision.action == "delete"))
 
 
-def test_client_update_and_deactivation_blocks_new_usage(db, fixture_data):
+def test_client_update_and_delete_blocks_new_usage(db, fixture_data):
     client = fixture_data["client_a"]
 
     admin.update_client(db, client_id=client.id, name="Renamed Client", actor=fixture_data["dm"], source="test")
     assert client.name == "Renamed Client"
 
-    admin.deactivate_client(db, client_id=client.id, actor=fixture_data["dm"], source="test")
-    assert client.active is False
+    assignment = admin.list_client_assignments(db, client_id=client.id)[0]
+    admin.remove_client_assignment(db, assignment_id=assignment.id, actor=fixture_data["dm"], source="test")
+    admin.delete_client(db, client_id=client.id, actor=fixture_data["dm"], source="test")
+    assert db.get(Client, client.id) is None
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(NotFoundError):
         admin.assign_responsible_to_client(
             db,
             client_key_or_id=client.id,
@@ -327,7 +350,7 @@ def test_client_update_and_deactivation_blocks_new_usage(db, fixture_data):
             source="test",
         )
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(NotFoundError):
         tickets.create_partner_ticket(
             db,
             actor=fixture_data["responsible_a"],

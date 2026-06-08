@@ -80,7 +80,7 @@ function PartnerOverview({ user }) {
                 );
               })}
               {clients.length === 0 && (
-                <EmptyState icon="bi-building" title="Žádní klienti" message="Partner zatím nemá žádné aktivní klienty." />
+                <EmptyState icon="bi-building" title="Žádní klienti" message="Partner zatím nemá žádné klienty." />
               )}
             </div>
           </section>

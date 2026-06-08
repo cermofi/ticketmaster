@@ -72,7 +72,6 @@ class ClientBody(BaseModel):
 
 class ClientUpdateBody(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
-    active: bool | None = None
 
 
 class ClientAssignmentBody(BaseModel):
@@ -253,15 +252,15 @@ def partners_create(db: DbSession, user: CurrentUser, body: PartnerBody) -> dict
 @router.delete("/partners/{partner_id}")
 def partners_delete(db: DbSession, user: CurrentUser, partner_id: str) -> dict:
     admin.require_admin(user)
-    partner = admin.deactivate_partner(db, partner_id=partner_id, actor=user)
+    admin.delete_partner(db, partner_id=partner_id, actor=user)
     db.commit()
-    return partner_to_dict(partner)
+    return {"ok": True}
 
 
 @router.get("/clients")
 def clients_list(db: DbSession, user: CurrentUser, partner: str | None = None) -> list[dict]:
     if user.kind == "partner":
-        stmt = select(Client).where(Client.partner_id == user.partner_id, Client.active.is_(True))
+        stmt = select(Client).where(Client.partner_id == user.partner_id)
     else:
         admin.require_admin_or_dm(user)
         stmt = select(Client)
@@ -282,7 +281,7 @@ def clients_create(db: DbSession, user: CurrentUser, body: ClientBody) -> dict:
 @router.patch("/clients/{client_id}")
 def clients_update(db: DbSession, user: CurrentUser, client_id: str, body: ClientUpdateBody) -> dict:
     admin.require_admin_or_dm(user)
-    client = admin.update_client(db, client_id=client_id, name=body.name, active=body.active, actor=user)
+    client = admin.update_client(db, client_id=client_id, name=body.name, actor=user)
     db.commit()
     return client_to_dict(client)
 
@@ -290,9 +289,9 @@ def clients_update(db: DbSession, user: CurrentUser, client_id: str, body: Clien
 @router.delete("/clients/{client_id}")
 def clients_delete(db: DbSession, user: CurrentUser, client_id: str) -> dict:
     admin.require_admin_or_dm(user)
-    client = admin.deactivate_client(db, client_id=client_id, actor=user)
+    admin.delete_client(db, client_id=client_id, actor=user)
     db.commit()
-    return client_to_dict(client)
+    return {"ok": True}
 
 
 @router.post("/client-assignments")
@@ -398,9 +397,7 @@ def partner_dashboard(db: DbSession, user: CurrentUser) -> dict:
         raise PermissionDenied("Partner dashboard is available only to partner users")
 
     clients = db.scalars(
-        select(Client)
-        .where(Client.partner_id == user.partner_id, Client.active.is_(True))
-        .order_by(Client.name)
+        select(Client).where(Client.partner_id == user.partner_id).order_by(Client.name)
     ).all()
     users = db.scalars(
         select(User)

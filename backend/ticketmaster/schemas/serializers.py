@@ -33,11 +33,11 @@ def user_to_dict(user: User) -> dict:
 
 
 def partner_to_dict(partner: Partner) -> dict:
-    return {"id": partner.id, "key": partner.key, "name": partner.name, "active": partner.active, "created_at": partner.created_at}
+    return {"id": partner.id, "key": partner.key, "name": partner.name, "created_at": partner.created_at}
 
 
 def client_to_dict(client: Client) -> dict:
-    return {"id": client.id, "key": client.key, "partner_id": client.partner_id, "name": client.name, "active": client.active, "created_at": client.created_at}
+    return {"id": client.id, "key": client.key, "partner_id": client.partner_id, "name": client.name, "created_at": client.created_at}
 
 
 def ticket_to_dict(db: Session, ticket: Ticket, *, viewer: User | None = None, include_detail: bool = False) -> dict:
