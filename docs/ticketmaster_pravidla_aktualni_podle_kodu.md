@@ -1,8 +1,6 @@
-# TicketMaster - aktualni pravidla podle kodu
+# TicketMaster - pravidla systemu
 
-Tento dokument popisuje aktualni chovani aplikace TicketMaster podle soucasneho kodu backendu, UI a API.
-
-Nejde o navrh budoucich funkci ani implementacni zadani. Pokud se nekde kod a puvodni dokumentace rozchazi, ma prednost tento dokument jako popis aktualniho stavu.
+Tento dokument popisuje chovani aplikace TicketMaster.
 
 > WebUI aplikace ma byt postavena nad TeskaLabs ASAB WebUI ekosystemem. Konkretne ma vychazet z `asab-webui` a `asab-webui-shell-lib`. Dokument dale neresi konkretni UI navrh, layouty ani implementacni detaily frontendu.
 
@@ -44,7 +42,7 @@ Partner uzivatele maji jednu z nasledujicich roli:
 
 Aktivni/neaktivni stav existuje pouze u uzivatelu.
 
-U partneru a klientu se `active` stav v aktualnim modelu nepouziva.
+Partneri a klienti nemaji `active` stav.
 
 Pravidla pro uzivatele:
 
@@ -57,7 +55,7 @@ Pravidla pro uzivatele:
 
 ### 3.1 Interni uzivatele
 
-Interni uzivatel se prihlasuje pres interni autentizacni flow podle deploymentu. V kodu je oddeleny od partner prihlaseni.
+Interni uzivatel se prihlasuje pres interni autentizacni flow podle deploymentu. Je oddeleny od partner prihlaseni.
 
 ### 3.2 Partner uzivatele
 
@@ -81,7 +79,7 @@ Pri pokusu o prihlaseni neaktivniho uzivatele vraci backend chybu ve smyslu, ze 
 
 Partner je nadrizena entita pro skupinu uzivatelu a klientu.
 
-Aktualni model partnera obsahuje pouze:
+Partner obsahuje:
 
 - `id`
 - `key`
@@ -94,7 +92,7 @@ Partner nema `active/inactive` stav.
 
 Client patri do jednoho partnera.
 
-Aktualni model klienta obsahuje pouze:
+Client obsahuje:
 
 - `id`
 - `key`
@@ -115,13 +113,13 @@ Platilo a plati:
 
 ### 4.4 Smazani partnera a klienta
 
-Aktualni kod ma delete endpointy i validacni pravidla kolem mazani partneru a klientu.
+Delete endpointy pro partnera a klienta existuji a backend je vyhodnocuje podle vazeb.
 
-V soucasnem stavu je potreba pocitat s tim, ze:
+Pravidla mazani jsou:
 
-- partner/klient uz nemaji `active` stav,
-- mazani je vazano na backend validace,
-- pokud je treba definitivne povolit nebo zakazat hard delete, je to samostatny pravidlovy bod, ktery musi byt konzistentne vyresen v API i UI.
+- partneri a klienti nemaji `active` stav,
+- mazani prochazi pres backend validace,
+- ticket zustava v systemu i po zmenach nad partnerem nebo klientem.
 
 ## 5. Viditelnost ticketu
 
@@ -165,7 +163,7 @@ Pokud je ticket navazany na klienta, novy owner musi byt zaroven odpovednou osob
 
 ### 7.1 Typy ticketu
 
-Podporovane typy v kodu:
+Podporovane typy:
 
 - `Problem`
 - `Change Request`
@@ -193,7 +191,7 @@ Pro `Security Issue` muze backend automaticky povysit prioritu `Normal` na `Crit
 
 ### 8.1 Statusy
 
-Aktualni statusy ticketu:
+Statusy ticketu:
 
 - `New`
 - `Need more info`
@@ -207,7 +205,7 @@ Aktualni statusy ticketu:
 
 ### 8.2 Povolené prechody
 
-Povolené prechody v kodu:
+Povolene prechody:
 
 - `New` -> `Need more info`
 - `New` -> `Assigned`
@@ -234,13 +232,13 @@ Povolené prechody v kodu:
 
 - `Admin` a `DeliveryManager` mohou provadet povolene workflow prechody,
 - `L1`, `L2`, `L3` mohou provadet pouze povolene prechody nad tiketem, ktery patri do jejich resolver teamu,
-- partner uzivatel v aktualni implementaci workflow stav ticketu menit nemuze.
+- partner uzivatel workflow stav ticketu nemení.
 
 ### 8.4 Need more info
 
 `Need more info` je bezny workflow stav.
 
-V kodu se pouziva jako:
+Pouziva se jako:
 
 - mezistav pri cekani na doplneni informaci,
 - stav, do ktereho se ticket muze vratit z `Assigned` nebo `In progress`,
@@ -291,7 +289,7 @@ Ticket lze prirazovat podle pravidel backendu:
 
 ### 10.1 Eskalace mezi tymy
 
-Aktualni pravidlo je, ze ticket po prirazeni do resolver teamu nema prechazet mezi oddelenimi.
+Ticket po prirazeni do resolver teamu neprechazi mezi oddelenimi.
 
 Prace se deje takto:
 
@@ -314,7 +312,7 @@ To znamena:
 
 Partnersky dashboard ma slouzit partner uzivateli.
 
-Aktualni data na dashboardu mohou obsahovat:
+Dashboard muze obsahovat:
 
 - prehled klientu partnera,
 - seznam odpovednych osob u klientu,
@@ -346,7 +344,7 @@ Pravidla:
 
 ### 12.3 Editace a mazani komentaru
 
-V aktualni implementaci je editace a mazani komentaru i internal notes vypnute.
+Editace a mazani komentaru i internal notes jsou vypnute.
 
 To znamena:
 
@@ -355,7 +353,7 @@ To znamena:
 
 ## 13. GitLab integrace
 
-GitLab integrace je v kodu navazana na L3 workflow.
+GitLab integrace je navazana na L3 workflow.
 
 ### 13.1 Kdy se GitLab issue vytvari
 
@@ -380,7 +378,7 @@ Pokud issue chybi, prechod se zablokuje.
 
 ### 13.4 Stav GitLabu
 
-V kodu se pracuje s GitLab status hodnotami:
+GitLab status hodnoty:
 
 - `Open`
 - `To Do`
@@ -394,7 +392,7 @@ V kodu se pracuje s GitLab status hodnotami:
 
 Partneri jsou spravovani z admin casti.
 
-V UI a API se muze objevit delete akce, ale aktualni backend pravidla mohou mazani blokovat podle vazeb.
+Delete akce v UI a API prochazi backend pravidly podle vazeb.
 
 ### 14.2 Klienti
 
@@ -414,21 +412,18 @@ Pravidla:
 
 ## 15. Otevrene body
 
-Tyto body jsou v kodu nebo v prevzatem zadani misty jeste nejednoznacne a je dobre je drzet explicitne:
+1. Presny text chyb pri neaktivnim uctu a pri nepovolene operaci.
+2. Zda ma mit klient nekdy vlastni UI stav mimo vazby na partnera.
+3. Zda se ma do budoucna rozsirit partner dashboard o dalsi agregace.
 
-1. Presny finalni zpusob mazani partneru a klientu vs. backend validace.
-2. Presny text chyb pri neaktivnim uctu a pri nepovolene operaci.
-3. Zda ma mit klient nekdy vlastni UI stav mimo vazby na partnera.
-4. Zda se ma do budoucna rozsirit partner dashboard o dalsi agregace.
+## 16. Shrnuti pravidel
 
-## 16. Strucne shrnuti aktualniho stavu
-
-- Partner a klient uz nemaji `active/inactive` stav.
+- Partner a klient nemaji `active/inactive` stav.
 - `active/inactive` zustava jen u uzivatelu.
 - Neaktivni uzivatel se neprihlasi a nic neprovede.
-- Ticket se nikdy nema odstranit z historie systemu.
+- Ticket zustava v systemu.
 - Komentare a internal notes se needituji ani nemazou.
-- Resolver team se po prirazeni nema prepinat mezi oddeleními.
+- Resolver team se po prirazeni neprepina mezi oddeleními.
 - Menit lze hlavne assignee v ramci stejneho tymu.
 - GitLab je navazany na L3 workflow.
 - Partner vidi jen sve ticketove prostredi, ne interni komunikaci.
