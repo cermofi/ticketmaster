@@ -104,6 +104,20 @@ def test_partner_cannot_be_deactivated_when_it_has_clients_users_or_tickets(db, 
         admin.deactivate_partner(db, partner_id=fixture_data["partner_a"].id, actor=fixture_data["admin"], source="test")
 
 
+def test_tickets_survive_other_entity_deactivations(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+    ticket_id = ticket.id
+
+    admin.deactivate_client(db, client_id=fixture_data["client_a"].id, actor=fixture_data["admin"], source="test")
+    admin.deactivate_user_by_id(db, user_id=fixture_data["technical_a"].id, actor=fixture_data["admin"], source="test")
+
+    with pytest.raises(ValidationError):
+        admin.deactivate_partner(db, partner_id=fixture_data["partner_a"].id, actor=fixture_data["admin"], source="test")
+
+    assert db.get(Ticket, ticket_id) is not None
+    assert db.scalar(select(Ticket).where(Ticket.id == ticket_id)) is not None
+
+
 def test_workflow_transition_matrix(db, fixture_data):
     ticket = create_partner_ticket(db, fixture_data)
     tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", source="test")
