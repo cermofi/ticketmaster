@@ -581,6 +581,16 @@ def tickets_assign(db: DbSession, user: CurrentUser, ticket_id: str, body: Assig
     return data
 
 
+@router.post("/tickets/{ticket_id}/unassign")
+def tickets_unassign(db: DbSession, user: CurrentUser, ticket_id: str) -> dict:
+    ticket = tickets.get_ticket(db, ticket_id)
+    tickets.unassign_ticket(db, ticket=ticket, actor=user)
+    db.commit()
+    data = ticket_to_dict(db, ticket, viewer=user, include_detail=True)
+    data["available_transitions"] = tickets.available_transitions(db, ticket=ticket, actor=user)
+    return data
+
+
 @router.post("/tickets/{ticket_id}/transition")
 def tickets_transition(db: DbSession, user: CurrentUser, ticket_id: str, body: TransitionBody) -> dict:
     ticket = tickets.get_ticket(db, ticket_id)

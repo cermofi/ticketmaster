@@ -120,6 +120,26 @@ def test_closed_ticket_cannot_be_assigned(db, fixture_data):
         tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L2", source="test")
 
 
+def test_delivery_manager_can_return_assigned_ticket_to_queue(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", assignee_ref=fixture_data["l1"].email, source="test")
+    tickets.transition_ticket(db, ticket=ticket, actor=fixture_data["l1"], new_status="In progress", source="test")
+
+    tickets.unassign_ticket(db, ticket=ticket, actor=fixture_data["dm"], source="test")
+
+    assert ticket.status == "Assigned"
+    assert ticket.resolver_team == "L1"
+    assert ticket.assignee_id is None
+
+
+def test_resolver_cannot_return_ticket_to_queue(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", assignee_ref=fixture_data["l1"].email, source="test")
+
+    with pytest.raises(PermissionDenied):
+        tickets.unassign_ticket(db, ticket=ticket, actor=fixture_data["l1"], source="test")
+
+
 def test_l1_to_l2_and_l2_to_l3_escalation(db, fixture_data):
     ticket = create_partner_ticket(db, fixture_data)
     tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", source="test")

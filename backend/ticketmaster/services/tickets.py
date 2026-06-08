@@ -378,6 +378,26 @@ def assign_ticket(
     return ticket
 
 
+def unassign_ticket(db: Session, *, ticket: Ticket, actor: User, source: str = "ui") -> Ticket:
+    if actor.kind != "internal" or actor.internal_role not in {"Admin", "DeliveryManager"}:
+        raise PermissionDenied("Only Admin or Delivery Manager can return tickets to the queue")
+    if ticket.status == "Closed":
+        raise ValidationError("Closed tickets cannot be unassigned")
+    if not ticket.resolver_team:
+        raise ValidationError("Ticket is not assigned to a resolver queue")
+    if not ticket.assignee_id and ticket.status == "Assigned":
+        return ticket
+    old = {"status": ticket.status, "resolver_team": ticket.resolver_team, "assignee_id": ticket.assignee_id}
+    ticket.status = "Assigned"
+    ticket.assignee_id = None
+    ticket.updated_at = datetime.now(timezone.utc)
+    db.flush()
+    audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.unassign", actor=actor, source=source, old_value=old, new_value={"status": ticket.status, "resolver_team": ticket.resolver_team, "assignee_id": None})
+    queue_ticket_watchers(db, ticket_id=ticket.id, event="ticket_unassigned", subject=f"Ticket returned to queue: {ticket.title}", body=f"Ticket {ticket.id} was returned to the {ticket.resolver_team} queue.")
+    ticket_search.enqueue_ticket_index(ticket.id)
+    return ticket
+
+
 def transition_ticket(db: Session, *, ticket: Ticket, actor: User, new_status: str, source: str = "ui") -> Ticket:
     validate_transition(db, ticket=ticket, actor=actor, new_status=new_status)
     old = {"status": ticket.status}

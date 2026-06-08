@@ -83,6 +83,11 @@ function TicketDetail({ user }) {
   const showActions = user.kind === 'internal' || canTransferOwner;
   const canAddCommunication = ticket?.status !== 'Closed';
   const canAssignTicket = ticket?.status !== 'Closed';
+  const canReturnToQueue = canAssignTicket
+    && user.kind === 'internal'
+    && ['Admin', 'DeliveryManager'].includes(user.internal_role)
+    && Boolean(ticket?.resolver_team)
+    && Boolean(ticket?.assignee_id);
 
   return (
     <div className="tm-screen">
@@ -197,6 +202,18 @@ function TicketDetail({ user }) {
                           Assign
                         </Button>
                       </Form>
+                      {canReturnToQueue && (
+                        <Button
+                          color="secondary"
+                          outline
+                          className="w-100 mt-2"
+                          type="button"
+                          onClick={() => action(() => api.post(`/tickets/${ticket.id}/unassign`))}
+                        >
+                          <i className="bi bi-arrow-counterclockwise me-1" />
+                          Return to queue
+                        </Button>
+                      )}
                     </div>}
                   </>
                 )}
