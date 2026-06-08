@@ -68,6 +68,8 @@ def require_view(db: Session, user: User, ticket: Ticket) -> None:
 
 
 def can_comment(db: Session, user: User, ticket: Ticket) -> bool:
+    if not user.active:
+        raise PermissionDenied("Account is inactive")
     if ticket.status == "Closed":
         raise ValidationError("Closed tickets cannot be commented")
     if user.kind == "internal":
@@ -100,6 +102,8 @@ def create_partner_ticket(
     participant_ids: list[str] | None = None,
     source: str = "ui",
 ) -> Ticket:
+    if not actor.active:
+        raise PermissionDenied("Account is inactive")
     if actor.kind != "partner" or actor.partner_role != "responsible":
         raise PermissionDenied("Only responsible partner users can create partner tickets")
     validate_ticket_type(ticket_type)
@@ -153,6 +157,8 @@ def create_internal_ticket(
     team: str | None = None,
     source: str = "ui",
 ) -> Ticket:
+    if not actor.active:
+        raise PermissionDenied("Account is inactive")
     if actor.kind != "internal" or actor.internal_role not in {"Admin", "DeliveryManager", "L1", "L2", "L3"}:
         raise PermissionDenied("Only internal users can create internal tickets")
     validate_ticket_type(ticket_type)
@@ -304,6 +310,8 @@ def add_comment(db: Session, *, ticket: Ticket, actor: User, body: str, source: 
 
 
 def add_internal_note(db: Session, *, ticket: Ticket, actor: User, body: str, source: str = "ui") -> Comment:
+    if not actor.active:
+        raise PermissionDenied("Account is inactive")
     if ticket.status == "Closed":
         raise ValidationError("Closed tickets cannot be commented")
     if actor.kind != "internal" or not can_view_ticket(db, actor, ticket):

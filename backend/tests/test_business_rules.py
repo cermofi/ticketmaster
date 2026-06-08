@@ -3,7 +3,9 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import select
 
+from ticketmaster.core.security import hash_password
 from ticketmaster.models import CommentRevision, GitLabLink, Ticket
+from ticketmaster.services import auth
 from ticketmaster.services import admin, tickets
 from ticketmaster.services.errors import ConflictError, PermissionDenied, ValidationError
 
@@ -61,6 +63,53 @@ def test_technical_user_cannot_create_ticket(db, fixture_data):
             title="Not allowed",
             description="Technical contact cannot create",
         )
+
+
+def test_inactive_users_cannot_create_tickets_or_comments_and_cannot_log_in(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+
+    partner_user = fixture_data["responsible_a"]
+    partner_user.password_hash = hash_password("SecretPass123")
+    partner_user.active = False
+
+    internal_user = fixture_data["l1"]
+    internal_user.active = False
+
+    with pytest.raises(PermissionDenied, match="Account is inactive"):
+        tickets.create_partner_ticket(
+            db,
+            actor=partner_user,
+            ticket_type="Question",
+            priority="Normal",
+            title="Inactive partner",
+            description="Should not be accepted",
+            client_id=fixture_data["client_a"].id,
+            source="test",
+        )
+
+    tickets.add_participant(db, ticket=ticket, actor=fixture_data["responsible_a"], user_id=fixture_data["technical_a"].id, source="test")
+    with pytest.raises(PermissionDenied, match="Account is inactive"):
+        tickets.add_comment(db, ticket=ticket, actor=partner_user, body="Nope")
+    with pytest.raises(PermissionDenied, match="Account is inactive"):
+        tickets.add_internal_note(db, ticket=ticket, actor=internal_user, body="Nope")
+
+    with pytest.raises(PermissionDenied, match="Account is inactive"):
+        tickets.create_internal_ticket(
+            db,
+            actor=internal_user,
+            ticket_type="Question",
+            priority="Normal",
+            title="Inactive internal",
+            description="Should not be accepted",
+            team="L1",
+            source="test",
+        )
+
+    with pytest.raises(PermissionDenied, match="Account is inactive"):
+        auth.authenticate_email_password(db, partner_user.email, "SecretPass123")
+
+    with pytest.raises(PermissionDenied, match="Account is inactive"):
+        auth.authenticate_dev_sso(db, internal_user.email)
 
 
 def test_commenting_requires_participant(db, fixture_data):

@@ -652,12 +652,12 @@ function UsersTable({ rows, partners, currentUser, onEdit, onDelete }) {
 }
 
 function ClientEditModal({ client, users, isOpen, onClose, onSave, submit: runAdminAction }) {
-  const [form, setForm] = useState({ name: '', active: true });
+  const [form, setForm] = useState({ name: '' });
   const [assignments, setAssignments] = useState([]);
   const [responsibleUserId, setResponsibleUserId] = useState('');
 
   useEffect(() => {
-    setForm({ name: client?.name || '', active: client?.active ?? true });
+    setForm({ name: client?.name || '' });
     setResponsibleUserId('');
     if (!client) {
       setAssignments([]);
@@ -683,7 +683,7 @@ function ClientEditModal({ client, users, isOpen, onClose, onSave, submit: runAd
 
   const submit = (event) => {
     event.preventDefault();
-    onSave({ name: form.name.trim(), active: form.active });
+    onSave({ name: form.name.trim() });
   };
 
   return (
@@ -695,18 +695,6 @@ function ClientEditModal({ client, users, isOpen, onClose, onSave, submit: runAd
             <Label>Name</Label>
             <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
           </FormGroup>
-          <div className="tm-switch-row">
-            <span>Active</span>
-            <button
-              type="button"
-              className={`tm-switch ${form.active ? 'is-on' : ''}`}
-              role="switch"
-              aria-checked={form.active}
-              onClick={() => setForm({ ...form, active: !form.active })}
-            >
-              <span />
-            </button>
-          </div>
           <hr />
           <div className="tm-client-responsibles">
             <h3>Odpovědné osoby</h3>
