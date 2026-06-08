@@ -446,6 +446,77 @@ body[data-tm-density="compact"] .tm-login-form {
   font-weight: 700;
 }
 
+.tm-new-ticket-page {
+  width: 100%;
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-radius);
+  background: var(--tm-panel);
+  padding: var(--tm-space-5);
+  box-shadow: var(--tm-shadow);
+}
+
+.tm-ticket-create-form {
+  display: grid;
+  gap: var(--tm-space-4);
+}
+
+.tm-form-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--tm-space-4);
+  padding-bottom: var(--tm-space-3);
+  border-bottom: 1px solid var(--tm-line);
+}
+
+.tm-form-title h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.tm-form-title p {
+  max-width: 34rem;
+  margin: .2rem 0 0;
+  color: var(--tm-muted);
+}
+
+.tm-ticket-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--tm-space-4);
+  align-items: start;
+}
+
+.tm-ticket-form-grid .form-group,
+.tm-ticket-form-grid .mb-3 {
+  margin-bottom: 0;
+}
+
+.tm-field-wide {
+  grid-column: 1 / -1;
+}
+
+.tm-ticket-form-grid textarea.form-control {
+  min-height: 16rem;
+  resize: vertical;
+}
+
+.tm-ticket-form-grid-extra {
+  grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(0, 1fr));
+}
+
+.tm-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--tm-space-3);
+  border-top: 1px solid var(--tm-line);
+}
+
+.tm-form-actions .btn {
+  min-width: 13rem;
+}
+
 .tm-admin-directory {
   min-width: 0;
 }
@@ -750,7 +821,9 @@ body[data-tm-contrast="high"] {
   .tm-layout,
   .tm-ticket-layout,
   .tm-admin-layout,
-  .tm-admin-filters {
+  .tm-admin-filters,
+  .tm-ticket-form-grid,
+  .tm-ticket-form-grid-extra {
     grid-template-columns: 1fr;
   }
 
@@ -796,7 +869,18 @@ body[data-tm-contrast="high"] {
     flex-direction: column;
   }
 
+  .tm-form-title,
+  .tm-form-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tm-form-actions .btn {
+    width: 100%;
+  }
+
   .tm-form-page,
+  .tm-new-ticket-page,
   .tm-login-form,
   .tm-panel {
     padding: var(--tm-space-3);

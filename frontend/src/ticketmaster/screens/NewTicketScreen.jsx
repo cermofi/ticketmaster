@@ -36,9 +36,11 @@ function NewTicket({ user }) {
 
   return (
     <div className="tm-screen">
-      <PageHeader title="Vytvořit ticket" />
+      <PageHeader title="Vytvořit ticket">
+        Nový požadavek pro podporu.
+      </PageHeader>
       <ErrorBanner error={error} />
-      <section className="tm-form-page">
+      <section className="tm-new-ticket-page">
         {user.kind === 'partner'
           ? <PartnerTicketForm meta={meta} clients={clients} onCreated={() => navigate('/')} />
           : <InternalTicketForm meta={meta} onCreated={() => navigate('/')} />}

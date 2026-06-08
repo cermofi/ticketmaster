@@ -177,14 +177,19 @@ export function PartnerTicketForm({ meta, clients, onCreated }) {
     }
   };
   return (
-    <Form onSubmit={submit}>
-      <h2>Create partner ticket</h2>
+    <Form className="tm-ticket-create-form" onSubmit={submit}>
+      <div className="tm-form-title">
+        <h2>Nový ticket</h2>
+        <p>Vyplňte základní údaje a popis požadavku.</p>
+      </div>
       <ErrorBanner error={error} />
       <TicketFormFields form={form} update={update} meta={meta} clients={clients} />
-      <Button color="primary" type="submit" className="w-100">
-        <i className="bi bi-plus-circle me-1" />
-        Create ticket
-      </Button>
+      <div className="tm-form-actions">
+        <Button color="primary" type="submit">
+          <i className="bi bi-plus-circle me-1" />
+          Vytvořit ticket
+        </Button>
+      </div>
     </Form>
   );
 }
@@ -206,21 +211,28 @@ export function InternalTicketForm({ meta, onCreated }) {
     }
   };
   return (
-    <Form onSubmit={submit}>
-      <h2>Create internal ticket</h2>
+    <Form className="tm-ticket-create-form" onSubmit={submit}>
+      <div className="tm-form-title">
+        <h2>Nový interní ticket</h2>
+        <p>Vyplňte základní údaje a tým, který má požadavek řešit.</p>
+      </div>
       <ErrorBanner error={error} />
       <TicketFormFields form={form} update={update} meta={meta} />
-      <FormGroup>
-        <Label>Resolver team</Label>
-        <Input type="select" value={form.team} onChange={(event) => update('team', event.target.value)}>
-          <option value="">Unassigned</option>
-          {resolverTeams.map((team) => <option key={team}>{team}</option>)}
-        </Input>
-      </FormGroup>
-      <Button color="primary" type="submit" className="w-100">
-        <i className="bi bi-plus-circle me-1" />
-        Create internal ticket
-      </Button>
+      <div className="tm-ticket-form-grid tm-ticket-form-grid-extra">
+        <FormGroup>
+          <Label>Řešitelský tým</Label>
+          <Input type="select" value={form.team} onChange={(event) => update('team', event.target.value)}>
+            <option value="">Nepřiřazeno</option>
+            {resolverTeams.map((team) => <option key={team}>{team}</option>)}
+          </Input>
+        </FormGroup>
+      </div>
+      <div className="tm-form-actions">
+        <Button color="primary" type="submit">
+          <i className="bi bi-plus-circle me-1" />
+          Vytvořit interní ticket
+        </Button>
+      </div>
     </Form>
   );
 }
@@ -230,36 +242,36 @@ export function TicketFormFields({ form, update, meta, clients = [] }) {
   const priorities = asArray(meta?.priorities);
   const clientRows = asArray(clients);
   return (
-    <>
+    <div className="tm-ticket-form-grid">
       <FormGroup>
-        <Label>Type</Label>
+        <Label>Typ</Label>
         <Input type="select" value={form.type} onChange={(event) => update('type', event.target.value)}>
           {ticketTypes.map((ticketType) => <option key={ticketType}>{ticketType}</option>)}
         </Input>
       </FormGroup>
       <FormGroup>
-        <Label>Priority</Label>
+        <Label>Priorita</Label>
         <Input type="select" value={form.priority} onChange={(event) => update('priority', event.target.value)}>
           {priorities.map((priority) => <option key={priority}>{priority}</option>)}
         </Input>
       </FormGroup>
       {clientRows.length > 0 && (
         <FormGroup>
-          <Label>Client</Label>
+          <Label>Klient</Label>
           <Input type="select" value={form.client_id} onChange={(event) => update('client_id', event.target.value)}>
-            <option value="">No client</option>
+            <option value="">Bez klienta</option>
             {clientRows.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
           </Input>
         </FormGroup>
       )}
-      <FormGroup>
-        <Label>Title</Label>
+      <FormGroup className="tm-field-wide">
+        <Label>Název</Label>
         <Input value={form.title} onChange={(event) => update('title', event.target.value)} required />
       </FormGroup>
-      <FormGroup>
-        <Label>Description</Label>
-        <Input type="textarea" rows="5" value={form.description} onChange={(event) => update('description', event.target.value)} required />
+      <FormGroup className="tm-field-wide">
+        <Label>Popis</Label>
+        <Input type="textarea" rows="8" value={form.description} onChange={(event) => update('description', event.target.value)} required />
       </FormGroup>
-    </>
+    </div>
   );
 }
