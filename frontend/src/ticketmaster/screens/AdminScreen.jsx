@@ -140,11 +140,6 @@ function Admin({ user }) {
     submit(() => api.delete(`/clients/${client.id}`));
   };
 
-  const deletePartner = (partner) => {
-    if (!window.confirm(`Deactivate partner "${partner.name}"? First remove/deactivate all clients, partner users and close related tickets.`)) return;
-    submit(() => api.delete(`/partners/${partner.id}`));
-  };
-
   const saveUser = (payload) => submit(async () => {
     await api.patch(`/users/${editingUser.id}`, payload);
     setEditingUser(null);
@@ -184,7 +179,6 @@ function Admin({ user }) {
             userRows={filteredUsers}
             counts={{ partners: partners.length, clients: clients.length, users: users.length }}
             currentUser={user}
-            onDeletePartner={deletePartner}
             onEditClient={setEditingClient}
             onDeleteClient={deleteClient}
             onEditUser={setEditingUser}
@@ -451,7 +445,6 @@ function DirectoryPanel({
   userRows,
   counts,
   currentUser,
-  onDeletePartner,
   onEditClient,
   onDeleteClient,
   onEditUser,
@@ -530,14 +523,14 @@ function DirectoryPanel({
           </Button>
         </div>
       </div>
-      {view === 'partners' && <PartnersTable rows={partnerRows} currentUser={currentUser} onDelete={onDeletePartner} />}
+      {view === 'partners' && <PartnersTable rows={partnerRows} />}
       {view === 'clients' && <ClientsTable rows={clientRows} partners={partners} onEdit={onEditClient} onDelete={onDeleteClient} />}
       {view === 'users' && <UsersTable rows={userRows} partners={partners} currentUser={currentUser} onEdit={onEditUser} onDelete={onDeleteUser} />}
     </>
   );
 }
 
-function PartnersTable({ rows, currentUser, onDelete }) {
+function PartnersTable({ rows }) {
   return (
     <div className="tm-table-wrap">
       <Table hover responsive className="tm-table">
@@ -555,11 +548,7 @@ function PartnersTable({ rows, currentUser, onDelete }) {
               <td>{row.key}</td>
               <td>{row.name}</td>
               <td><ActiveBadge active={row.active} /></td>
-              <td className="text-end">
-                <Button size="sm" outline color="danger" title="Deactivate partner" disabled={currentUser.internal_role !== 'Admin' || !row.active} onClick={() => onDelete(row)}>
-                  <i className="bi bi-trash" />
-                </Button>
-              </td>
+              <td className="text-end tm-muted">-</td>
             </tr>
           ))}
           {rows.length === 0 && <EmptyRow colSpan="4" title="No partners found" message="Try changing the directory filters." />}

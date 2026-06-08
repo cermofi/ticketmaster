@@ -213,18 +213,18 @@ def deactivate_partner(db: Session, *, partner_id: str, actor: User | None = Non
     partner = db.get(Partner, partner_id)
     if not partner:
         raise NotFoundError("Partner not found")
-    active_clients = db.scalar(select(func.count()).select_from(Client).where(Client.partner_id == partner.id, Client.active.is_(True)))
-    active_users = db.scalar(select(func.count()).select_from(User).where(User.partner_id == partner.id, User.active.is_(True)))
-    open_tickets = db.scalar(select(func.count()).select_from(Ticket).where(Ticket.partner_id == partner.id, Ticket.status != "Closed"))
+    linked_clients = db.scalar(select(func.count()).select_from(Client).where(Client.partner_id == partner.id))
+    linked_users = db.scalar(select(func.count()).select_from(User).where(User.partner_id == partner.id))
+    linked_tickets = db.scalar(select(func.count()).select_from(Ticket).where(Ticket.partner_id == partner.id))
     blockers = []
-    if active_clients:
-        blockers.append(f"{active_clients} active client(s)")
-    if active_users:
-        blockers.append(f"{active_users} active partner user(s)")
-    if open_tickets:
-        blockers.append(f"{open_tickets} non-closed ticket(s)")
+    if linked_clients:
+        blockers.append(f"{linked_clients} client(s)")
+    if linked_users:
+        blockers.append(f"{linked_users} partner user(s)")
+    if linked_tickets:
+        blockers.append(f"{linked_tickets} ticket(s)")
     if blockers:
-        raise ValidationError("Partner can be deactivated only after removing clients, responsible/technical users and closing tickets: " + ", ".join(blockers))
+        raise ValidationError("Partner can be deactivated only after removing all linked clients, partner users and tickets: " + ", ".join(blockers))
     old = {"active": partner.active}
     partner.active = False
     db.flush()

@@ -99,6 +99,11 @@ def test_transfer_owner_requires_same_partner_and_client_assignment(db, fixture_
         tickets.transfer_owner(db, ticket=ticket, actor=fixture_data["responsible_a"], new_owner_ref=fixture_data["responsible_b"].email, source="test")
 
 
+def test_partner_cannot_be_deactivated_when_it_has_clients_users_or_tickets(db, fixture_data):
+    with pytest.raises(ValidationError):
+        admin.deactivate_partner(db, partner_id=fixture_data["partner_a"].id, actor=fixture_data["admin"], source="test")
+
+
 def test_workflow_transition_matrix(db, fixture_data):
     ticket = create_partner_ticket(db, fixture_data)
     tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", source="test")
