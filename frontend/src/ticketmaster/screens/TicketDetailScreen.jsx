@@ -82,6 +82,7 @@ function TicketDetail({ user }) {
   const canTransferOwner = !ticket?.internal && responsibleUsers.length > 0;
   const showActions = user.kind === 'internal' || canTransferOwner;
   const canAddCommunication = ticket?.status !== 'Closed';
+  const canAssignTicket = ticket?.status !== 'Closed';
 
   return (
     <div className="tm-screen">
@@ -172,7 +173,7 @@ function TicketDetail({ user }) {
                         {availableTransitions.length === 0 && <span className="tm-muted">No status changes available.</span>}
                       </div>
                     </div>
-                    <div className="tm-action-group">
+                    {canAssignTicket && <div className="tm-action-group">
                       <h3>Assignment</h3>
                       <Form onSubmit={(event) => {
                         event.preventDefault();
@@ -196,7 +197,7 @@ function TicketDetail({ user }) {
                           Assign
                         </Button>
                       </Form>
-                    </div>
+                    </div>}
                   </>
                 )}
                 {canTransferOwner && (

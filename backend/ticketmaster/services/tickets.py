@@ -352,6 +352,8 @@ def assign_ticket(
     assignee_ref: str | None = None,
     source: str = "ui",
 ) -> Ticket:
+    if ticket.status == "Closed":
+        raise ValidationError("Closed tickets cannot be assigned")
     if team not in RESOLVER_TEAMS:
         raise ValidationError("Invalid resolver team")
     if actor:

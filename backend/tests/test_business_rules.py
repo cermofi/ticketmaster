@@ -109,6 +109,17 @@ def test_workflow_transition_matrix(db, fixture_data):
         tickets.transition_ticket(db, ticket=ticket, actor=fixture_data["l1"], new_status="In progress", source="test")
 
 
+def test_closed_ticket_cannot_be_assigned(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", source="test")
+    tickets.transition_ticket(db, ticket=ticket, actor=fixture_data["l1"], new_status="In progress", source="test")
+    tickets.transition_ticket(db, ticket=ticket, actor=fixture_data["l1"], new_status="Resolved", source="test")
+    tickets.transition_ticket(db, ticket=ticket, actor=fixture_data["l1"], new_status="Closed", source="test")
+
+    with pytest.raises(ValidationError):
+        tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L2", source="test")
+
+
 def test_l1_to_l2_and_l2_to_l3_escalation(db, fixture_data):
     ticket = create_partner_ticket(db, fixture_data)
     tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", source="test")
