@@ -937,15 +937,6 @@ Bez hlavniho GitLab issue se ticket nesmi priradit do resolver teamu `L3`.
 
 Pokud se zalozeni GitLab issue nepodari, prirazeni do `L3` se neprovede.
 
-<<<<<<< HEAD
-Pokud hlavni GitLab issue uz existuje, aplikace pouzije existujici vazbu.
-
-Bez hlavniho GitLab issue se ticket nesmi priradit do resolver teamu `L3`.
-
-Pokud se zalozeni GitLab issue nepodari, prirazeni do `L3` se neprovede.
-
-=======
->>>>>>> d7d30b2 (Final docs)
 ### 15.2 GitLab status
 
 GitLab status muze byt:
@@ -968,11 +959,6 @@ Partner nikdy nevidi GitLab odkaz.
 
 Ticket v resolver teamu `L3` nesmi prejit do stavu `In progress`, pokud nema hlavni GitLab issue.
 
-<<<<<<< HEAD
-Pro MVP neexistuje vyjimka ani rucni prepsani teto podminky.
-
-=======
->>>>>>> d7d30b2 (Final docs)
 ### 15.4 Synchronizace GitLab statusu
 
 GitLab status smi synchronizovat pouze interni uzivatel.
@@ -994,11 +980,6 @@ Technicke osoby jsou vedeny jako samostatny seznam partner uzivatelu s roli `tec
 
 System tickety se nezobrazuji v prehledu klientu, protoze nemaji klienta.
 
-<<<<<<< HEAD
-System tickety se nezobrazuji v prehledu klientu, protoze nemaji klienta.
-
-=======
->>>>>>> d7d30b2 (Final docs)
 System tickety prirazene partnerovi se zobrazuji v seznamu ticketu partnera.
 
 ## 17. Jednoduche partnerske API
@@ -1368,3 +1349,4 @@ MVP nemusi resit opakovane odesilani neuspesnych notifikaci.
 | Videt GitLab odkaz | Ano | Ano | Omezene | Ne | Ne | Ne |
 | Videt audit | Ano | Ano | Ne | Ne | Ne | Ne |
 | Znovu zpracovat neuspesne notifikace | Ne | Ne | Ne | Ne | Ne | Ne |
+
