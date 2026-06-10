@@ -133,8 +133,6 @@ Partner role jsou:
 
 Stav aktivni/neaktivni existuje pouze u uzivatelu.
 
-Partner a klient nemaji stav aktivni/neaktivni.
-
 Neaktivni uzivatel:
 
 - se nemuze prihlasit,
@@ -189,8 +187,6 @@ Partner ma:
 - nazev,
 - datum vytvoreni.
 
-Partner nema stav aktivni/neaktivni.
-
 Partnera smi zalozit `Admin` nebo `DeliveryManager`.
 
 Partnera nelze odstranit.
@@ -212,8 +208,6 @@ Klient ma:
 - partnera,
 - nazev,
 - datum vytvoreni.
-
-Klient nema stav aktivni/neaktivni.
 
 Klienta smi zalozit `Admin` nebo `DeliveryManager`.
 
@@ -403,8 +397,6 @@ System ticket:
 - muze byt smerovan do resolver teamu,
 - muze byt prirazen konkretnimu assignee.
 
-System ticket nema externi identifikator z ciziho systemu. Jedinym zavaznym identifikatorem je identifikator ticketu v TicketMasteru.
-
 ## 7. Typy, priority a statusy ticketu
 
 ### 7.1 Typy ticketu
@@ -587,7 +579,7 @@ Uzivatel s roli `L1`, `L2` nebo `L3` vidi pouze tickety sveho resolver teamu.
 
 Ticket patri do resolver teamu uzivatele tehdy, kdyz ma nastaveny resolver team stejny jako role uzivatele.
 
-System ticket za interni tym vidi pouze `Admin` a `DeliveryManager`. Resolver role `L1`, `L2` a `L3` system ticket v MVP nevidi ani tehdy, kdyz ma system ticket nastaveny resolver team.
+System ticket za interni tym vidi `Admin`, `DeliveryManager` a resolver role `L1`, `L2` nebo `L3`, pokud ma system ticket nastaveny jejich resolver team.
 
 ### 9.3 Partner uzivatele
 
@@ -742,7 +734,7 @@ Assignee musi byt interni uzivatel ze stejneho resolver teamu jako ticket.
 
 Assignee se muze menit v ramci stejneho resolver teamu.
 
-U system ticketu je assignee evidencni pole. V MVP samo o sobe nerozsiruje viditelnost system ticketu na role `L1`, `L2` nebo `L3`.
+U system ticketu je pro viditelnost resolver role rozhodujici resolver team. Assignee musi byt ze stejneho resolver teamu.
 
 ### 11.3 Assign
 
@@ -1274,7 +1266,7 @@ MVP nemusi resit opakovane odesilani neuspesnych notifikaci.
 - Assignee se meni pouze v ramci stejneho resolver teamu.
 - `Admin` a `DeliveryManager` mohou vratit ticket z assignee zpet do fronty stejneho resolver teamu.
 - `L1`, `L2` a `L3` vidi pouze tickety sveho resolver teamu.
-- System ticket za interni tym vidi pouze `Admin` a `DeliveryManager`.
+- System ticket za interni tym vidi `Admin`, `DeliveryManager` a resolver role podle nastaveneho resolver teamu.
 - `Closed` je finalni stav ticketu.
 - Uzavreny ticket neprijima komentare, interni poznamky, prilohy ani assignment.
 - Bez GitLab issue se ticket nesmi priradit do `L3`.
@@ -1323,7 +1315,7 @@ MVP nemusi resit opakovane odesilani neuspesnych notifikaci.
 | Videt vsechny tickety | Ano | Ano | Ne | Ne | Ne | Ne |
 | Videt partnerske tickety sveho partnera | Ano | Ano | Ne | Ano | Ano | Omezene |
 | Videt interni tickety | Ano | Ano | Omezene | Ne | Ne | Ne |
-| Videt system tickety | Ano | Ano | Ne | Omezene | Omezene | Omezene |
+| Videt system tickety | Ano | Ano | Omezene | Omezene | Omezene | Omezene |
 | Vylistovat tickety partnera pres API | Ne | Ne | Ne | Ne | Ne | Omezene |
 
 ### 20.4 Workflow a assignment
@@ -1350,7 +1342,7 @@ MVP nemusi resit opakovane odesilani neuspesnych notifikaci.
 | Spravovat osoby system ticketu | Ne | Ne | Ne | Omezene | Ne | Ne |
 | Odebrat vlastnika z participantu | Ne | Ne | Ne | Ne | Ne | Ne |
 | Pridat verejny komentar | Omezene | Omezene | Omezene | Omezene | Omezene | Ne |
-| Pridat komentar k system ticketu | Omezene | Omezene | Ne | Omezene | Ne | Ne |
+| Pridat komentar k system ticketu | Omezene | Omezene | Omezene | Omezene | Ne | Ne |
 | Pridat interni poznamku | Omezene | Omezene | Omezene | Ne | Ne | Ne |
 | Editovat komentar nebo interni poznamku | Ne | Ne | Ne | Ne | Ne | Ne |
 | Mazat komentar nebo interni poznamku | Ne | Ne | Ne | Ne | Ne | Ne |
