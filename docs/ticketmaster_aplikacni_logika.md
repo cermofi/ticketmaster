@@ -786,9 +786,170 @@ Udalosti nad ticketem oznamuje aplikace watcherum ticketu.
 
 Neuspesne notifikace lze znovu zpracovat uzivatelem s roli `Admin` nebo `DeliveryManager`.
 
-## 28. Business pravidla podle roli
+## 28. Jednoduche partnerske API
 
-### 28.1 Admin
+Aplikace ma poskytovat jednoduche API pro zakladni integraci partneru.
+
+Prvni verze API ma podporovat pouze:
+
+- vylistovani ticketu konkretniho partnera,
+- vytvoreni ticketu u konkretniho partnera.
+
+API nema v prvni verzi resit:
+
+- zmenu stavu ticketu,
+- assign ticketu,
+- unassign ticketu,
+- komentare,
+- interni poznamky,
+- prilohy,
+- spravu klientu,
+- spravu uzivatelu,
+- spravu participantu,
+- GitLab operace.
+
+### 28.1 Pristup k API
+
+API pristup musi byt vzdy vazany na konkretniho partnera.
+
+Volajici API nesmi ziskat ani vytvorit data jineho partnera.
+
+Pokud volajici pozada o partnera, ke kteremu nema opravneni, aplikace musi pozadavek odmitnout.
+
+API nesmi vracet interni tickety.
+
+API nesmi vracet interni poznamky.
+
+API nesmi vracet interni GitLab odkaz.
+
+API muze vracet GitLab status ticketu.
+
+### 28.2 Identifikace partnera
+
+Partner v API muze byt identifikovan:
+
+- internim identifikatorem partnera,
+- nebo unikatnim klicem partnera.
+
+Identifikace partnera musi byt jednoznacna.
+
+Pokud partner neexistuje, aplikace vrati chybu.
+
+### 28.3 Vylistovani ticketu partnera
+
+Operace vylistovani ticketu vraci pouze partnerske tickety daneho partnera.
+
+Vystup nesmi obsahovat:
+
+- tickety jinych partneru,
+- interni tickety,
+- interni poznamky,
+- interni GitLab odkazy.
+
+Seznam ticketu ma podporovat strankovani.
+
+Seznam ticketu ma podporovat zakladni filtry:
+
+- status,
+- priorita,
+- typ ticketu,
+- klient,
+- textove hledani.
+
+Tickety se radi od nejnovejsich.
+
+Kazdy ticket v seznamu ma obsahovat alespon:
+
+- identifikator ticketu,
+- nazev,
+- popis,
+- typ,
+- prioritu,
+- status,
+- klienta, pokud je nastaven,
+- vlastnika, pokud je dostupny,
+- GitLab status, pokud existuje,
+- datum vytvoreni,
+- datum posledni zmeny.
+
+### 28.4 Vytvoreni ticketu partnera
+
+Operace vytvoreni ticketu zaklada novy partnersky ticket pod konkretnim partnerem.
+
+Vstup pro vytvoreni ticketu musi obsahovat:
+
+- typ ticketu,
+- prioritu,
+- nazev,
+- popis.
+
+Vstup pro vytvoreni ticketu muze obsahovat:
+
+- klienta,
+- vlastnika,
+- externi referenci z partnerskeho systemu.
+
+Typ ticketu musi byt jedna z povolenych hodnot podle sekce `9. Typy ticketu`.
+
+Priorita musi byt jedna z povolenych hodnot podle sekce `10. Priority ticketu`.
+
+Pokud je typ ticketu `Security Issue` a priorita je `Normal`, aplikace nastavi prioritu `Critical`.
+
+Pokud je uveden klient:
+
+- klient musi existovat,
+- klient musi patrit ke stejnemu partnerovi,
+- vlastnik ticketu musi byt odpovednou osobou daneho klienta.
+
+Vlastnik ticketu musi byt aktivni partner uzivatel s roli `responsible` u stejneho partnera.
+
+Pokud API pozadavek vlastnika neuvede, aplikace musi pouzit vychozi odpovednou osobu partnera.
+
+Pokud partner nema vychozi odpovednou osobu nebo vlastnika nelze jednoznacne urcit, aplikace musi vytvoreni ticketu odmitnout.
+
+Po vytvoreni ticketu plati:
+
+- ticket je partnersky,
+- ticket neni interni,
+- ticket patri k urcenemu partnerovi,
+- ticket ma stav `New`,
+- vlastnik se stava participantem,
+- vlastnik se stava watcherem,
+- ticket se zobrazi ve standardnim seznamu ticketu partnera,
+- Delivery Manageri dostanou informaci o novem ticketu.
+
+### 28.5 Externi reference
+
+API muze pri vytvoreni ticketu prijmout externi referenci z partnerskeho systemu.
+
+Externi reference slouzi k dohledani ticketu mezi TicketMasterem a systemem partnera.
+
+Externi reference nesmi nahrazovat identifikator ticketu v TicketMasteru.
+
+Pokud bude API podporovat ochranu proti duplicitam, ma se duplicita vyhodnocovat podle kombinace:
+
+- partner,
+- externi reference.
+
+### 28.6 Chybove stavy API
+
+API musi vratit srozumitelnou chybu zejmena pri techto stavech:
+
+- partner neexistuje,
+- volajici nema opravneni k partnerovi,
+- typ ticketu neni povoleny,
+- priorita neni povolena,
+- klient neexistuje,
+- klient nepatri k partnerovi,
+- vlastnik neexistuje,
+- vlastnik neni aktivni,
+- vlastnik neni odpovedna osoba partnera,
+- vlastnik neni odpovedna osoba vybraneho klienta,
+- chybi povinne pole.
+
+## 29. Business pravidla podle roli
+
+### 29.1 Admin
 
 `Admin` muze:
 
@@ -812,7 +973,7 @@ Neuspesne notifikace lze znovu zpracovat uzivatelem s roli `Admin` nebo `Deliver
 - spravovat GitLab issue,
 - videt audit.
 
-### 28.2 Delivery Manager
+### 29.2 Delivery Manager
 
 `DeliveryManager` muze:
 
@@ -836,7 +997,7 @@ Neuspesne notifikace lze znovu zpracovat uzivatelem s roli `Admin` nebo `Deliver
 
 `DeliveryManager` nesmi spravovat interni uzivatele.
 
-### 28.3 L1, L2, L3
+### 29.3 L1, L2, L3
 
 Uzivatel s roli `L1`, `L2` nebo `L3` muze:
 
@@ -859,7 +1020,7 @@ Resolver role nesmi:
 - spravovat uzivatele,
 - videt audit.
 
-### 28.4 Odpovedna osoba partnera
+### 29.4 Odpovedna osoba partnera
 
 Partner uzivatel s roli `responsible` muze:
 
@@ -883,7 +1044,7 @@ Odpovedna osoba partnera nesmi:
 - videt audit,
 - zakladat nebo synchronizovat GitLab issue.
 
-### 28.5 Technicka osoba partnera
+### 29.5 Technicka osoba partnera
 
 Partner uzivatel s roli `technical` muze:
 
@@ -906,7 +1067,7 @@ Technicka osoba partnera nesmi:
 - videt audit,
 - zakladat nebo synchronizovat GitLab issue.
 
-## 29. Finalni souhrn pravidel
+## 30. Finalni souhrn pravidel
 
 - Ticket je trvaly zaznam a nema byt odstranen.
 - Partner a klient nemaji aktivni/neaktivni stav.
@@ -927,3 +1088,4 @@ Technicka osoba partnera nesmi:
 - Uzavreny ticket neprijima komentare, interni poznamky, prilohy ani assignment.
 - L3 ticket potrebuje GitLab issue pred prechodem do `In progress`.
 - GitLab status muze videt i partner, GitLab odkaz je pouze interni.
+- Jednoduche partnerske API umi v prvni verzi pouze vylistovat tickety partnera a vytvorit ticket pod partnerem.
