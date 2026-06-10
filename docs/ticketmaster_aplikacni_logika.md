@@ -39,11 +39,11 @@ Tento dokument popisuje funkcni pravidla aplikace TicketMaster. Je urceny jako p
 | Klient | Subjekt nebo system evidovany pod partnerem. |
 | Interni uzivatel | Uzivatel na strane interni organizace. Ma jednu interni roli. |
 | Partner uzivatel | Uzivatel konkretniho partnera. Ma jednu partner roli. |
-| Odpovedna osoba | Partner uzivatel s roli `responsible`. Muze zakladat partnerske tickety a byt vlastnikem partnerskeho ticketu. |
-| Technicka osoba | Partner uzivatel s roli `technical`. Muze komentovat ticket, pokud je participantem. Ticket nezaklada. |
+| Odpovedna osoba | Partner uzivatel s roli `responsible`. Muze zakladat partnerske tickety, byt vlastnikem partnerskeho ticketu a komentovat system tickety sveho partnera. |
+| Technicka osoba | Partner uzivatel s roli `technical`. Muze komentovat partnersky ticket, pokud je participantem. Ticket nezaklada. |
 | Vlastnik ticketu | Hlavni odpovedna osoba za partnersky ticket. U interniho ticketu je vlastnik zakladajici interni uzivatel. System ticket vlastnika nema. |
 | Autor ticketu | Uzivatel, ktery ticket zalozil. System ticket autora nema. |
-| Participant | Partner uzivatel zapojeny do komunikace partnerskeho ticketu. |
+| Participant | Partner uzivatel zapojeny do komunikace partnerskeho nebo system ticketu daneho partnera. |
 | Watcher | Uzivatel, kteremu aplikace posila informace o udalostech ticketu. |
 | Resolver team | Interni resitelske oddeleni `L1`, `L2` nebo `L3`. |
 | Assignee | Konkretni interni uzivatel prirazeny k reseni ticketu. |
@@ -53,8 +53,7 @@ Tento dokument popisuje funkcni pravidla aplikace TicketMaster. Je urceny jako p
 | GitLab issue | Vyvojove issue navazane na L3 praci. |
 | GitLab status | Doplnkovy stav GitLab issue. Muze byt viditelny i partnerovi. |
 | GitLab odkaz | Odkaz na GitLab issue. Je viditelny pouze internim uzivatelum. |
-| Jednoduche partnerske API | Zakladni integracni rozhrani pro partnera. Prvni verze umi vylistovat tickety partnera a vytvorit ticket. |
-| Externi reference | Identifikator ticketu nebo udalosti v systemu partnera. Nenahrazuje identifikator ticketu v TicketMasteru. |
+| Jednoduche partnerske API | Zakladni integracni rozhrani pro partnera. Prvni verze umi vylistovat tickety partnera a vytvorit system ticket pro partnera. |
 
 ### 1.2 Rozliseni druhu a typu ticketu
 
@@ -85,12 +84,12 @@ Aplikace pokryva tyto hlavni scenare:
 
 - partner zaklada a sleduje partnerske tickety,
 - interni uzivatel zaklada a resi interni tickety,
-- system nebo integrace zaklada system tickety,
+- system nebo integrace zaklada system tickety pro konkretniho partnera,
 - Delivery Manager nebo Admin provadi triaz a smerovani,
 - resolver teamy `L1`, `L2` a `L3` resi prirazene tickety,
 - interni tym komunikuje pres komentare a interni poznamky,
 - partner komunikuje pres verejne komentare,
-- L3 prace muze byt navazana na GitLab issue.
+- L3 prace musi byt navazana na GitLab issue.
 
 Ticket je trvaly zaznam aplikace. Ticket nesmi zmizet z evidence.
 
@@ -116,6 +115,8 @@ Interni role jsou:
 - `L1`
 - `L2`
 - `L3`
+
+`DeliveryManager` ma v business procesech podobna prava jako `Admin`, ale nesmi spravovat interni ucty s roli `Admin`.
 
 ### 3.3 Partner role
 
@@ -190,7 +191,7 @@ Partner ma:
 
 Partner nema stav aktivni/neaktivni.
 
-Partnera smi zalozit pouze `Admin`.
+Partnera smi zalozit `Admin` nebo `DeliveryManager`.
 
 Partnera nelze odstranit.
 
@@ -247,6 +248,8 @@ Jeden klient muze mit vice odpovednych osob.
 
 Interniho uzivatele smi vytvorit pouze `Admin`.
 
+`DeliveryManager` muze spravovat bezne uzivatele, ale nesmi spravovat interni ucty s roli `Admin`.
+
 Partner uzivatele smi vytvorit `Admin` nebo `DeliveryManager`.
 
 U uzivatele lze upravit:
@@ -268,6 +271,8 @@ Odstraneni uzivatele znamena deaktivaci uctu.
 
 Zaznam uzivatele zustava v aplikaci kvuli historii ticketu, komentaru, auditu a vazeb.
 
+Historicke zaznamy ticketu musi zachovat informaci o tom, ktery uzivatel akci provedl, i kdyz je uzivatel pozdeji deaktivovan.
+
 ## 5. Ticket jako hlavni entita
 
 Ticket je hlavni pracovni jednotka aplikace.
@@ -279,6 +284,8 @@ Ticket musi byt prave jednoho druhu:
 - system ticket.
 
 Ticket se neodstranuje.
+
+Ticket nesmi byt odstranen ani pri zmene, deaktivaci nebo odstraneni jine navazane entity.
 
 Ticket muze byt:
 
@@ -364,13 +371,13 @@ Interni ticket:
 
 System ticket zaklada aplikace, automatizace nebo integrace.
 
-System ticket pokryva pozadavky, ktere nevznikaji primou akci konkretniho uzivatele. Typickym prikladem muze byt ticket zalozeny pres API nebo jinou systemovou integraci.
+System ticket pokryva pozadavky, ktere nevznikaji primou akci konkretniho uzivatele. Typickym prikladem je ticket zalozeny pres partnerske API nebo jinou systemovou integraci.
 
 System ticket ma:
 
 - identifikator,
 - priznak system,
-- nema partnera,
+- partnera,
 - nema klienta,
 - nema vlastnika,
 - nema autora,
@@ -388,13 +395,15 @@ System ticket:
 
 - neni partnersky,
 - neni interni,
-- nema participanty partnera,
 - nema partner vlastnika,
-- neni viditelny partner uzivatelum,
+- je viditelny vsem aktivnim uzivatelum daneho partnera,
+- partner uzivatele ho mohou komentovat pouze tehdy, pokud maji roli `responsible`,
+- osoby na strane partnera mohou pridavat pouze partner uzivatele s roli `responsible`,
+- za interni tym ho vidi pouze `Admin` a `DeliveryManager`,
 - muze byt smerovan do resolver teamu,
 - muze byt prirazen konkretnimu assignee.
 
-System ticket lze spojit s externi referenci, aby byl dohledatelny v systemu, ktery ho zalozil.
+System ticket nema externi identifikator z ciziho systemu. Jedinym zavaznym identifikatorem je identifikator ticketu v TicketMasteru.
 
 ## 7. Typy, priority a statusy ticketu
 
@@ -517,7 +526,9 @@ Pokud resolver team vybran neni:
 - ticket zacina ve stavu `New`,
 - resolver team neni nastaven.
 
-Pokud je interni ticket zalozen rovnou pro `L3`, aplikace se pokusi zalozit hlavni GitLab issue.
+Pokud je interni ticket zalozen rovnou pro `L3`, aplikace musi zalozit hlavni GitLab issue.
+
+Pokud se GitLab issue nepodari zalozit, interni ticket nesmi byt vytvoren ani prirazen do `L3`.
 
 ### 8.3 Vytvoreni system ticketu
 
@@ -525,24 +536,24 @@ System ticket smi vytvorit pouze aplikace, automatizace nebo integrace s opravne
 
 Pri zalozeni system ticketu se nastavuje:
 
+- partner,
 - typ,
 - priorita,
 - nazev,
 - popis,
 - volitelny resolver team,
-- volitelne assignee,
-- volitelna externi reference.
+- volitelne assignee.
 
 Po zalozeni system ticketu plati:
 
 - ticket je systemovy,
 - ticket neni partnersky,
 - ticket neni interni,
-- nema partnera,
+- patri ke konkretnimu partnerovi,
 - nema klienta,
 - nema vlastnika,
 - nema autora,
-- nema partner participanty,
+- je viditelny partner uzivatelum daneho partnera,
 - muze mit resolver team,
 - muze mit assignee.
 
@@ -556,7 +567,9 @@ Pokud resolver team vybran neni:
 - ticket zacina ve stavu `New`,
 - resolver team neni nastaven.
 
-Pokud je system ticket zalozen rovnou pro `L3`, aplikace se pokusi zalozit hlavni GitLab issue.
+Pokud je system ticket zalozen rovnou pro `L3`, aplikace musi zalozit hlavni GitLab issue.
+
+Pokud se GitLab issue nepodari zalozit, system ticket nesmi byt vytvoren ani prirazen do `L3`.
 
 ## 9. Viditelnost, seznamy a hledani ticketu
 
@@ -570,22 +583,22 @@ Pokud je system ticket zalozen rovnou pro `L3`, aplikace se pokusi zalozit hlavn
 
 ### 9.2 Resolver role L1, L2, L3
 
-Uzivatel s roli `L1`, `L2` nebo `L3` vidi ticket, pokud plati alespon jedna podminka:
+Uzivatel s roli `L1`, `L2` nebo `L3` vidi pouze tickety sveho resolver teamu.
 
-- ticket ma resolver team stejny jako role uzivatele,
-- ticket je prirazen primo tomuto uzivateli,
-- uzivatel je vlastnikem ticketu.
+Ticket patri do resolver teamu uzivatele tehdy, kdyz ma nastaveny resolver team stejny jako role uzivatele.
 
-U system ticketu se pravidlo vlastnika neuplatni, protoze system ticket vlastnika nema.
+System ticket za interni tym vidi pouze `Admin` a `DeliveryManager`. Resolver role `L1`, `L2` a `L3` system ticket v MVP nevidi ani tehdy, kdyz ma system ticket nastaveny resolver team.
 
 ### 9.3 Partner uzivatele
 
-Partner uzivatel vidi partnerske tickety sveho partnera.
+Partner uzivatel vidi:
+
+- partnerske tickety sveho partnera,
+- system tickety prirazene ke svemu partnerovi.
 
 Partner uzivatel nevidi:
 
 - interni tickety,
-- system tickety,
 - tickety jinych partneru.
 
 Viditelnost ticketu partner uzivatelem neznamena automaticky pravo komentovat.
@@ -620,7 +633,7 @@ Textove hledani pracuje s:
 | Z | Do |
 | --- | --- |
 | `New` | `Need more info`, `Assigned`, `Rejected`, `Duplicate`, `Cancelled` |
-| `Need more info` | `Assigned`, `Rejected`, `Cancelled` |
+| `Need more info` | `New`, `Assigned`, `Rejected`, `Cancelled` |
 | `Assigned` | `In progress`, `Need more info`, `Cancelled` |
 | `In progress` | `Resolved`, `Need more info`, `Assigned` |
 | `Resolved` | `Closed` |
@@ -643,9 +656,10 @@ Resolver role mohou pouzit tyto cilove statusy:
 - `Resolved`
 - `Need more info`
 - `Assigned`
-- `Closed`
 
 Prechod do ciloveho statusu musi byt zaroven povolen workflow tabulkou.
+
+Statusy `Rejected`, `Duplicate`, `Cancelled` a `Closed` smi nastavit pouze `Admin` nebo `DeliveryManager`.
 
 ### 10.3 Dostupne dalsi stavy
 
@@ -669,13 +683,27 @@ Do stavu `Need more info` lze prejit:
 
 Ze stavu `Need more info` lze pokracovat:
 
+- automaticky zpet po pridani verejneho komentare,
+- manualne zpet pomoci `Admin` nebo `DeliveryManager`,
+- na `New`, pokud ticket nema resolver team,
 - na `Assigned`,
 - na `Rejected`,
 - na `Cancelled`.
 
+Partner nemeni status ticketu. Partner doplni informace pouze pridanim verejneho komentare.
+
+Po pridani verejneho komentare do ticketu ve stavu `Need more info` aplikace automaticky vrati ticket:
+
+- do stavu `Assigned`, pokud ma ticket resolver team,
+- do stavu `New`, pokud ticket resolver team nema.
+
 ### 10.5 Uzavreny ticket
 
 Ticket ve stavu `Closed` je uzavreny.
+
+`Resolved` znamena, ze je ticket vyreseny z pohledu interniho tymu.
+
+`Closed` znamena finalni uzavreni ticketu.
 
 U uzavreneho ticketu:
 
@@ -686,11 +714,11 @@ U uzavreneho ticketu:
 - nelze provest unassign,
 - nelze provest dalsi workflow prechod.
 
-Partner uzivatel nesmi ticket uzavrit.
+`Closed` je nevratny stav.
 
-`Admin` a `DeliveryManager` mohou ticket uzavrit i mimo bezny terminalni stav.
+Ticket smi uzavrit pouze `Admin` nebo `DeliveryManager`.
 
-Resolver role mohou ticket uzavrit pouze tehdy, kdyz jim to povoli workflow a opravneni.
+Partner uzivatel ani resolver role `L1`, `L2` a `L3` ticket neuzaviraji.
 
 ## 11. Resolver team, assignee a fronta
 
@@ -714,6 +742,8 @@ Assignee musi byt interni uzivatel ze stejneho resolver teamu jako ticket.
 
 Assignee se muze menit v ramci stejneho resolver teamu.
 
+U system ticketu je assignee evidencni pole. V MVP samo o sobe nerozsiruje viditelnost system ticketu na role `L1`, `L2` nebo `L3`.
+
 ### 11.3 Assign
 
 Assign nastavuje:
@@ -728,7 +758,9 @@ Assign nelze provest u ticketu ve stavu `Closed`.
 
 Resolver role muze assignovat pouze ticket, ktery uz patri do jejiho resolver teamu, a pouze zpet do stejneho resolver teamu.
 
-Pokud je ticket assignovan na `L3`, aplikace se pokusi zalozit hlavni GitLab issue.
+Pokud je ticket assignovan na `L3`, aplikace musi zalozit hlavni GitLab issue.
+
+Pokud se GitLab issue nepodari zalozit, assign do `L3` se neprovede a ticket zustane v puvodnim stavu.
 
 ### 11.4 Unassign
 
@@ -770,7 +802,9 @@ System ticket nema autora.
 
 System ticket nema partner ownera.
 
-System ticket nema participanty partnera.
+System ticket patri ke konkretnimu partnerovi, ale nema klienta.
+
+System ticket muze mit osoby pridane do komunikace, ale jejich pridani nevytvari vlastnictvi ticketu.
 
 ### 12.4 Prevod vlastnictvi
 
@@ -796,11 +830,13 @@ Novy vlastnik se automaticky stava participantem a watcherem.
 
 ### 13.1 Participant
 
-Participant je partner uzivatel zapojeny do komunikace partnerskeho ticketu.
+Participant je partner uzivatel zapojeny do komunikace ticketu partnera.
 
-Participant muze pridavat verejne komentare, pokud muze ticket videt a ticket neni uzavreny.
+U partnerskeho ticketu muze participant pridavat verejne komentare, pokud muze ticket videt a ticket neni uzavreny.
 
-Participanty lze spravovat pouze u partnerskeho ticketu.
+U system ticketu smi verejny komentar pridat pouze partner uzivatel s roli `responsible`.
+
+Participanty lze spravovat u partnerskeho ticketu.
 
 Spravu participantu smi provest:
 
@@ -812,7 +848,9 @@ Participant musi byt uzivatel stejneho partnera jako ticket.
 
 Vlastnika ticketu nelze odebrat z participantu.
 
-Interni ticket a system ticket nemaji partner participanty.
+U system ticketu mohou osoby na strane partnera pridavat pouze partner uzivatele s roli `responsible`.
+
+Interni ticket nema partner participanty.
 
 ### 13.2 Watcher
 
@@ -830,16 +868,19 @@ System ticket muze mit watchery podle pravidel udalosti a assignmentu.
 
 ### 14.1 Verejny komentar
 
-Verejny komentar vidi interni uzivatele s pravem videt ticket a partner uzivatele podle viditelnosti partnerskeho ticketu.
+Verejny komentar je viditelny uzivatelum s pravem videt ticket.
 
 Komentar smi pridat:
 
 - aktivni interni uzivatel, ktery ticket vidi,
-- aktivni partner uzivatel, ktery je participantem partnerskeho ticketu.
+- aktivni partner uzivatel, ktery je participantem partnerskeho ticketu,
+- aktivni partner uzivatel s roli `responsible`, pokud jde o system ticket jeho partnera.
 
 Komentar nelze pridat u ticketu ve stavu `Closed`.
 
-Partner uzivatel nemuze komentovat interni ticket ani system ticket.
+Partner uzivatel nemuze komentovat interni ticket.
+
+Partner uzivatel s roli `technical` nemuze komentovat system ticket.
 
 ### 14.2 Interni poznamka
 
@@ -856,6 +897,8 @@ Interni poznamku nelze pridat u ticketu ve stavu `Closed`.
 Komentare a interni poznamky se v aplikaci needituji.
 
 Komentare a interni poznamky se v aplikaci nemazou.
+
+Komentare, interni poznamky a tickety jsou trvale historicke zaznamy.
 
 ### 14.4 Prilohy
 
@@ -889,7 +932,9 @@ GitLab je navazany na reseni ticketu v teamu `L3`.
 
 Ticket muze mit hlavni GitLab issue.
 
-Aplikace se pokusi zalozit hlavni GitLab issue:
+Jeden ticket muze byt napojen pouze na jedno hlavni GitLab issue.
+
+Aplikace musi zalozit hlavni GitLab issue:
 
 - pri assignu ticketu na `L3`,
 - pri vytvoreni interniho ticketu s resolver teamem `L3`,
@@ -900,6 +945,10 @@ Interni uzivatel muze zalozit GitLab issue rucne.
 Partner uzivatel GitLab issue nezaklada.
 
 Pokud hlavni GitLab issue uz existuje, aplikace pouzije existujici vazbu.
+
+Bez hlavniho GitLab issue se ticket nesmi priradit do resolver teamu `L3`.
+
+Pokud se zalozeni GitLab issue nepodari, prirazeni do `L3` se neprovede.
 
 ### 15.2 GitLab status
 
@@ -913,13 +962,17 @@ GitLab status muze byt:
 
 Partner muze videt GitLab status u partnerskeho ticketu jako doplnkovou informaci.
 
+Partner muze videt GitLab status i u system ticketu sveho partnera.
+
 GitLab odkaz je viditelny pouze internim uzivatelum.
+
+Partner nikdy nevidi GitLab odkaz.
 
 ### 15.3 Guard pro L3 praci
 
 Ticket v resolver teamu `L3` nesmi prejit do stavu `In progress`, pokud nema hlavni GitLab issue.
 
-Vyjimkou je pripad, kdy je u ticketu explicitne povolene prepsani GitLab chyby.
+Pro MVP neexistuje vyjimka ani rucni prepsani teto podminky.
 
 ### 15.4 Synchronizace GitLab statusu
 
@@ -942,7 +995,9 @@ Technicke osoby jsou vedeny jako samostatny seznam partner uzivatelu s roli `tec
 
 Technicka osoba nema primou vazbu na klienta pres odpovednost za klienta.
 
-System tickety se v partner dashboardu nezobrazuji.
+System tickety se nezobrazuji v prehledu klientu, protoze nemaji klienta.
+
+System tickety prirazene partnerovi se zobrazuji v seznamu ticketu partnera.
 
 ## 17. Jednoduche partnerske API
 
@@ -951,12 +1006,13 @@ Aplikace ma poskytovat jednoduche API pro zakladni integraci partneru.
 Prvni verze API ma podporovat pouze:
 
 - vylistovani ticketu konkretniho partnera,
-- vytvoreni ticketu.
+- vytvoreni system ticketu pro konkretniho partnera.
 
 ### 17.1 Rozsah prvni verze API
 
 API nema v prvni verzi resit:
 
+- vytvareni partnerskych ticketu,
 - zmenu stavu ticketu,
 - assign ticketu,
 - unassign ticketu,
@@ -966,7 +1022,9 @@ API nema v prvni verzi resit:
 - spravu klientu,
 - spravu uzivatelu,
 - spravu participantu,
-- GitLab operace.
+- GitLab operace,
+- externi identifikatory,
+- ochranu proti duplicitam.
 
 ### 17.2 Pristup k API
 
@@ -979,11 +1037,14 @@ Pokud volajici pozada o partnera, ke kteremu nema opravneni, aplikace musi pozad
 API nesmi vracet:
 
 - interni tickety,
-- system tickety,
 - interni poznamky,
 - interni GitLab odkazy.
 
-API muze vracet GitLab status partnerskeho ticketu.
+API muze vracet:
+
+- partnerske tickety daneho partnera,
+- system tickety prirazene danemu partnerovi,
+- GitLab status ticketu, pokud existuje.
 
 ### 17.3 Identifikace partnera
 
@@ -998,13 +1059,17 @@ Pokud partner neexistuje, aplikace vrati chybu.
 
 ### 17.4 Vylistovani ticketu partnera
 
-Operace vylistovani ticketu vraci pouze partnerske tickety daneho partnera.
+Operace vylistovani ticketu vraci tickety viditelne pro daneho partnera.
+
+To znamena:
+
+- partnerske tickety daneho partnera,
+- system tickety prirazene danemu partnerovi.
 
 Vystup nesmi obsahovat:
 
 - tickety jinych partneru,
 - interni tickety,
-- system tickety,
 - interni poznamky,
 - interni GitLab odkazy.
 
@@ -1023,6 +1088,7 @@ Tickety se radi od nejnovejsich.
 Kazdy ticket v seznamu ma obsahovat alespon:
 
 - identifikator ticketu,
+- druh ticketu,
 - nazev,
 - popis,
 - typ,
@@ -1036,59 +1102,22 @@ Kazdy ticket v seznamu ma obsahovat alespon:
 
 ### 17.5 Vytvoreni ticketu pres API
 
-API muze vytvorit:
+API muze v MVP vytvorit pouze system ticket pro konkretniho partnera.
 
-- partnersky ticket pod konkretnim partnerem,
-- system ticket zalozeny integraci.
+API nesmi vytvorit partnersky ticket.
 
-Pokud ma byt ticket viditelny partnerovi a navazany na partnera, API vytvori partnersky ticket.
+System ticket vytvoreny pres API:
 
-Pokud jde o systemovy pozadavek bez vlastnika, autora, partnera a klienta, API vytvori system ticket.
+- je systemovy,
+- patri ke konkretnimu partnerovi,
+- nema klienta,
+- nema vlastnika,
+- nema autora,
+- je viditelny vsem aktivnim uzivatelum daneho partnera,
+- komentovat ho mohou pouze odpovedne osoby daneho partnera,
+- osoby na strane partnera mohou pridavat pouze odpovedne osoby daneho partnera.
 
-### 17.6 Vytvoreni partnerskeho ticketu pres API
-
-Vstup pro vytvoreni partnerskeho ticketu musi obsahovat:
-
-- typ ticketu,
-- prioritu,
-- nazev,
-- popis.
-
-Vstup muze obsahovat:
-
-- klienta,
-- vlastnika,
-- externi referenci z partnerskeho systemu.
-
-Typ ticketu musi byt jedna z povolenych hodnot podle sekce `7.1 Typy ticketu`.
-
-Priorita musi byt jedna z povolenych hodnot podle sekce `7.2 Priority ticketu`.
-
-Pokud je uveden klient:
-
-- klient musi existovat,
-- klient musi patrit ke stejnemu partnerovi,
-- vlastnik ticketu musi byt odpovednou osobou daneho klienta.
-
-Vlastnik ticketu musi byt aktivni partner uzivatel s roli `responsible` u stejneho partnera.
-
-Pokud API pozadavek vlastnika neuvede, aplikace musi pouzit vychozi odpovednou osobu partnera.
-
-Pokud partner nema vychozi odpovednou osobu nebo vlastnika nelze jednoznacne urcit, aplikace musi vytvoreni ticketu odmitnout.
-
-Po vytvoreni partnerskeho ticketu pres API plati:
-
-- ticket je partnersky,
-- ticket neni interni,
-- ticket neni systemovy,
-- ticket patri k urcenemu partnerovi,
-- ticket ma stav `New`,
-- vlastnik se stava participantem,
-- vlastnik se stava watcherem,
-- ticket se zobrazi ve standardnim seznamu ticketu partnera,
-- Delivery Manageri dostanou informaci o novem ticketu.
-
-### 17.7 Vytvoreni system ticketu pres API
+### 17.6 Vytvoreni system ticketu pres API
 
 Vstup pro vytvoreni system ticketu musi obsahovat:
 
@@ -1100,21 +1129,23 @@ Vstup pro vytvoreni system ticketu musi obsahovat:
 Vstup muze obsahovat:
 
 - resolver team,
-- assignee,
-- externi referenci.
+- assignee.
+
+Typ ticketu musi byt jedna z povolenych hodnot podle sekce `7.1 Typy ticketu`.
+
+Priorita musi byt jedna z povolenych hodnot podle sekce `7.2 Priority ticketu`.
 
 Po vytvoreni system ticketu pres API plati:
 
 - ticket je systemovy,
 - ticket neni partnersky,
 - ticket neni interni,
-- nema partnera,
+- patri k urcenemu partnerovi,
 - nema klienta,
 - nema vlastnika,
 - nema autora,
-- nema partner participanty,
-- ticket se nezobrazuje v partnerskem seznamu ticketu,
-- ticket je viditelny internim uzivatelum podle pravidel viditelnosti.
+- ticket se zobrazuje v partnerskem seznamu ticketu,
+- za interni tym ho vidi pouze `Admin` a `DeliveryManager`.
 
 Pokud je uveden resolver team, musi byt jedna z hodnot:
 
@@ -1124,20 +1155,11 @@ Pokud je uveden resolver team, musi byt jedna z hodnot:
 
 Pokud je uveden assignee, musi byt interni uzivatel ze stejneho resolver teamu.
 
-### 17.8 Externi reference
+Pokud je uveden resolver team `L3`, aplikace musi zalozit hlavni GitLab issue.
 
-API muze pri vytvoreni ticketu prijmout externi referenci z partnerskeho nebo systemoveho zdroje.
+Pokud se GitLab issue nepodari zalozit, vytvoreni system ticketu v `L3` se odmitne.
 
-Externi reference slouzi k dohledani ticketu mezi TicketMasterem a zdrojovym systemem.
-
-Externi reference nesmi nahrazovat identifikator ticketu v TicketMasteru.
-
-Pokud bude API podporovat ochranu proti duplicitam, ma se duplicita vyhodnocovat podle kombinace:
-
-- zdroj,
-- externi reference.
-
-### 17.9 Chybove stavy API
+### 17.7 Chybove stavy API
 
 API musi vratit srozumitelnou chybu zejmena pri techto stavech:
 
@@ -1145,14 +1167,9 @@ API musi vratit srozumitelnou chybu zejmena pri techto stavech:
 - volajici nema opravneni k partnerovi,
 - typ ticketu neni povoleny,
 - priorita neni povolena,
-- klient neexistuje,
-- klient nepatri k partnerovi,
-- vlastnik neexistuje,
-- vlastnik neni aktivni,
-- vlastnik neni odpovedna osoba partnera,
-- vlastnik neni odpovedna osoba vybraneho klienta,
 - resolver team neni povoleny,
 - assignee neni interni uzivatel ze stejneho resolver teamu,
+- GitLab issue se nepodarilo zalozit pri prirazeni do `L3`,
 - chybi povinne pole.
 
 ## 18. Administrace, audit a notifikace
@@ -1185,6 +1202,8 @@ Auditni udalosti vznikaji zejmena pri:
 - nahrani prilohy,
 - vytvoreni nebo synchronizaci GitLab issue.
 
+U zmen ticketu audit uklada starou i novou hodnotu.
+
 Audit vidi pouze:
 
 - `Admin`,
@@ -1208,37 +1227,60 @@ Notifikace vznikaji zejmena pri:
 - zmene statusu,
 - uzavreni ticketu.
 
-Novy partnersky ticket oznamuje aplikace aktivnim Delivery Managerum.
+Novy partnersky ticket oznamuje aplikace:
 
-Udalosti nad ticketem oznamuje aplikace watcherum ticketu.
+- aktivnim Delivery Managerum,
+- uzivateli, ktery ticket zalozil.
 
-Neuspesne notifikace lze znovu zpracovat uzivatelem s roli `Admin` nebo `DeliveryManager`.
+Novy system ticket vytvoreny pres API oznamuje aplikace aktivnim Delivery Managerum.
+
+Komentar od partnera oznamuje aplikace:
+
+- aktivnim Delivery Managerum, pokud ticket nema assignee,
+- assignee, pokud ticket assignee ma.
+
+Interni komentar nevytvari e-mailovou notifikaci.
+
+Interni poznamka nevytvari e-mailovou notifikaci.
+
+Zmena GitLab statusu nevytvari e-mailovou notifikaci partnerovi.
+
+Udalosti nad ticketem oznamuje aplikace watcherum ticketu pouze tehdy, pokud tento dokument neurcuje konkretni vyjimku.
+
+Neuspesna notifikace se v MVP zapise do audit logu.
+
+MVP nemusi resit opakovane odesilani neuspesnych notifikaci.
 
 ## 19. Finalni souhrn pravidel
 
 - Dokument rozlisuje druh ticketu a typ ticketu.
 - Druhy ticketu jsou partnersky ticket, interni ticket a system ticket.
-- System ticket ma priznak system, nema partnera, klienta, vlastnika ani autora.
+- System ticket ma priznak system, patri ke konkretnimu partnerovi a nema klienta, vlastnika ani autora.
 - Ticket je trvaly zaznam a nema byt odstranen.
 - Partner a klient nemaji aktivni/neaktivni stav.
 - Partnera a klienta nelze odstranit.
 - Aktivni/neaktivni stav ma pouze uzivatel.
 - Odstraneni uzivatele znamena deaktivaci uctu.
 - Neaktivni uzivatel se neprihlasi a neprovadi aktivni cinnosti.
-- Partnersky ticket zaklada pouze odpovedna osoba partnera nebo opravnena integrace v partnerskem rezimu.
+- Partnersky ticket zaklada pouze odpovedna osoba partnera.
 - Technicka osoba partnera ticket nezaklada.
-- Partner vidi pouze tickety sveho partnera a nevidi interni ani system tickety.
-- Partner komentuje pouze partnersky ticket, kde je participantem.
+- Partner vidi partnerske tickety sveho partnera a system tickety prirazene svemu partnerovi.
+- Partner nevidi interni tickety ani tickety jinych partneru.
+- Partner komentuje partnersky ticket, kde je participantem.
+- System ticket smi za partnera komentovat pouze odpovedna osoba.
 - Interni poznamky vidi pouze interni uzivatele.
-- Komentare a interni poznamky se needituji ani nemazou.
+- Komentare, interni poznamky a tickety se nikdy nemazou.
 - Resolver team ticketu se po nastaveni nemeni na jiny tym.
 - Assignee se meni pouze v ramci stejneho resolver teamu.
 - `Admin` a `DeliveryManager` mohou vratit ticket z assignee zpet do fronty stejneho resolver teamu.
+- `L1`, `L2` a `L3` vidi pouze tickety sveho resolver teamu.
+- System ticket za interni tym vidi pouze `Admin` a `DeliveryManager`.
 - `Closed` je finalni stav ticketu.
 - Uzavreny ticket neprijima komentare, interni poznamky, prilohy ani assignment.
+- Bez GitLab issue se ticket nesmi priradit do `L3`.
 - L3 ticket potrebuje GitLab issue pred prechodem do `In progress`.
-- GitLab status muze videt i partner u partnerskeho ticketu, GitLab odkaz je pouze interni.
-- Jednoduche partnerske API umi v prvni verzi vylistovat tickety partnera a vytvorit ticket.
+- GitLab status muze videt i partner, GitLab odkaz je pouze interni.
+- Jednoduche partnerske API umi v prvni verzi vylistovat tickety partnera a vytvorit system ticket pro partnera.
 
 ## 20. Permission matrix
 
@@ -1255,7 +1297,7 @@ Neuspesne notifikace lze znovu zpracovat uzivatelem s roli `Admin` nebo `Deliver
 
 | Akce | Admin | Delivery Manager | L1/L2/L3 | Odpovedna osoba | Technicka osoba | System/API |
 | --- | --- | --- | --- | --- | --- | --- |
-| Vytvorit partnera | Ano | Ne | Ne | Ne | Ne | Ne |
+| Vytvorit partnera | Ano | Ano | Ne | Ne | Ne | Ne |
 | Zobrazit seznam partneru | Ano | Ano | Ne | Ne | Ne | Ne |
 | Odstranit partnera | Ne | Ne | Ne | Ne | Ne | Ne |
 | Vytvorit klienta | Ano | Ano | Ne | Ne | Ne | Ne |
@@ -1264,9 +1306,9 @@ Neuspesne notifikace lze znovu zpracovat uzivatelem s roli `Admin` nebo `Deliver
 | Zobrazit klienty partnera | Ano | Ano | Ne | Ano | Ano | Omezene |
 | Priradit odpovednou osobu ke klientovi | Ano | Ano | Ne | Ne | Ne | Ne |
 | Odebrat odpovednou osobu od klienta | Ano | Ano | Ne | Ne | Ne | Ne |
-| Vytvorit interniho uzivatele | Ano | Ne | Ne | Ne | Ne | Ne |
+| Vytvorit interniho uzivatele | Ano | Omezene | Ne | Ne | Ne | Ne |
 | Vytvorit partner uzivatele | Ano | Ano | Ne | Ne | Ne | Ne |
-| Upravit interniho uzivatele | Ano | Ne | Ne | Ne | Ne | Ne |
+| Upravit interniho uzivatele | Ano | Omezene | Ne | Ne | Ne | Ne |
 | Upravit partner uzivatele | Ano | Ano | Ne | Ne | Ne | Ne |
 | Deaktivovat uzivatele | Omezene | Omezene | Ne | Ne | Ne | Ne |
 | Poslat reset hesla | Ano | Omezene | Ne | Ne | Ne | Ne |
@@ -1275,13 +1317,13 @@ Neuspesne notifikace lze znovu zpracovat uzivatelem s roli `Admin` nebo `Deliver
 
 | Akce | Admin | Delivery Manager | L1/L2/L3 | Odpovedna osoba | Technicka osoba | System/API |
 | --- | --- | --- | --- | --- | --- | --- |
-| Vytvorit partnersky ticket | Ne | Ne | Ne | Ano | Ne | Omezene |
+| Vytvorit partnersky ticket | Ne | Ne | Ne | Ano | Ne | Ne |
 | Vytvorit interni ticket | Ano | Ano | Ano | Ne | Ne | Ne |
 | Vytvorit system ticket | Ne | Ne | Ne | Ne | Ne | System |
 | Videt vsechny tickety | Ano | Ano | Ne | Ne | Ne | Ne |
 | Videt partnerske tickety sveho partnera | Ano | Ano | Ne | Ano | Ano | Omezene |
 | Videt interni tickety | Ano | Ano | Omezene | Ne | Ne | Ne |
-| Videt system tickety | Ano | Ano | Omezene | Ne | Ne | Ne |
+| Videt system tickety | Ano | Ano | Ne | Omezene | Omezene | Omezene |
 | Vylistovat tickety partnera pres API | Ne | Ne | Ne | Ne | Ne | Omezene |
 
 ### 20.4 Workflow a assignment
@@ -1294,7 +1336,8 @@ Neuspesne notifikace lze znovu zpracovat uzivatelem s roli `Admin` nebo `Deliver
 | Zmenit resolver team po nastaveni | Ne | Ne | Ne | Ne | Ne | Ne |
 | Zmenit assignee ve stejnem resolver teamu | Ano | Ano | Omezene | Ne | Ne | Ne |
 | Unassign do fronty stejneho resolver teamu | Ano | Ano | Ne | Ne | Ne | Ne |
-| Uzavrit ticket | Omezene | Omezene | Omezene | Ne | Ne | Ne |
+| Nastavit `Rejected`, `Duplicate` nebo `Cancelled` | Ano | Ano | Ne | Ne | Ne | Ne |
+| Uzavrit ticket | Ano | Ano | Ne | Ne | Ne | Ne |
 
 ### 20.5 Vlastnictvi, participanti a komunikace
 
@@ -1304,8 +1347,10 @@ Neuspesne notifikace lze znovu zpracovat uzivatelem s roli `Admin` nebo `Deliver
 | Prevest vlastnictvi interniho ticketu | Ne | Ne | Ne | Ne | Ne | Ne |
 | Prevest vlastnictvi system ticketu | Ne | Ne | Ne | Ne | Ne | Ne |
 | Spravovat participanty partnerskeho ticketu | Ano | Ano | Ne | Omezene | Ne | Ne |
+| Spravovat osoby system ticketu | Ne | Ne | Ne | Omezene | Ne | Ne |
 | Odebrat vlastnika z participantu | Ne | Ne | Ne | Ne | Ne | Ne |
 | Pridat verejny komentar | Omezene | Omezene | Omezene | Omezene | Omezene | Ne |
+| Pridat komentar k system ticketu | Omezene | Omezene | Ne | Omezene | Ne | Ne |
 | Pridat interni poznamku | Omezene | Omezene | Omezene | Ne | Ne | Ne |
 | Editovat komentar nebo interni poznamku | Ne | Ne | Ne | Ne | Ne | Ne |
 | Mazat komentar nebo interni poznamku | Ne | Ne | Ne | Ne | Ne | Ne |
@@ -1321,4 +1366,4 @@ Neuspesne notifikace lze znovu zpracovat uzivatelem s roli `Admin` nebo `Deliver
 | Videt GitLab status | Ano | Ano | Omezene | Omezene | Omezene | Omezene |
 | Videt GitLab odkaz | Ano | Ano | Omezene | Ne | Ne | Ne |
 | Videt audit | Ano | Ano | Ne | Ne | Ne | Ne |
-| Znovu zpracovat neuspesne notifikace | Ano | Ano | Ne | Ne | Ne | Ne |
+| Znovu zpracovat neuspesne notifikace | Ne | Ne | Ne | Ne | Ne | Ne |
