@@ -1,6 +1,7 @@
+
 # TicketMaster - aplikacni logika
 
-Tento dokument popisuje funkcni pravidla aplikace TicketMaster. Je urceny jako predavaci specifikace pro vyvojare, kteri maji podle pravidel postavit hotovou aplikaci.
+Tento dokument popisuje funkcni pravidla aplikace TicketMaster.
 
 ## Obsah
 
@@ -932,16 +933,19 @@ Aplikace musi zalozit hlavni GitLab issue:
 - pri vytvoreni interniho ticketu s resolver teamem `L3`,
 - pri vytvoreni system ticketu s resolver teamem `L3`.
 
-Interni uzivatel muze zalozit GitLab issue rucne.
+Bez hlavniho GitLab issue se ticket nesmi priradit do resolver teamu `L3`.
 
-Partner uzivatel GitLab issue nezaklada.
+Pokud se zalozeni GitLab issue nepodari, prirazeni do `L3` se neprovede.
 
+<<<<<<< HEAD
 Pokud hlavni GitLab issue uz existuje, aplikace pouzije existujici vazbu.
 
 Bez hlavniho GitLab issue se ticket nesmi priradit do resolver teamu `L3`.
 
 Pokud se zalozeni GitLab issue nepodari, prirazeni do `L3` se neprovede.
 
+=======
+>>>>>>> d7d30b2 (Final docs)
 ### 15.2 GitLab status
 
 GitLab status muze byt:
@@ -964,8 +968,11 @@ Partner nikdy nevidi GitLab odkaz.
 
 Ticket v resolver teamu `L3` nesmi prejit do stavu `In progress`, pokud nema hlavni GitLab issue.
 
+<<<<<<< HEAD
 Pro MVP neexistuje vyjimka ani rucni prepsani teto podminky.
 
+=======
+>>>>>>> d7d30b2 (Final docs)
 ### 15.4 Synchronizace GitLab statusu
 
 GitLab status smi synchronizovat pouze interni uzivatel.
@@ -985,10 +992,13 @@ Partner dashboard zobrazuje:
 
 Technicke osoby jsou vedeny jako samostatny seznam partner uzivatelu s roli `technical`.
 
-Technicka osoba nema primou vazbu na klienta pres odpovednost za klienta.
-
 System tickety se nezobrazuji v prehledu klientu, protoze nemaji klienta.
 
+<<<<<<< HEAD
+System tickety se nezobrazuji v prehledu klientu, protoze nemaji klienta.
+
+=======
+>>>>>>> d7d30b2 (Final docs)
 System tickety prirazene partnerovi se zobrazuji v seznamu ticketu partnera.
 
 ## 17. Jednoduche partnerske API
@@ -1249,7 +1259,6 @@ MVP nemusi resit opakovane odesilani neuspesnych notifikaci.
 - Druhy ticketu jsou partnersky ticket, interni ticket a system ticket.
 - System ticket ma priznak system, patri ke konkretnimu partnerovi a nema klienta, vlastnika ani autora.
 - Ticket je trvaly zaznam a nema byt odstranen.
-- Partner a klient nemaji aktivni/neaktivni stav.
 - Partnera a klienta nelze odstranit.
 - Aktivni/neaktivni stav ma pouze uzivatel.
 - Odstraneni uzivatele znamena deaktivaci uctu.
