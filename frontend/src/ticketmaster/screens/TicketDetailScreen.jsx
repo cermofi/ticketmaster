@@ -11,7 +11,7 @@ import {
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
-import { EmptyRow, EmptyState, ErrorBanner, Loading, PageHeader, StatusPill, TimeCell, apiError } from './helpers.jsx';
+import { EmptyRow, EmptyState, ErrorBanner, Loading, PageHeader, StatusPill, TimeCell, apiError, labelValue } from './helpers.jsx';
 
 export default function TicketDetailScreen() {
   return (
@@ -104,10 +104,11 @@ function TicketDetail({ user }) {
   return (
     <div className="tm-screen">
       <PageHeader
-        title={ticket?.title || 'Ticket detail'}
+        title={ticket?.title || 'Detail ticketu'}
         actions={(
-          <Button outline color="primary" onClick={load} title="Refresh ticket">
+          <Button outline color="secondary" onClick={load} title="Obnovit ticket">
             <i className="bi bi-arrow-clockwise" />
+            Obnovit
           </Button>
         )}
       />
@@ -118,20 +119,20 @@ function TicketDetail({ user }) {
             <section className="tm-panel">
               <div className="tm-ticket-title-row">
                 <div>
-                  <div className="tm-muted">Current status</div>
+                  <div className="tm-muted">Aktuální stav</div>
                   <StatusPill value={ticket.status} />
                 </div>
                 <StatusPill value={ticket.priority} priority={ticket.priority} />
               </div>
-              <h2>Description</h2>
+              <h2>Popis</h2>
               <p className="tm-ticket-description">{ticket.description}</p>
             </section>
             <section className="tm-panel">
-              <h2>Communication</h2>
+              <h2>Komunikace</h2>
               <CommentList comments={comments} />
               {canAddCommunication && (
                 <CommentForm
-                  title="Add comment"
+                  title="Přidat komentář"
                   value={commentBody}
                   setValue={setCommentBody}
                   onSubmit={() => action(async () => {
@@ -142,7 +143,7 @@ function TicketDetail({ user }) {
               )}
               {canAddCommunication && user.kind === 'internal' && (
                 <CommentForm
-                  title="Internal note"
+                  title="Interní poznámka"
                   value={internalNoteBody}
                   setValue={setInternalNoteBody}
                   onSubmit={() => action(async () => {
@@ -159,23 +160,23 @@ function TicketDetail({ user }) {
               <Table borderless responsive size="sm" className="tm-meta-table">
                 <tbody>
                   <InfoRow label="ID" value={ticket.id} />
-                  <InfoRow label="Kind" value={ticket.kind || (ticket.system ? 'system' : (ticket.internal ? 'internal' : 'partner'))} />
-                  <InfoRow label="Type" value={ticket.type} />
+                  <InfoRow label="Druh" value={labelValue(ticket.kind || (ticket.system ? 'system' : (ticket.internal ? 'internal' : 'partner')))} />
+                  <InfoRow label="Typ" value={labelValue(ticket.type)} />
                   <InfoRow label="Partner" value={ticket.partner_name || '-'} />
-                  <InfoRow label="Client" value={ticket.client_name || '-'} />
-                  <InfoRow label="Owner" value={ticket.owner_name || '-'} />
+                  <InfoRow label="Klient" value={ticket.client_name || '-'} />
+                  <InfoRow label="Vlastník" value={ticket.owner_name || '-'} />
                   {user.kind === 'internal' && <InfoRow label="Custom vlastník" value={ticket.custom_owner || '-'} />}
-                  {user.kind === 'internal' && <InfoRow label="Resolver team" value={ticket.resolver_team || '-'} />}
+                  {user.kind === 'internal' && <InfoRow label="Řešitelský tým" value={ticket.resolver_team || '-'} />}
                   {user.kind === 'internal' && <InfoRow label="Assignee" value={ticket.assignee_name || '-'} />}
-                  {user.kind === 'internal' && <InfoRow label="GitLab" value={ticket.gitlab_link ? <a href={ticket.gitlab_link}>{ticket.gitlab_status || 'Open'}</a> : (ticket.gitlab_status || '-')} />}
-                  <InfoRow label="Created" value={<TimeCell value={ticket.created_at} />} />
-                  <InfoRow label="Updated" value={<TimeCell value={ticket.updated_at} />} />
+                  {user.kind === 'internal' && <InfoRow label="GitLab" value={ticket.gitlab_link ? <a href={ticket.gitlab_link}>{labelValue(ticket.gitlab_status || 'Open')}</a> : (ticket.gitlab_status || '-')} />}
+                  <InfoRow label="Vytvořeno" value={<TimeCell value={ticket.created_at} />} />
+                  <InfoRow label="Aktualizováno" value={<TimeCell value={ticket.updated_at} />} />
                 </tbody>
               </Table>
             </section>
             {showActions && (
               <section className="tm-panel">
-                <h2>Actions</h2>
+                <h2>Akce</h2>
                 {user.kind === 'internal' && (
                   <>
                     {canEditCustomOwner && (
@@ -203,26 +204,26 @@ function TicketDetail({ user }) {
                     )}
                     <div className="tm-action-group">
                       <div className="tm-action-group-head">
-                        <h3>Status</h3>
+                        <h3>Stav</h3>
                         <StatusPill value={ticket.status} />
                       </div>
                       <div className="tm-actions">
                         {availableTransitions.map((status) => (
                           <Button key={status} size="sm" outline color="primary" onClick={() => action(() => api.post(`/tickets/${ticket.id}/transition`, { status }))}>
-                            {status}
+                            {labelValue(status)}
                           </Button>
                         ))}
-                        {availableTransitions.length === 0 && <span className="tm-muted">No status changes available.</span>}
+                        {availableTransitions.length === 0 && <span className="tm-muted">Nejsou dostupné žádné změny stavu.</span>}
                       </div>
                     </div>
                     {canAssignTicket && <div className="tm-action-group">
-                      <h3>Assignment</h3>
+                      <h3>Přiřazení</h3>
                       <Form onSubmit={(event) => {
                         event.preventDefault();
                         action(() => api.post(`/tickets/${ticket.id}/assign`, { ...assignment, team: assignmentTeam }));
                       }}>
                         <FormGroup>
-                          <Label>Resolver team</Label>
+                          <Label>Řešitelský tým</Label>
                           {ticket.resolver_team ? (
                             <div className="tm-readonly-field">{ticket.resolver_team}</div>
                           ) : (
@@ -232,15 +233,15 @@ function TicketDetail({ user }) {
                           )}
                         </FormGroup>
                         <FormGroup>
-                          <Label>Assignee</Label>
+                          <Label>Řešitel</Label>
                           <Input type="select" value={assignment.assignee || ''} onChange={(event) => setAssignment({ ...assignment, assignee: event.target.value })}>
-                            <option value="">Unassigned</option>
+                            <option value="">Nepřiřazeno</option>
                             {internalUsers.filter((row) => row.internal_role === assignmentTeam).map((row) => <option key={row.id} value={row.email}>{row.name}</option>)}
                           </Input>
                         </FormGroup>
                         <Button color="primary" className="w-100" type="submit">
                           <i className="bi bi-diagram-3 me-1" />
-                          Assign
+                          Přiřadit
                         </Button>
                       </Form>
                       {canReturnToQueue && (
@@ -252,7 +253,7 @@ function TicketDetail({ user }) {
                           onClick={() => action(() => api.post(`/tickets/${ticket.id}/unassign`))}
                         >
                           <i className="bi bi-arrow-counterclockwise me-1" />
-                          Return to queue
+                          Vrátit do fronty
                         </Button>
                       )}
                     </div>}
@@ -260,21 +261,21 @@ function TicketDetail({ user }) {
                 )}
                 {canTransferOwner && (
                   <div className="tm-action-group">
-                    <h3>Transfer owner</h3>
+                    <h3>Předat vlastníka</h3>
                     <Form onSubmit={(event) => {
                       event.preventDefault();
                       action(() => api.post(`/tickets/${ticket.id}/transfer-owner`, { new_owner: transferOwner }));
                     }}>
                       <FormGroup>
-                        <Label>New owner</Label>
+                        <Label>Nový vlastník</Label>
                         <Input type="select" value={transferOwner} onChange={(event) => setTransferOwner(event.target.value)}>
-                          <option value="">Select owner</option>
+                          <option value="">Vyberte vlastníka</option>
                           {responsibleUsers.map((row) => <option key={row.id} value={row.email}>{row.name}</option>)}
                         </Input>
                       </FormGroup>
                       <Button color="secondary" outline type="submit" disabled={!transferOwner} className="w-100">
                         <i className="bi bi-arrow-left-right me-1" />
-                        Transfer
+                        Předat
                       </Button>
                     </Form>
                   </div>
@@ -282,12 +283,12 @@ function TicketDetail({ user }) {
               </section>
             )}
             <section className="tm-panel">
-              <h2>Participants</h2>
+              <h2>Účastníci</h2>
               <div className="mb-3">
                 {participants.map((participant) => (
                   <span className="badge text-bg-light border me-1 mb-1" key={participant.id}>{participant.name}</span>
                 ))}
-                {participants.length === 0 && <span className="tm-muted">No participants.</span>}
+                {participants.length === 0 && <span className="tm-muted">Bez účastníků.</span>}
               </div>
               {canManageParticipants && partnerUsers.length > 0 && (
                 <Form className="d-flex gap-2" onSubmit={(event) => {
@@ -295,7 +296,7 @@ function TicketDetail({ user }) {
                   action(() => api.post(`/tickets/${ticket.id}/participants`, { user_id: participantId }));
                 }}>
                   <Input type="select" value={participantId} onChange={(event) => setParticipantId(event.target.value)}>
-                    <option value="">Add participant</option>
+                    <option value="">Přidat účastníka</option>
                     {partnerUsers.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
                   </Input>
                   <Button color="secondary" outline type="submit" disabled={!participantId}>
@@ -337,15 +338,15 @@ function InfoRow({ label, value }) {
 function AttachmentPanel({ attachments, uploadFile, setUploadFile, canUpload, onUpload }) {
   return (
     <div className="mb-3">
-      <h3>Attachments</h3>
+      <h3>Přílohy</h3>
       <div className="tm-table-wrap mb-2">
         <Table size="sm" responsive className="tm-table">
           <thead>
             <tr>
-              <th>File</th>
-              <th>Size</th>
-              <th>Uploaded by</th>
-              <th>Created</th>
+              <th>Soubor</th>
+              <th>Velikost</th>
+              <th>Nahrál</th>
+              <th>Vytvořeno</th>
             </tr>
           </thead>
           <tbody>
@@ -357,7 +358,7 @@ function AttachmentPanel({ attachments, uploadFile, setUploadFile, canUpload, on
                 <td><TimeCell value={attachment.created_at} /></td>
               </tr>
             ))}
-            {attachments.length === 0 && <EmptyRow colSpan="4" title="No attachments" message="Files uploaded to this ticket will appear here." />}
+            {attachments.length === 0 && <EmptyRow colSpan="4" title="Žádné přílohy" message="Nahrané soubory k ticketu se zobrazí zde." />}
           </tbody>
         </Table>
       </div>
@@ -379,7 +380,7 @@ function AttachmentPanel({ attachments, uploadFile, setUploadFile, canUpload, on
 function CommentList({ comments }) {
   return (
     <div className="mb-3">
-      <h3>Comments and notes</h3>
+      <h3>Komentáře a poznámky</h3>
       {comments.map((comment) => (
         <div key={comment.id} className="tm-comment">
           <div className="d-flex justify-content-between">
@@ -388,11 +389,11 @@ function CommentList({ comments }) {
             </div>
             <span className="tm-muted"><TimeCell value={comment.created_at} /></span>
           </div>
-          {comment.visibility === 'internal_note' && <span className="badge text-bg-warning mb-1">Internal note</span>}
+          {comment.visibility === 'internal_note' && <span className="badge text-bg-warning mb-1">Interní poznámka</span>}
           <div className="tm-comment-body">{comment.body}</div>
         </div>
       ))}
-      {comments.length === 0 && <EmptyState icon="bi-chat-left-text" title="No comments yet" message="Communication on this ticket will appear here." />}
+      {comments.length === 0 && <EmptyState icon="bi-chat-left-text" title="Zatím žádné komentáře" message="Komunikace k ticketu se zobrazí zde." />}
     </div>
   );
 }
@@ -421,7 +422,7 @@ function CommentForm({ title, value, setValue, onSubmit }) {
       </FormGroup>
       <Button color="primary" outline type="submit" disabled={!value.trim()}>
         <i className="bi bi-chat-left-text me-1" />
-        Submit
+        Odeslat
       </Button>
     </Form>
   );

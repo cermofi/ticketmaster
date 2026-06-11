@@ -64,7 +64,7 @@ export default function AuthGate({ children }) {
         </div>
         <Button size="sm" outline color="secondary" onClick={session.logout}>
           <i className="bi bi-box-arrow-right me-1" />
-          Logout
+          Odhlásit
         </Button>
       </div>
       {children(session.user)}
@@ -106,7 +106,7 @@ function LoginScreen({ onLogin }) {
           <ButtonGroup className="mb-3 w-100">
             <Button color={mode === 'internal' ? 'primary' : 'secondary'} outline={mode !== 'internal'} onClick={() => setMode('internal')} type="button">
               <i className="bi bi-building-lock me-1" />
-              Internal SSO
+              Interní SSO
             </Button>
             <Button color={mode === 'partner' ? 'primary' : 'secondary'} outline={mode !== 'partner'} onClick={() => setMode('partner')} type="button">
               <i className="bi bi-person-badge me-1" />
@@ -118,11 +118,11 @@ function LoginScreen({ onLogin }) {
         {activationToken ? (
           <>
             <FormGroup>
-              <Label>Reset token</Label>
+              <Label>Token pro reset</Label>
               <Input value={activationToken} onChange={(event) => setActivationToken(event.target.value)} />
             </FormGroup>
             <FormGroup>
-              <Label>New password</Label>
+              <Label>Nové heslo</Label>
               <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" />
             </FormGroup>
           </>
@@ -134,13 +134,13 @@ function LoginScreen({ onLogin }) {
         )}
         {!activationToken && mode === 'partner' && (
           <FormGroup>
-            <Label>Password</Label>
+            <Label>Heslo</Label>
             <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
           </FormGroup>
         )}
         <Button color="primary" type="submit" className="w-100">
           <i className="bi bi-box-arrow-in-right me-1" />
-          {activationToken ? 'Set password' : 'Login'}
+          {activationToken ? 'Nastavit heslo' : 'Přihlásit'}
         </Button>
       </Form>
     </div>

@@ -16,7 +16,7 @@ const ConfigDefaults = {
     ticketmaster: ''
   },
   authorization: 'disabled',
-  hasHeaderTitle: true,
+  hasHeaderTitle: false,
   help: 'https://github.com/TeskaLabs/asab-webui',
   defaultBrandImage: {
     full: 'media/logo/header-logo-full.svg',

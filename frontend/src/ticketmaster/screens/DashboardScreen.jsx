@@ -15,7 +15,9 @@ import {
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
-import { EmptyRow, ErrorBanner, Loading, PageHeader, StatusPill, TimeCell, apiError, asArray } from './helpers.jsx';
+import { EmptyRow, ErrorBanner, Loading, PageHeader, StatusPill, TimeCell, apiError, asArray, labelValue } from './helpers.jsx';
+
+const EMPTY_FILTERS = { search: '', status: '', priority: '', type: '', resolver_team: '', internal: '' };
 
 export default function DashboardScreen() {
   return (
@@ -28,17 +30,17 @@ export default function DashboardScreen() {
 function Dashboard({ user }) {
   const [meta, setMeta] = useState(null);
   const [tickets, setTickets] = useState([]);
-  const [filters, setFilters] = useState({ search: '', status: '', priority: '', type: '', resolver_team: '', internal: '' });
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportLoading, setExportLoading] = useState('');
 
-  const load = async () => {
+  const load = async (nextFilters = filters) => {
     setError('');
     setLoading(true);
     try {
-      const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ''));
+      const params = Object.fromEntries(Object.entries(nextFilters).filter(([, value]) => value !== ''));
       const [metaResponse, ticketsResponse] = await Promise.all([
         api.get('/meta'),
         api.get('/tickets', { params })
@@ -75,13 +77,17 @@ function Dashboard({ user }) {
   return (
     <div className="tm-screen">
       <PageHeader
-        title="Tickets"
+        title="Tickety"
         actions={(
           <>
+            <Button color="primary" tag={Link} to="/tickets/new">
+              <i className="bi bi-plus-circle" />
+              Vytvořit ticket
+            </Button>
             {canCreateOnBehalf && (
-              <Button color="primary" tag={Link} to="/tickets/new?mode=partner">
+              <Button color="secondary" outline tag={Link} to="/tickets/new?mode=partner">
                 <i className="bi bi-building-add" />
-                Přidat ticket za partnera
+                Ticket za partnera
               </Button>
             )}
             <ExportMenu
@@ -90,16 +96,19 @@ function Dashboard({ user }) {
               loading={exportLoading}
               onExport={exportTickets}
             />
-            <Button color="primary" outline onClick={load} title="Refresh tickets">
+            <Button color="secondary" outline onClick={load} title="Obnovit seznam ticketů">
               <i className="bi bi-arrow-clockwise" />
+              Obnovit
             </Button>
           </>
         )}
-      />
+      >
+        Přehled dostupných ticketů v systému.
+      </PageHeader>
       <ErrorBanner error={error} />
       {loading && !meta ? <Loading /> : (
         <>
-          <TicketFilters filters={filters} setFilters={setFilters} meta={meta} user={user} onApply={load} />
+          <TicketFilters filters={filters} setFilters={setFilters} meta={meta} user={user} onApply={() => load()} onReset={() => load(EMPTY_FILTERS)} />
           <TicketTable tickets={tickets} user={user} />
         </>
       )}
@@ -157,8 +166,12 @@ async function exportError(err) {
   return apiError(err);
 }
 
-function TicketFilters({ filters, setFilters, meta, user, onApply }) {
+function TicketFilters({ filters, setFilters, meta, user, onApply, onReset }) {
   const update = (key, value) => setFilters({ ...filters, [key]: value });
+  const reset = () => {
+    setFilters(EMPTY_FILTERS);
+    onReset();
+  };
   const statuses = asArray(meta?.statuses);
   const priorities = asArray(meta?.priorities);
   const ticketTypes = asArray(meta?.ticket_types);
@@ -166,43 +179,49 @@ function TicketFilters({ filters, setFilters, meta, user, onApply }) {
   return (
     <Form className="tm-toolbar" onSubmit={(event) => { event.preventDefault(); onApply(); }}>
       <FormGroup>
-        <Label>Search</Label>
-        <Input value={filters.search} onChange={(event) => update('search', event.target.value)} placeholder="ID, title, description" />
+        <Label>Hledat</Label>
+        <Input value={filters.search} onChange={(event) => update('search', event.target.value)} placeholder="ID, název, popis" />
       </FormGroup>
       <FormGroup>
-        <Label>Status</Label>
+        <Label>Stav</Label>
         <Input type="select" value={filters.status} onChange={(event) => update('status', event.target.value)}>
-          <option value="">Any</option>
-          {statuses.map((status) => <option key={status}>{status}</option>)}
+          <option value="">Vše</option>
+          {statuses.map((status) => <option key={status} value={status}>{labelValue(status)}</option>)}
         </Input>
       </FormGroup>
       <FormGroup>
-        <Label>Priority</Label>
+        <Label>Priorita</Label>
         <Input type="select" value={filters.priority} onChange={(event) => update('priority', event.target.value)}>
-          <option value="">Any</option>
-          {priorities.map((priority) => <option key={priority}>{priority}</option>)}
+          <option value="">Vše</option>
+          {priorities.map((priority) => <option key={priority} value={priority}>{labelValue(priority)}</option>)}
         </Input>
       </FormGroup>
       <FormGroup>
-        <Label>Type</Label>
+        <Label>Typ</Label>
         <Input type="select" value={filters.type} onChange={(event) => update('type', event.target.value)}>
-          <option value="">Any</option>
-          {ticketTypes.map((ticketType) => <option key={ticketType}>{ticketType}</option>)}
+          <option value="">Vše</option>
+          {ticketTypes.map((ticketType) => <option key={ticketType} value={ticketType}>{labelValue(ticketType)}</option>)}
         </Input>
       </FormGroup>
       {user.kind === 'internal' && (
         <FormGroup>
-          <Label>Queue</Label>
+          <Label>Fronta</Label>
           <Input type="select" value={filters.resolver_team} onChange={(event) => update('resolver_team', event.target.value)}>
-            <option value="">Any</option>
+            <option value="">Vše</option>
             {resolverTeams.map((team) => <option key={team}>{team}</option>)}
           </Input>
         </FormGroup>
       )}
-      <Button color="primary" type="submit">
-        <i className="bi bi-search" />
-        Search
-      </Button>
+      <div className="tm-toolbar-actions">
+        <Button color="primary" type="submit">
+          <i className="bi bi-search" />
+          Hledat
+        </Button>
+        <Button color="secondary" outline type="button" onClick={reset}>
+          <i className="bi bi-x-circle" />
+          Reset filtrů
+        </Button>
+      </div>
     </Form>
   );
 }
@@ -214,36 +233,36 @@ function TicketTable({ tickets, user }) {
         <thead>
           <tr>
             <th>ID</th>
-            <th>Title</th>
-            <th>Status</th>
-            <th>Priority</th>
-            <th>Type</th>
-            <th>Team</th>
+            <th>Název</th>
+            <th>Stav</th>
+            <th>Priorita</th>
+            <th>Typ</th>
+            <th>Tým</th>
             <th>GitLab</th>
             {user.kind === 'internal' && <th>Partner</th>}
-            <th>Updated</th>
+            <th className="text-end">Aktualizováno</th>
           </tr>
         </thead>
         <tbody>
           {tickets.map((ticket) => (
             <tr key={ticket.id}>
-              <td><Link to={`/tickets/${ticket.id}`}>{ticket.id.slice(0, 8)}</Link></td>
+              <td><Link className="tm-ticket-id" to={`/tickets/${ticket.id}`}>{ticket.id.slice(0, 8)}</Link></td>
               <td className="tm-row-title">
-                {ticket.system && <span className="badge text-bg-info me-2">System</span>}
-                {ticket.internal && <span className="badge text-bg-dark me-2">Internal</span>}
+                {ticket.system && <span className="badge text-bg-info me-2">Systémový</span>}
+                {ticket.internal && <span className="badge text-bg-secondary me-2">Interní</span>}
                 {ticket.title}
               </td>
               <td><StatusPill value={ticket.status} /></td>
               <td><StatusPill value={ticket.priority} priority={ticket.priority} /></td>
-              <td>{ticket.type}</td>
-              <td>{ticket.resolver_team || <span className="tm-muted">Unassigned</span>}</td>
+              <td><span className="tm-soft-badge">{labelValue(ticket.type)}</span></td>
+              <td>{ticket.resolver_team ? <span className="tm-soft-badge">{ticket.resolver_team}</span> : <span className="tm-muted">Nepřiřazeno</span>}</td>
               <td>{ticket.gitlab_status || <span className="tm-muted">-</span>}</td>
               {user.kind === 'internal' && <td>{ticket.partner_name || <span className="tm-muted">-</span>}</td>}
-              <td><TimeCell value={ticket.updated_at} /></td>
+              <td className="text-end tm-quiet-cell"><TimeCell value={ticket.updated_at} /></td>
             </tr>
           ))}
           {tickets.length === 0 && (
-            <EmptyRow colSpan={user.kind === 'internal' ? 9 : 8} title="No tickets found" message="Try changing the filters or create a new ticket." />
+            <EmptyRow colSpan={user.kind === 'internal' ? 9 : 8} title="Žádné tickety" message="Zkuste upravit filtry nebo vytvořit nový ticket." />
           )}
         </tbody>
       </Table>

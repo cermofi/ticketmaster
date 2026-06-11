@@ -15,7 +15,7 @@ export function Loading() {
   return (
     <div className="tm-screen tm-loading-state" aria-live="polite">
       <Spinner />
-      <span className="tm-muted">Loading...</span>
+      <span className="tm-muted">Načítání...</span>
     </div>
   );
 }
@@ -56,7 +56,7 @@ export function EmptyRow({ colSpan, title, message }) {
 export function StatusPill({ value, priority, tone }) {
   const normalizedTone = tone || (priority === 'Critical' ? 'danger' : statusTone(value));
   const className = `tm-status tm-status-${normalizedTone}`;
-  return <span className={className}>{value || 'None'}</span>;
+  return <span className={className}>{labelValue(value) || 'Bez hodnoty'}</span>;
 }
 
 export function TimeCell({ value }) {
@@ -72,7 +72,7 @@ export function roleLabel(role) {
 }
 
 export function apiError(err) {
-  return err.response?.data?.detail || err.message || 'Unexpected error';
+  return err.response?.data?.detail || err.message || 'Neočekávaná chyba';
 }
 
 export function asArray(value) {
@@ -81,6 +81,38 @@ export function asArray(value) {
   if (Array.isArray(value?.results)) return value.results;
   if (Array.isArray(value?.data)) return value.data;
   return [];
+}
+
+export function labelValue(value) {
+  const labels = {
+    Question: 'Dotaz',
+    Incident: 'Incident',
+    Change: 'Změna',
+    'Operational Request': 'Provozní požadavek',
+    Normal: 'Normální',
+    High: 'Vysoká',
+    Critical: 'Kritická',
+    Low: 'Nízká',
+    Open: 'Otevřený',
+    New: 'Nový',
+    Queued: 'Ve frontě',
+    Assigned: 'Přiřazený',
+    'In Progress': 'V řešení',
+    'Waiting for Customer': 'Čeká na klienta',
+    'Waiting for Partner': 'Čeká na partnera',
+    Resolved: 'Vyřešený',
+    Closed: 'Uzavřený',
+    Rejected: 'Zamítnutý',
+    Blocked: 'Blokovaný',
+    Done: 'Hotovo',
+    Failed: 'Selhalo',
+    system: 'Systémový',
+    internal: 'Interní',
+    partner: 'Partnerský',
+    System: 'Systémový',
+    Internal: 'Interní'
+  };
+  return labels[value] || value;
 }
 
 function statusTone(value) {

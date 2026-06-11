@@ -129,13 +129,13 @@ function Admin({ user }) {
   });
 
   const deleteUser = (row) => {
-    if (!window.confirm(`Deactivate user "${row.email}"?`)) return;
+    if (!window.confirm(`Odstranit uživatele "${row.email}"?`)) return;
     submit(() => api.delete(`/users/${row.id}`));
   };
 
   const sendPasswordReset = (row) => submit(async () => {
     const response = await api.post(`/users/${row.id}/password-reset`);
-    setUserActionMessage(`Password reset e-mail queued for ${row.email}. Dev token: ${response.data.reset_token}`);
+    setUserActionMessage(`E-mail pro reset hesla byl zařazen k odeslání pro ${row.email}. Dev token: ${response.data.reset_token}`);
   });
 
   return (
@@ -143,8 +143,9 @@ function Admin({ user }) {
       <PageHeader
         title="Admin"
         actions={(
-          <Button outline color="primary" onClick={load} title="Refresh administration data">
+          <Button outline color="secondary" onClick={load} title="Obnovit administraci">
             <i className="bi bi-arrow-clockwise" />
+            Obnovit
           </Button>
         )}
       />
@@ -217,7 +218,7 @@ function PartnerSelect({ partners, value, onChange }) {
     <FormGroup>
       <Label>Partner</Label>
       <Input type="select" value={value} onChange={(event) => onChange(event.target.value)}>
-        <option value="">Select partner</option>
+        <option value="">Vyberte partnera</option>
         {partners.map((partner) => <option key={partner.id} value={partner.id}>{partner.name}</option>)}
       </Input>
     </FormGroup>
@@ -247,19 +248,19 @@ function ActionPanel({
   const actions = [
     ...(user.internal_role === 'Admin' ? [
       { id: 'partner', label: 'Partner', icon: 'bi-building' },
-      { id: 'internal-user', label: 'Internal user', icon: 'bi-person-badge' }
+      { id: 'internal-user', label: 'Interní uživatel', icon: 'bi-person-badge' }
     ] : []),
-    { id: 'client', label: 'Client', icon: 'bi-briefcase' },
-    { id: 'partner-user', label: 'Partner user', icon: 'bi-person-plus' }
+    { id: 'client', label: 'Klient', icon: 'bi-briefcase' },
+    { id: 'partner-user', label: 'Partnerský uživatel', icon: 'bi-person-plus' }
   ];
   const currentAction = actions.some((action) => action.id === activeAction) ? activeAction : actions[0].id;
 
   return (
     <>
       <div className="tm-admin-action-head">
-        <h2>Actions</h2>
+        <h2>Akce</h2>
       </div>
-      <div className="tm-admin-action-picker" aria-label="Admin action">
+      <div className="tm-admin-action-picker" aria-label="Admin akce">
         {actions.map((action) => (
           <Button
             key={action.id}
@@ -282,14 +283,14 @@ function ActionPanel({
               setPartnerName('');
             });
           }}>
-            <h3>Create partner</h3>
+            <h3>Vytvořit partnera</h3>
             <FormGroup>
-              <Label>Name</Label>
+              <Label>Název</Label>
               <Input value={partnerName} onChange={(event) => setPartnerName(event.target.value)} autoComplete="organization" />
             </FormGroup>
             <Button color="primary" type="submit" className="w-100" disabled={!partnerName.trim()}>
               <i className="bi bi-plus-circle me-1" />
-              Create partner
+              Vytvořit partnera
             </Button>
           </Form>
         )}
@@ -302,13 +303,13 @@ function ActionPanel({
               setInternalUser({ email: '', name: '', role: 'L1' });
             });
           }}>
-            <h3>Create internal user</h3>
+            <h3>Vytvořit interního uživatele</h3>
             <FormGroup>
               <Label>E-mail</Label>
               <Input value={internalUser.email} onChange={(event) => setInternalUser({ ...internalUser, email: event.target.value })} autoComplete="email" />
             </FormGroup>
             <FormGroup>
-              <Label>Name</Label>
+              <Label>Jméno</Label>
               <Input value={internalUser.name} onChange={(event) => setInternalUser({ ...internalUser, name: event.target.value })} autoComplete="name" />
             </FormGroup>
             <FormGroup>
@@ -319,7 +320,7 @@ function ActionPanel({
             </FormGroup>
             <Button color="primary" type="submit" className="w-100" disabled={!internalUser.email.trim() || !internalUser.name.trim()}>
               <i className="bi bi-plus-circle me-1" />
-              Create user
+              Vytvořit uživatele
             </Button>
           </Form>
         )}
@@ -332,15 +333,15 @@ function ActionPanel({
               setClientForm({ partner_id: '', name: '' });
             });
           }}>
-            <h3>Create client</h3>
+            <h3>Vytvořit klienta</h3>
             <PartnerSelect partners={partners} value={clientForm.partner_id} onChange={(value) => setClientForm({ ...clientForm, partner_id: value })} />
             <FormGroup>
-              <Label>Name</Label>
+              <Label>Název</Label>
               <Input value={clientForm.name} onChange={(event) => setClientForm({ ...clientForm, name: event.target.value })} autoComplete="organization" />
             </FormGroup>
             <Button color="primary" type="submit" className="w-100" disabled={!clientForm.partner_id || !clientForm.name.trim()}>
               <i className="bi bi-plus-circle me-1" />
-              Create client
+              Vytvořit klienta
             </Button>
           </Form>
         )}
@@ -353,14 +354,14 @@ function ActionPanel({
               setPartnerUser({ partner_id: '', email: '', name: '', role: 'responsible' });
             });
           }}>
-            <h3>Invite partner user</h3>
+            <h3>Pozvat partnerského uživatele</h3>
             <PartnerSelect partners={partners} value={partnerUser.partner_id} onChange={(value) => setPartnerUser({ ...partnerUser, partner_id: value })} />
             <FormGroup>
               <Label>E-mail</Label>
               <Input value={partnerUser.email} onChange={(event) => setPartnerUser({ ...partnerUser, email: event.target.value })} autoComplete="email" />
             </FormGroup>
             <FormGroup>
-              <Label>Name</Label>
+              <Label>Jméno</Label>
               <Input value={partnerUser.name} onChange={(event) => setPartnerUser({ ...partnerUser, name: event.target.value })} autoComplete="name" />
             </FormGroup>
             <FormGroup>
@@ -372,7 +373,7 @@ function ActionPanel({
             </FormGroup>
             <Button color="primary" type="submit" className="w-100" disabled={!partnerUser.partner_id || !partnerUser.email.trim() || !partnerUser.name.trim()}>
               <i className="bi bi-envelope-plus me-1" />
-              Invite user
+              Pozvat uživatele
             </Button>
           </Form>
         )}
@@ -384,14 +385,14 @@ function ActionPanel({
           }}>
             <h3>Přiřadit odpovědnou osobu</h3>
             <FormGroup>
-              <Label>Client</Label>
+              <Label>Klient</Label>
               <Input type="select" value={assignment.client_id} onChange={(event) => setAssignment({ client_id: event.target.value, user_id: '' })}>
-                <option value="">Select client</option>
+                <option value="">Vyberte klienta</option>
                 {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
               </Input>
             </FormGroup>
             <FormGroup>
-              <Label>User</Label>
+              <Label>Uživatel</Label>
               <Input
                 type="select"
                 value={assignment.user_id}
@@ -399,14 +400,14 @@ function ActionPanel({
                 onChange={(event) => setAssignment({ ...assignment, user_id: event.target.value })}
               >
                 <option value="">
-                  {selectedAssignmentClient ? 'Select responsible user' : 'Select client first'}
+                  {selectedAssignmentClient ? 'Vyberte odpovědnou osobu' : 'Nejdřív vyberte klienta'}
                 </option>
                 {assignmentResponsibleUsers.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
               </Input>
             </FormGroup>
             <Button color="primary" type="submit" className="w-100" disabled={!assignment.client_id || !assignment.user_id}>
               <i className="bi bi-check2-circle me-1" />
-              Assign
+              Přiřadit
             </Button>
           </Form>
         )}
@@ -437,35 +438,35 @@ function DirectoryPanel({
     <>
       <div className="tm-admin-directory-head">
         <div>
-          <h2>Directory</h2>
-          <div className="tm-muted">{visibleCount} shown</div>
+          <h2>Adresář</h2>
+          <div className="tm-muted">Zobrazeno {visibleCount}</div>
         </div>
-        <div className="tm-segmented" aria-label="Directory view">
+        <div className="tm-segmented" aria-label="Zobrazení adresáře">
           <Button size="sm" color={view === 'partners' ? 'primary' : 'secondary'} outline={view !== 'partners'} onClick={() => setView('partners')}>
-            Partners <span>{counts.partners}</span>
+            Partneři <span>{counts.partners}</span>
           </Button>
           <Button size="sm" color={view === 'clients' ? 'primary' : 'secondary'} outline={view !== 'clients'} onClick={() => setView('clients')}>
-            Clients <span>{counts.clients}</span>
+            Klienti <span>{counts.clients}</span>
           </Button>
           <Button size="sm" color={view === 'users' ? 'primary' : 'secondary'} outline={view !== 'users'} onClick={() => setView('users')}>
-            Users <span>{counts.users}</span>
+            Uživatelé <span>{counts.users}</span>
           </Button>
         </div>
       </div>
       <div className="tm-admin-filters">
         <FormGroup>
-          <Label>Search</Label>
+          <Label>Hledat</Label>
           <Input
             value={filters.search}
             onChange={(event) => updateFilter('search', event.target.value)}
-            placeholder={view === 'users' ? 'Name, e-mail, role' : 'Name or key'}
+            placeholder={view === 'users' ? 'Jméno, e-mail, role' : 'Název nebo klíč'}
           />
         </FormGroup>
         {view !== 'partners' && (
           <FormGroup>
             <Label>Partner</Label>
             <Input type="select" value={filters.partner_id} onChange={(event) => updateFilter('partner_id', event.target.value)}>
-              <option value="">Any</option>
+              <option value="">Vše</option>
               {partners.map((partner) => <option key={partner.id} value={partner.id}>{partner.name}</option>)}
             </Input>
           </FormGroup>
@@ -473,17 +474,17 @@ function DirectoryPanel({
         {view === 'users' && (
           <>
             <FormGroup>
-              <Label>Kind</Label>
+              <Label>Druh</Label>
               <Input type="select" value={filters.user_kind} onChange={(event) => updateFilter('user_kind', event.target.value)}>
-                <option value="">Any</option>
-                <option value="internal">Internal</option>
+                <option value="">Vše</option>
+                <option value="internal">Interní</option>
                 <option value="partner">Partner</option>
               </Input>
             </FormGroup>
             <FormGroup>
               <Label>Role</Label>
               <Input type="select" value={filters.role} onChange={(event) => updateFilter('role', event.target.value)}>
-                <option value="">Any</option>
+                <option value="">Vše</option>
                 {['Admin', 'DeliveryManager', 'L1', 'L2', 'L3', 'responsible', 'technical'].map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}
               </Input>
             </FormGroup>
@@ -508,8 +509,8 @@ function PartnersTable({ rows }) {
       <Table hover responsive className="tm-table">
         <thead>
           <tr>
-            <th>Key</th>
-            <th>Name</th>
+            <th>Klíč</th>
+            <th>Název</th>
           </tr>
         </thead>
         <tbody>
@@ -519,7 +520,7 @@ function PartnersTable({ rows }) {
               <td>{row.name}</td>
             </tr>
           ))}
-          {rows.length === 0 && <EmptyRow colSpan="2" title="No partners found" message="Try changing the directory filters." />}
+          {rows.length === 0 && <EmptyRow colSpan="2" title="Žádní partneři" message="Zkuste upravit filtry adresáře." />}
         </tbody>
       </Table>
     </div>
@@ -533,10 +534,10 @@ function ClientsTable({ rows, partners, onEdit }) {
       <Table hover responsive className="tm-table">
         <thead>
           <tr>
-            <th>Key</th>
-            <th>Name</th>
+            <th>Klíč</th>
+            <th>Název</th>
             <th>Partner</th>
-            <th className="text-end">Actions</th>
+            <th className="text-end">Akce</th>
           </tr>
         </thead>
         <tbody>
@@ -546,13 +547,13 @@ function ClientsTable({ rows, partners, onEdit }) {
               <td>{row.name}</td>
               <td>{partnerNames.get(row.partner_id) || row.partner_id}</td>
               <td className="text-end">
-                <Button size="sm" outline color="secondary" title="Edit client" onClick={() => onEdit(row)}>
+                <Button size="sm" outline color="secondary" title="Upravit klienta" onClick={() => onEdit(row)}>
                   <i className="bi bi-pencil" />
                 </Button>
               </td>
             </tr>
           ))}
-          {rows.length === 0 && <EmptyRow colSpan="4" title="No clients found" message="Try changing the directory filters." />}
+          {rows.length === 0 && <EmptyRow colSpan="4" title="Žádní klienti" message="Zkuste upravit filtry adresáře." />}
         </tbody>
       </Table>
     </div>
@@ -567,12 +568,12 @@ function UsersTable({ rows, partners, currentUser, onEdit, onDelete }) {
         <thead>
           <tr>
             <th>E-mail</th>
-            <th>Name</th>
-            <th>Kind</th>
+            <th>Jméno</th>
+            <th>Druh</th>
             <th>Role</th>
             <th>Partner</th>
-            <th>Active</th>
-            <th className="text-end">Actions</th>
+            <th>Aktivní</th>
+            <th className="text-end">Akce</th>
           </tr>
         </thead>
         <tbody>
@@ -582,20 +583,20 @@ function UsersTable({ rows, partners, currentUser, onEdit, onDelete }) {
               <tr key={row.id}>
                 <td>{row.email}</td>
                 <td>{row.name}</td>
-                <td>{row.kind}</td>
+                <td>{row.kind === 'internal' ? 'Interní' : 'Partner'}</td>
                 <td>{roleLabel(userRole(row))}</td>
                 <td>{row.partner_id ? partnerNames.get(row.partner_id) || row.partner_id : '-'}</td>
                 <td><ActiveBadge active={row.active} /></td>
                 <td className="text-end">
                   <div className="d-inline-flex gap-2">
-                    <Button size="sm" outline color="secondary" title="Edit user" disabled={!canManage} onClick={() => onEdit(row)}>
+                    <Button size="sm" outline color="secondary" title="Upravit uživatele" disabled={!canManage} onClick={() => onEdit(row)}>
                       <i className="bi bi-pencil" />
                     </Button>
                     <Button
                       size="sm"
                       outline
                       color="danger"
-                      title="Deactivate user"
+                      title="Odstranit uživatele"
                       disabled={!canManage || !row.active || row.id === currentUser.id}
                       onClick={() => onDelete(row)}
                     >
@@ -606,7 +607,7 @@ function UsersTable({ rows, partners, currentUser, onEdit, onDelete }) {
               </tr>
             );
           })}
-          {rows.length === 0 && <EmptyRow colSpan="7" title="No users found" message="Try changing the directory filters." />}
+          {rows.length === 0 && <EmptyRow colSpan="7" title="Žádní uživatelé" message="Zkuste upravit filtry adresáře." />}
         </tbody>
       </Table>
     </div>
@@ -651,10 +652,10 @@ function ClientEditModal({ client, users, isOpen, onClose, onSave, submit: runAd
   return (
     <Modal isOpen={isOpen} toggle={onClose}>
       <Form onSubmit={submit}>
-        <ModalHeader toggle={onClose}>Edit client</ModalHeader>
+        <ModalHeader toggle={onClose}>Upravit klienta</ModalHeader>
         <ModalBody>
           <FormGroup>
-            <Label>Name</Label>
+            <Label>Název</Label>
             <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
           </FormGroup>
           <hr />
@@ -680,10 +681,10 @@ function ClientEditModal({ client, users, isOpen, onClose, onSave, submit: runAd
                 </Button>
               </div>
             ))}
-            {assignments.length === 0 && <div className="tm-muted mb-2">No responsible users assigned.</div>}
+            {assignments.length === 0 && <div className="tm-muted mb-2">Nejsou přiřazené žádné odpovědné osoby.</div>}
             <div className="d-flex gap-2">
               <Input type="select" value={responsibleUserId} onChange={(event) => setResponsibleUserId(event.target.value)}>
-                <option value="">Add responsible user</option>
+                <option value="">Přidat odpovědnou osobu</option>
                 {eligibleUsers.map((row) => <option key={row.id} value={row.id}>{row.name} ({row.email})</option>)}
               </Input>
               <Button
@@ -703,8 +704,8 @@ function ClientEditModal({ client, users, isOpen, onClose, onSave, submit: runAd
           </div>
         </ModalBody>
         <ModalFooter>
-          <Button outline color="secondary" type="button" onClick={onClose}>Cancel</Button>
-          <Button color="primary" type="submit" disabled={!form.name.trim()}>Save</Button>
+          <Button outline color="secondary" type="button" onClick={onClose}>Zrušit</Button>
+          <Button color="primary" type="submit" disabled={!form.name.trim()}>Uložit</Button>
         </ModalFooter>
       </Form>
     </Modal>
@@ -741,14 +742,14 @@ function UserEditModal({ userRow, currentUser, isOpen, onClose, onSave, onPasswo
   return (
     <Modal isOpen={isOpen} toggle={onClose}>
       <Form onSubmit={submit}>
-        <ModalHeader toggle={onClose}>Edit user</ModalHeader>
+        <ModalHeader toggle={onClose}>Upravit uživatele</ModalHeader>
         <ModalBody>
           <FormGroup>
             <Label>E-mail</Label>
             <Input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
           </FormGroup>
           <FormGroup>
-            <Label>Name</Label>
+            <Label>Jméno</Label>
             <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
           </FormGroup>
           <FormGroup>
@@ -758,7 +759,7 @@ function UserEditModal({ userRow, currentUser, isOpen, onClose, onSave, onPasswo
             </Input>
           </FormGroup>
           <div className="tm-switch-row">
-            <span>Active</span>
+            <span>Aktivní</span>
             <button
               type="button"
               className={`tm-switch ${form.active ? 'is-on' : ''}`}
@@ -777,8 +778,8 @@ function UserEditModal({ userRow, currentUser, isOpen, onClose, onSave, onPasswo
             <i className="bi bi-envelope-lock me-1" />
             Odeslat reset hesla
           </Button>
-          <Button outline color="secondary" type="button" onClick={onClose}>Cancel</Button>
-          <Button color="primary" type="submit" disabled={!form.email.trim() || !form.name.trim() || !form.role}>Save</Button>
+          <Button outline color="secondary" type="button" onClick={onClose}>Zrušit</Button>
+          <Button color="primary" type="submit" disabled={!form.email.trim() || !form.name.trim() || !form.role}>Uložit</Button>
         </ModalFooter>
       </Form>
     </Modal>
@@ -786,7 +787,7 @@ function UserEditModal({ userRow, currentUser, isOpen, onClose, onSave, onPasswo
 }
 
 function ActiveBadge({ active }) {
-  return <span className={`badge ${active ? 'text-bg-success' : 'text-bg-secondary'}`}>{active ? 'active' : 'inactive'}</span>;
+  return <span className={`badge ${active ? 'text-bg-success' : 'text-bg-secondary'}`}>{active ? 'Aktivní' : 'Neaktivní'}</span>;
 }
 
 function userRole(row) {

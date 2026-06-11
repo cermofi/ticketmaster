@@ -39,21 +39,21 @@ function Settings() {
   return (
     <div className="tm-screen">
       <PageHeader title="Nastavení">
-        Local preferences for this browser.
+        Lokální nastavení pro tento prohlížeč.
       </PageHeader>
       <section className="tm-form-page">
         <FormGroup>
           <Label>Hustota rozhraní</Label>
           <Input type="select" value={settings.density} onChange={(event) => update('density', event.target.value)}>
-            <option value="comfortable">Comfortable</option>
-            <option value="compact">Compact</option>
+            <option value="comfortable">Pohodlná</option>
+            <option value="compact">Kompaktní</option>
           </Input>
         </FormGroup>
         <FormGroup>
           <Label>Kontrast</Label>
           <Input type="select" value={settings.contrast} onChange={(event) => update('contrast', event.target.value)}>
-            <option value="default">Default</option>
-            <option value="high">High contrast</option>
+            <option value="default">Výchozí</option>
+            <option value="high">Vysoký kontrast</option>
           </Input>
         </FormGroup>
         <div className="tm-switch-row">
