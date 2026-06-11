@@ -4,7 +4,7 @@ import os
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, text
@@ -24,7 +24,7 @@ from ticketmaster.schemas.serializers import (
     ticket_to_dict,
     user_to_dict,
 )
-from ticketmaster.services import admin, auth, gitlab, malware, notifications, tickets
+from ticketmaster.services import admin, auth, gitlab, malware, notifications, ticket_exports, tickets
 from ticketmaster.services.audit import audit
 from ticketmaster.services.errors import NotFoundError, PermissionDenied, ValidationError
 
@@ -98,6 +98,17 @@ class TicketCreateBody(BaseModel):
     participant_ids: list[str] = Field(default_factory=list)
 
 
+class TicketOnBehalfCreateBody(BaseModel):
+    partner_id: str
+    owner_id: str
+    type: str
+    priority: str
+    title: str
+    description: str
+    client_id: str | None = None
+    participant_ids: list[str] = Field(default_factory=list)
+
+
 class InternalTicketCreateBody(BaseModel):
     type: str
     priority: str
@@ -138,6 +149,10 @@ class TransitionBody(BaseModel):
 
 class TransferOwnerBody(BaseModel):
     new_owner: str
+
+
+class CustomOwnerBody(BaseModel):
+    custom_owner: str | None = Field(default=None, max_length=255)
 
 
 @router.get("/health")
@@ -507,6 +522,74 @@ def tickets_create_internal(db: DbSession, user: CurrentUser, body: InternalTick
     return ticket_to_dict(db, ticket, viewer=user, include_detail=True)
 
 
+@router.post("/tickets/on-behalf")
+def tickets_create_on_behalf(db: DbSession, user: CurrentUser, body: TicketOnBehalfCreateBody) -> dict:
+    ticket = tickets.create_partner_ticket_on_behalf(
+        db,
+        actor=user,
+        partner_id=body.partner_id,
+        owner_ref=body.owner_id,
+        ticket_type=body.type,
+        priority=body.priority,
+        title=body.title,
+        description=body.description,
+        client_id=body.client_id,
+        participant_ids=body.participant_ids,
+    )
+    db.commit()
+    return ticket_to_dict(db, ticket, viewer=user, include_detail=True)
+
+
+@router.get("/tickets/export")
+def tickets_export(
+    db: DbSession,
+    user: CurrentUser,
+    format: str = "json",
+    search: str | None = None,
+    status: str | None = None,
+    priority: str | None = None,
+    type: str | None = None,
+    resolver_team: str | None = None,
+    partner_id: str | None = None,
+    internal: bool | None = None,
+) -> Response:
+    result = ticket_exports.build_ticket_export(
+        db,
+        actor=user,
+        export_format=format,
+        filters={
+            "search": search,
+            "status": status,
+            "priority": priority,
+            "type": type,
+            "resolver_team": resolver_team,
+            "partner_id": partner_id,
+            "internal": internal,
+        },
+    )
+    audit(
+        db,
+        entity_type="TicketExport",
+        entity_id=user.id,
+        action="tickets.export",
+        actor=user,
+        source="ui",
+        new_value={
+            "format": format.lower().strip(),
+            "ticket_count": result.ticket_count,
+            "filters": result.filters,
+            "viewer_kind": user.kind,
+            "viewer_role": user.internal_role or user.partner_role,
+        },
+    )
+    db.commit()
+    return Response(
+        content=result.content,
+        media_type=result.media_type,
+        headers={"Content-Disposition": f'attachment; filename="{result.filename}"'},
+    )
+
+
 @router.get("/partner-api/partners/{partner_id}/tickets")
 def partner_api_tickets_list(
     db: DbSession,
@@ -576,6 +659,16 @@ def partner_api_tickets_create(db: DbSession, user: CurrentUser, partner_id: str
 def tickets_detail(db: DbSession, user: CurrentUser, ticket_id: str) -> dict:
     ticket = tickets.get_ticket(db, ticket_id)
     tickets.require_view(db, user, ticket)
+    data = ticket_to_dict(db, ticket, viewer=user, include_detail=True)
+    data["available_transitions"] = tickets.available_transitions(db, ticket=ticket, actor=user)
+    return data
+
+
+@router.patch("/tickets/{ticket_id}/custom-owner")
+def tickets_update_custom_owner(db: DbSession, user: CurrentUser, ticket_id: str, body: CustomOwnerBody) -> dict:
+    ticket = tickets.get_ticket(db, ticket_id)
+    tickets.update_custom_owner(db, ticket=ticket, actor=user, custom_owner=body.custom_owner)
+    db.commit()
     data = ticket_to_dict(db, ticket, viewer=user, include_detail=True)
     data["available_transitions"] = tickets.available_transitions(db, ticket=ticket, actor=user)
     return data

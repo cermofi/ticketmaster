@@ -40,9 +40,12 @@ Neaktivni uzivatel se nemuze prihlasit ani provadet aktivni akce.
 | Method | Path | Popis |
 | --- | --- | --- |
 | `GET` | `/api/tickets` | list viditelnych ticketu |
+| `GET` | `/api/tickets/export` | export viditelnych ticketu podle filtru |
 | `POST` | `/api/tickets` | vytvoreni partner ticketu odpovednou osobou |
 | `POST` | `/api/tickets/internal` | vytvoreni interniho ticketu |
+| `POST` | `/api/tickets/on-behalf` | vytvoreni partnerskeho ticketu za partnera |
 | `GET` | `/api/tickets/{ticket_id}` | detail ticketu |
+| `PATCH` | `/api/tickets/{ticket_id}/custom-owner` | uprava custom vlastnika ticketu |
 | `POST` | `/api/tickets/{ticket_id}/comments` | verejny komentar |
 | `POST` | `/api/tickets/{ticket_id}/internal-notes` | interni poznamka |
 | `POST` | `/api/tickets/{ticket_id}/assign` | prirazeni teamu/asignee |
@@ -55,6 +58,67 @@ Neaktivni uzivatel se nemuze prihlasit ani provadet aktivni akce.
 | `POST` | `/api/tickets/{ticket_id}/attachments` | upload prilohy |
 
 Editace a mazani komentaru i internich poznamek jsou v MVP zakazane.
+
+### Export ticketu
+
+```http
+GET /api/tickets/export?format=json
+GET /api/tickets/export?format=xlsx
+GET /api/tickets/export?format=csv
+```
+
+Export podporuje stejne filtry jako seznam ticketu:
+
+- `search`,
+- `status`,
+- `priority`,
+- `type`,
+- `resolver_team`,
+- `partner_id`,
+- `internal`.
+
+Export vraci pouze tickety, ktere aktualni uzivatel vidi. Partner nikdy nedostane interni tickety, interni poznamky ani GitLab odkaz.
+
+Formaty:
+
+- `json` vraci strukturovany JSON,
+- `xlsx` vraci workbook s vice listy,
+- `csv` vraci ZIP archiv s vice CSV soubory.
+
+Export se audituje. Limit poctu ticketu v jednom exportu nastavuje `EXPORT_TICKET_MAX_COUNT`.
+
+### Vytvoreni ticketu za partnera
+
+```http
+POST /api/tickets/on-behalf
+```
+
+```json
+{
+  "partner_id": "partner-id",
+  "owner_id": "responsible-user-id",
+  "type": "Question",
+  "priority": "Normal",
+  "title": "Ticket title",
+  "description": "Ticket description",
+  "client_id": null,
+  "participant_ids": []
+}
+```
+
+Akci smi provest pouze `Admin` nebo `DeliveryManager`. Ticket je bezny partnersky ticket, autor je interni uzivatel a vlastnik je vybrana odpovedna osoba partnera.
+
+### Custom vlastnik ticketu
+
+```http
+PATCH /api/tickets/{ticket_id}/custom-owner
+```
+
+```json
+{"custom_owner":"Textova hodnota"}
+```
+
+Hodnota muze byt `null` nebo prazdny text. Upravit ji smi pouze `Admin` nebo `DeliveryManager`. Partner ji nevidi a neexportuje.
 
 ## Jednoduche partnerske API
 
@@ -102,7 +166,7 @@ System ticket:
 - ma `system: true`,
 - partner ho vidi cely,
 - za partnera ho smi komentovat pouze odpovedna osoba,
-- interně ho vidi Admin, Delivery Manager a resolver role podle `resolver_team`.
+- interne ho vidi Admin, Delivery Manager a resolver role podle `resolver_team`.
 
 ## Admin
 

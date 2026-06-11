@@ -56,3 +56,4 @@ Bez GitLab issue nelze priradit ticket na L3 ani posunout L3 ticket do prace.
 | `LOGIN_RATE_LIMIT_WINDOW_SECONDS` | `300` |
 | `TICKET_PAGE_DEFAULT_LIMIT` | `50` |
 | `TICKET_PAGE_MAX_LIMIT` | `200` |
+| `EXPORT_TICKET_MAX_COUNT` | `2000` |

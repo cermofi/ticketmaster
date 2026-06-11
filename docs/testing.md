@@ -2,7 +2,7 @@
 
 ## Backend testy
 
-Lokálně:
+Lokalne:
 
 ```bash
 cd backend
@@ -53,4 +53,7 @@ curl -fsS http://127.0.0.1:3006/api/ready
 - zakaz editace a mazani komentaru,
 - GitLab guard pro L3,
 - audit a notifikace,
+- export ticketu,
+- custom vlastnika ticketu,
+- vytvoreni partnerskeho ticketu za partnera,
 - ochranu posledniho aktivniho Admina.

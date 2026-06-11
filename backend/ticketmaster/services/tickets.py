@@ -142,6 +142,105 @@ def create_partner_ticket(
     return ticket
 
 
+def create_partner_ticket_on_behalf(
+    db: Session,
+    *,
+    actor: User,
+    partner_id: str,
+    owner_ref: str,
+    ticket_type: str,
+    priority: str,
+    title: str,
+    description: str,
+    client_id: str | None = None,
+    participant_ids: list[str] | None = None,
+    source: str = "ui",
+) -> Ticket:
+    if not actor.active:
+        raise PermissionDenied("Account is inactive")
+    if actor.kind != "internal" or actor.internal_role not in {"Admin", "DeliveryManager"}:
+        raise PermissionDenied("Only Admin or Delivery Manager can create partner tickets on behalf of a partner")
+    validate_ticket_type(ticket_type)
+    validate_priority(priority)
+    partner = resolve_partner(db, partner_id)
+    owner = resolve_user(db, owner_ref)
+    if not owner.active or owner.kind != "partner" or owner.partner_role != "responsible" or owner.partner_id != partner.id:
+        raise ValidationError("Ticket owner must be an active responsible user from the selected partner")
+    actual_priority = "Critical" if ticket_type == "Security Issue" and priority == "Normal" else priority
+    client = None
+    if client_id:
+        client = resolve_client(db, client_id)
+        if client.partner_id != partner.id:
+            raise ValidationError("Client must belong to the selected partner")
+        assignment = db.scalar(select(ClientAssignment).where(ClientAssignment.client_id == client.id, ClientAssignment.user_id == owner.id))
+        if not assignment:
+            raise ValidationError("Ticket owner must be assigned as responsible person for the selected client")
+    ticket = Ticket(
+        id=new_id(),
+        partner_id=partner.id,
+        client_id=client.id if client else None,
+        owner_id=owner.id,
+        created_by_id=actor.id,
+        internal=False,
+        system=False,
+        type=ticket_type,
+        priority=actual_priority,
+        status="New",
+        title=title,
+        description=description,
+    )
+    db.add(ticket)
+    db.flush()
+    _add_participant_if_missing(db, ticket.id, owner.id)
+    for user_id in dict.fromkeys(participant_ids or []):
+        user = db.get(User, user_id)
+        if not user or user.kind != "partner" or user.partner_id != partner.id or not user.active:
+            raise ValidationError("Participants must be active users from the selected partner")
+        _add_participant_if_missing(db, ticket.id, user.id)
+        if user.id != owner.id:
+            queue_email(
+                db,
+                event="participant_added",
+                recipient_email=user.email,
+                subject=f"Added to ticket {ticket.title}",
+                body=f"You were added to ticket {ticket.id}",
+                ticket_id=ticket.id,
+            )
+    audit(
+        db,
+        entity_type="Ticket",
+        entity_id=ticket.id,
+        action="ticket.create_partner_on_behalf",
+        actor=actor,
+        source=source,
+        new_value={
+            "status": ticket.status,
+            "partner_id": partner.id,
+            "owner_id": owner.id,
+            "client_id": client.id if client else None,
+            "created_by_id": actor.id,
+            "created_on_behalf": True,
+        },
+    )
+    _notify_delivery_managers(
+        db,
+        ticket,
+        "New TicketMaster ticket created for partner",
+        f"New partner ticket created on behalf of {partner.name}: {ticket.title}",
+        exclude_user_id=actor.id,
+    )
+    queue_email(
+        db,
+        event="ticket_created_on_behalf",
+        recipient_email=owner.email,
+        subject=f"Ticket created: {ticket.title}",
+        body=f"Ticket {ticket.id} was created for your partner by {actor.name}.",
+        ticket_id=ticket.id,
+    )
+    ticket_search.enqueue_ticket_index(ticket.id)
+    return ticket
+
+
 def create_internal_ticket(
     db: Session,
     *,
@@ -345,6 +444,36 @@ def _visible_ticket_stmt(
     if internal is not None:
         stmt = stmt.where(Ticket.internal.is_(internal))
     return stmt
+
+
+def update_custom_owner(db: Session, *, ticket: Ticket, actor: User, custom_owner: str | None, source: str = "ui") -> Ticket:
+    if not actor.active:
+        raise PermissionDenied("Account is inactive")
+    if actor.kind != "internal" or actor.internal_role not in {"Admin", "DeliveryManager"}:
+        raise PermissionDenied("Only Admin or Delivery Manager can update custom ticket owner")
+    require_view(db, actor, ticket)
+    cleaned = custom_owner.strip() if custom_owner else None
+    if cleaned == "":
+        cleaned = None
+    if cleaned and len(cleaned) > 255:
+        raise ValidationError("Custom owner must be 255 characters or less")
+    old = {"custom_owner": ticket.custom_owner}
+    ticket.custom_owner = cleaned
+    ticket.updated_at = datetime.now(timezone.utc)
+    db.flush()
+    if old["custom_owner"] != cleaned:
+        audit(
+            db,
+            entity_type="Ticket",
+            entity_id=ticket.id,
+            action="ticket.custom_owner_update",
+            actor=actor,
+            source=source,
+            old_value=old,
+            new_value={"custom_owner": cleaned},
+        )
+        ticket_search.enqueue_ticket_index(ticket.id)
+    return ticket
 
 
 def add_comment(db: Session, *, ticket: Ticket, actor: User, body: str, source: str = "ui") -> Comment:
@@ -619,9 +748,11 @@ def _ensure_l3_issue(db: Session, ticket: Ticket, actor: User | None, source: st
     gitlab.create_main_issue(db, ticket=ticket, actor=actor, source="system" if source == "ui" else source)
 
 
-def _notify_delivery_managers(db: Session, ticket: Ticket, subject: str, body: str) -> None:
+def _notify_delivery_managers(db: Session, ticket: Ticket, subject: str, body: str, *, exclude_user_id: str | None = None) -> None:
     managers = db.scalars(select(User).where(User.kind == "internal", User.internal_role == "DeliveryManager", User.active.is_(True))).all()
     for manager in managers:
+        if exclude_user_id and manager.id == exclude_user_id:
+            continue
         queue_email(db, event="new_ticket", recipient_email=manager.email, subject=subject, body=body, ticket_id=ticket.id)
 
 

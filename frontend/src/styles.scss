@@ -506,6 +506,10 @@ body[data-tm-density="compact"] .tm-login-form {
   resize: vertical;
 }
 
+.tm-ticket-form-grid .tm-multi-select {
+  min-height: 6rem;
+}
+
 .tm-ticket-form-grid-extra {
   grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(0, 1fr));
 }

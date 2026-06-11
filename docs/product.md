@@ -27,6 +27,8 @@ Partner a klient v MVP nemaji active/inactive stav a nemazou se.
 
 Partnersky ticket zaklada odpovedna osoba partnera. Muze byt navazan na klienta. Pokud je navazan na klienta, vlastnik ticketu musi byt odpovednou osobou pro dany klient.
 
+`Admin` nebo `DeliveryManager` muze vytvorit partnersky ticket za partnera. Autor ticketu je interni uzivatel, vlastnik ticketu je vybrana odpovedna osoba partnera.
+
 ## Interni ticket
 
 Interni ticket zaklada interni uzivatel. Nema partnera ani klienta. Viditelnost resolver roli je dana resolver teamem.
@@ -40,3 +42,11 @@ System ticket vidi partner, ke kteremu patri. Komentovat ho za partnera smi pouz
 ## Uzavrene tickety
 
 Closed ticket je finalni. Nelze ho komentovat, doplnovat interni poznamkou, prirazovat ani znovu otevrit.
+
+## Custom vlastnik
+
+Custom vlastnik ticketu je volitelny interni text. Vidi ho interni uzivatele a meni ho pouze `Admin` nebo `DeliveryManager`. Nema vliv na vlastnika ticketu, assignee, participanty, watchery ani workflow.
+
+## Export ticketu
+
+Export ticketu je dostupny ze seznamu ticketu ve formatu JSON, XLSX nebo CSV ZIP. Export respektuje aktualni filtry a prava uzivatele. Partner neexportuje interni poznamky, GitLab odkaz ani custom vlastnika.

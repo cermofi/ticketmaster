@@ -78,5 +78,8 @@ Use the CSS variables in `frontend/src/styles.scss` before adding new colors or 
 - Internal-only pages must show an access error when opened by a partner user; backend remains the security boundary.
 - Ticket detail keeps description and communication in the main area; metadata and actions stay in the right panel.
 - Partner users see only the current ticket status; internal users see only valid status transitions.
+- Ticket dashboard exposes ticket export as a simple format menu. It must reuse the current filters.
+- Admin and Delivery Manager can open the partner-on-behalf ticket form from the ticket dashboard or `/tickets/new?mode=partner`.
+- Custom ticket owner is shown only to internal users in ticket metadata and edited from the ticket detail actions panel.
 - Responsible people are managed from the client edit dialog in Admin.
 - Partner roles are displayed as `Odpovědná osoba` and `Technická osoba`.

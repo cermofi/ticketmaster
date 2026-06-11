@@ -60,6 +60,7 @@ class Settings:
     login_rate_limit_window_seconds: int = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
     ticket_page_default_limit: int = int(os.getenv("TICKET_PAGE_DEFAULT_LIMIT", "50"))
     ticket_page_max_limit: int = int(os.getenv("TICKET_PAGE_MAX_LIMIT", "200"))
+    export_ticket_max_count: int = int(os.getenv("EXPORT_TICKET_MAX_COUNT", "2000"))
 
 
 settings = Settings()

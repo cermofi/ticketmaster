@@ -44,6 +44,7 @@ Tento dokument popisuje funkcni pravidla aplikace TicketMaster.
 | Technicka osoba | Partner uzivatel s roli `technical`. Muze komentovat partnersky ticket, pokud je participantem. Ticket nezaklada. |
 | Vlastnik ticketu | Hlavni odpovedna osoba za partnersky ticket. U interniho ticketu je vlastnik zakladajici interni uzivatel. System ticket vlastnika nema. |
 | Autor ticketu | Uzivatel, ktery ticket zalozil. System ticket autora nema. |
+| Custom vlastnik ticketu | Volitelne textove pole pro interni koordinaci. Nenahrazuje vlastnika, assignee, participanty ani watchery. |
 | Participant | Partner uzivatel zapojeny do komunikace partnerskeho nebo system ticketu daneho partnera. |
 | Watcher | Uzivatel, kteremu aplikace posila informace o udalostech ticketu. |
 | Resolver team | Interni resitelske oddeleni `L1`, `L2` nebo `L3`. |
@@ -297,6 +298,7 @@ Zakladni informace spolecne pro ticket jsou:
 - stav,
 - resolver team,
 - assignee,
+- custom vlastnik ticketu,
 - nazev,
 - popis,
 - datum vytvoreni,
@@ -564,6 +566,36 @@ Pokud je system ticket zalozen rovnou pro `L3`, aplikace musi zalozit hlavni Git
 
 Pokud se GitLab issue nepodari zalozit, system ticket nesmi byt vytvoren ani prirazen do `L3`.
 
+### 8.4 Vytvoreni partnerskeho ticketu za partnera
+
+`Admin` nebo `DeliveryManager` muze vytvorit bezny partnersky ticket za partnera.
+
+Pri vytvoreni musi vybrat:
+
+- partnera,
+- vlastnika ticketu z odpovednych osob daneho partnera,
+- typ,
+- prioritu,
+- nazev,
+- popis,
+- volitelne klienta,
+- volitelne participanty stejneho partnera.
+
+Po vytvoreni plati:
+
+- ticket neni interni,
+- ticket neni systemovy,
+- patri k vybranemu partnerovi,
+- autorem je interni uzivatel, ktery ticket vytvoril,
+- vlastnikem je vybrana odpovedna osoba partnera,
+- vlastnik je automaticky participant a watcher,
+- klient musi patrit ke stejnemu partnerovi,
+- pokud je vybran klient, vlastnik musi byt odpovednou osobou klienta,
+- participanti musi byt aktivni uzivatele stejneho partnera,
+- vytvoreni se audituje jako vytvoreni ticketu za partnera.
+
+Partner uzivatel tuto interni akci nepouziva.
+
 ## 9. Viditelnost, seznamy a hledani ticketu
 
 ### 9.1 Admin a Delivery Manager
@@ -618,6 +650,55 @@ Textove hledani pracuje s:
 - nazvem ticketu,
 - popisem ticketu,
 - verejnymi komentari.
+
+### 9.5 Export ticketu
+
+Export ticketu je export pouze ticketove evidence a dat primo navazanych na exportovane tickety.
+
+Export neni obecny export aplikace a nesmi samostatne exportovat:
+
+- uzivatele,
+- partnery,
+- klienty,
+- konfiguraci,
+- ciselniky.
+
+Export vzdy vychazi ze stejne viditelnosti jako seznam ticketu.
+
+Pokud jsou v seznamu nastavene filtry, exportuje se pouze filtrovany seznam.
+
+Podporovane formaty:
+
+- JSON,
+- XLSX,
+- CSV jako ZIP archiv s vice CSV soubory.
+
+Export muze obsahovat:
+
+- tickety,
+- verejne komentare,
+- participanty,
+- watchery,
+- metadata priloh,
+- GitLab status,
+- interni poznamky pouze pro interni uzivatele,
+- audit ticketu pouze pro `Admin` a `DeliveryManager`,
+- GitLab odkaz pouze pro interni uzivatele,
+- custom vlastnika pouze pro interni uzivatele.
+
+Partner exportuje pouze tickety sveho partnera.
+
+Partner nikdy neexportuje:
+
+- tickety jineho partnera,
+- interni tickety,
+- interni poznamky,
+- GitLab odkaz,
+- custom vlastnika ticketu.
+
+Export se audituje. Audit exportu obsahuje pouze metadata exportu, zejmena uzivatele, format, pocet ticketu a pouzite filtry.
+
+Export ma limit maximalniho poctu ticketu v jednom exportu.
 
 ## 10. Workflow ticketu
 
@@ -818,6 +899,32 @@ Novy vlastnik musi splnovat vsechny podminky:
 Pokud ma ticket klienta, novy vlastnik musi byt odpovednou osobou tohoto klienta.
 
 Novy vlastnik se automaticky stava participantem a watcherem.
+
+### 12.5 Custom vlastnik ticketu
+
+Custom vlastnik ticketu je volitelne textove pole pro interni koordinaci.
+
+Custom vlastnik:
+
+- je pouze volny text,
+- nema vazbu na uzivatele,
+- nenahrazuje systemoveho vlastnika,
+- nenahrazuje assignee,
+- nemeni resolver team,
+- nemeni participanty,
+- nemeni watchery,
+- nemeni workflow ani viditelnost ticketu.
+
+Custom vlastnika smi nastavit, upravit nebo vymazat pouze:
+
+- `Admin`,
+- `DeliveryManager`.
+
+Custom vlastnika vidi pouze interni uzivatele, kteri ticket vidi.
+
+Partner uzivatel custom vlastnika nevidi a neexportuje.
+
+Zmena custom vlastnika se audituje vcetne puvodni a nove hodnoty.
 
 ## 13. Participanti a watcheri
 
@@ -1179,6 +1286,9 @@ Auditni udalosti vznikaji zejmena pri:
 - assignu,
 - unassignu,
 - prevodu vlastnictvi,
+- uprave custom vlastnika ticketu,
+- vytvoreni ticketu za partnera,
+- exportu ticketu,
 - sprave participantu,
 - vytvoreni komentare,
 - vytvoreni interni poznamky,
@@ -1215,6 +1325,8 @@ Novy partnersky ticket oznamuje aplikace:
 - aktivnim Delivery Managerum,
 - uzivateli, ktery ticket zalozil.
 
+Partnersky ticket vytvoreny internim uzivatelem za partnera oznamuje aplikace vlastnikovi ticketu a pridanym participantum podle pravidel participace. Interni uzivatel, ktery ticket vytvoril, nemusi dostat notifikaci sam sobe.
+
 Novy system ticket vytvoreny pres API oznamuje aplikace aktivnim Delivery Managerum.
 
 Komentar od partnera oznamuje aplikace:
@@ -1245,7 +1357,10 @@ MVP nemusi resit opakovane odesilani neuspesnych notifikaci.
 - Odstraneni uzivatele znamena deaktivaci uctu.
 - Neaktivni uzivatel se neprihlasi a neprovadi aktivni cinnosti.
 - Partnersky ticket zaklada pouze odpovedna osoba partnera.
+- `Admin` nebo `DeliveryManager` muze zalozit partnersky ticket za partnera, ale vlastnikem musi byt odpovedna osoba partnera.
 - Technicka osoba partnera ticket nezaklada.
+- Custom vlastnik ticketu je pouze interni textova poznamka a nemeni vlastnictvi, assignee, participanty ani watchery.
+- Export ticketu respektuje stejnou viditelnost jako seznam ticketu a partnerovi nikdy nedava interni poznamky ani GitLab odkaz.
 - Partner vidi partnerske tickety sveho partnera a system tickety prirazene svemu partnerovi.
 - Partner nevidi interni tickety ani tickety jinych partneru.
 - Partner komentuje partnersky ticket, kde je participantem.
@@ -1300,6 +1415,7 @@ MVP nemusi resit opakovane odesilani neuspesnych notifikaci.
 | Akce | Admin | Delivery Manager | L1/L2/L3 | Odpovedna osoba | Technicka osoba | System/API |
 | --- | --- | --- | --- | --- | --- | --- |
 | Vytvorit partnersky ticket | Ne | Ne | Ne | Ano | Ne | Ne |
+| Vytvorit partnersky ticket za partnera | Ano | Ano | Ne | Ne | Ne | Ne |
 | Vytvorit interni ticket | Ano | Ano | Ano | Ne | Ne | Ne |
 | Vytvorit system ticket | Ne | Ne | Ne | Ne | Ne | System |
 | Videt vsechny tickety | Ano | Ano | Ne | Ne | Ne | Ne |
@@ -1307,6 +1423,7 @@ MVP nemusi resit opakovane odesilani neuspesnych notifikaci.
 | Videt interni tickety | Ano | Ano | Omezene | Ne | Ne | Ne |
 | Videt system tickety | Ano | Ano | Omezene | Omezene | Omezene | Omezene |
 | Vylistovat tickety partnera pres API | Ne | Ne | Ne | Ne | Ne | Omezene |
+| Exportovat viditelne tickety | Omezene | Omezene | Omezene | Omezene | Omezene | Ne |
 
 ### 20.4 Workflow a assignment
 
@@ -1328,6 +1445,8 @@ MVP nemusi resit opakovane odesilani neuspesnych notifikaci.
 | Prevest vlastnictvi partnerskeho ticketu | Ano | Ano | Ne | Omezene | Ne | Ne |
 | Prevest vlastnictvi interniho ticketu | Ne | Ne | Ne | Ne | Ne | Ne |
 | Prevest vlastnictvi system ticketu | Ne | Ne | Ne | Ne | Ne | Ne |
+| Upravit custom vlastnika ticketu | Ano | Ano | Ne | Ne | Ne | Ne |
+| Videt custom vlastnika ticketu | Omezene | Omezene | Omezene | Ne | Ne | Ne |
 | Spravovat participanty partnerskeho ticketu | Ano | Ano | Ne | Omezene | Ne | Ne |
 | Spravovat osoby system ticketu | Ne | Ne | Ne | Omezene | Ne | Ne |
 | Odebrat vlastnika z participantu | Ne | Ne | Ne | Ne | Ne | Ne |

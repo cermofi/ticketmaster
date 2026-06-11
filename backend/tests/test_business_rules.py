@@ -1,12 +1,21 @@
 from __future__ import annotations
 
+import json
+import zipfile
+from io import BytesIO
+
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from ticketmaster.api.deps import current_user
+from ticketmaster.api.main import app
+from ticketmaster.core.database import get_db
 from ticketmaster.core.security import hash_password
-from ticketmaster.models import Client, GitLabLink, Notification, Partner, Ticket, User
+from ticketmaster.models import AuditLog, Client, GitLabLink, Notification, Partner, Ticket, TicketParticipant, TicketWatcher, User
+from ticketmaster.models.entities import new_id
 from ticketmaster.services import auth
-from ticketmaster.services import admin, tickets
+from ticketmaster.services import admin, ticket_exports, tickets
 from ticketmaster.services.errors import ConflictError, NotFoundError, PermissionDenied, ValidationError
 
 
@@ -441,3 +450,240 @@ def test_partner_comment_notifications_follow_assignee_rule(db, fixture_data):
     tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", assignee_ref=fixture_data["l1"].email, source="test")
     tickets.add_comment(db, ticket=ticket, actor=fixture_data["responsible_a"], body="Assignee should get this", source="test")
     assert db.scalar(select(Notification).where(Notification.event == "partner_comment", Notification.recipient_email == fixture_data["l1"].email))
+
+
+def test_delivery_manager_can_update_custom_owner_without_changing_ticket_relationships(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+    tickets.add_participant(db, ticket=ticket, actor=fixture_data["responsible_a"], user_id=fixture_data["technical_a"].id, source="test")
+    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", assignee_ref=fixture_data["l1"].email, source="test")
+    owner_id = ticket.owner_id
+    assignee_id = ticket.assignee_id
+    participants = {row.user_id for row in db.scalars(select(TicketParticipant).where(TicketParticipant.ticket_id == ticket.id)).all()}
+    watchers = {row.user_id for row in db.scalars(select(TicketWatcher).where(TicketWatcher.ticket_id == ticket.id)).all()}
+
+    tickets.update_custom_owner(db, ticket=ticket, actor=fixture_data["dm"], custom_owner=" Contract owner ", source="test")
+    assert ticket.custom_owner == "Contract owner"
+    tickets.update_custom_owner(db, ticket=ticket, actor=fixture_data["dm"], custom_owner="", source="test")
+
+    assert ticket.custom_owner is None
+    assert ticket.owner_id == owner_id
+    assert ticket.assignee_id == assignee_id
+    assert {row.user_id for row in db.scalars(select(TicketParticipant).where(TicketParticipant.ticket_id == ticket.id)).all()} == participants
+    assert {row.user_id for row in db.scalars(select(TicketWatcher).where(TicketWatcher.ticket_id == ticket.id)).all()} == watchers
+    assert db.scalar(select(AuditLog).where(AuditLog.action == "ticket.custom_owner_update", AuditLog.entity_id == ticket.id))
+
+
+def test_custom_owner_update_is_internal_admin_or_delivery_manager_only(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+
+    with pytest.raises(PermissionDenied):
+        tickets.update_custom_owner(db, ticket=ticket, actor=fixture_data["responsible_a"], custom_owner="Partner value", source="test")
+
+    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", source="test")
+    with pytest.raises(PermissionDenied):
+        tickets.update_custom_owner(db, ticket=ticket, actor=fixture_data["l1"], custom_owner="L1 value", source="test")
+
+    with pytest.raises(ValidationError):
+        tickets.update_custom_owner(db, ticket=ticket, actor=fixture_data["admin"], custom_owner="x" * 256, source="test")
+
+
+def test_delivery_manager_can_create_partner_ticket_on_behalf(db, fixture_data):
+    ticket = tickets.create_partner_ticket_on_behalf(
+        db,
+        actor=fixture_data["dm"],
+        partner_id=fixture_data["partner_a"].id,
+        owner_ref=fixture_data["responsible_a"].id,
+        ticket_type="Question",
+        priority="Normal",
+        title="Created by DM",
+        description="Partner ticket created internally",
+        client_id=fixture_data["client_a"].id,
+        participant_ids=[fixture_data["technical_a"].id],
+        source="test",
+    )
+
+    assert ticket.internal is False
+    assert ticket.system is False
+    assert ticket.partner_id == fixture_data["partner_a"].id
+    assert ticket.owner_id == fixture_data["responsible_a"].id
+    assert ticket.created_by_id == fixture_data["dm"].id
+    assert tickets.can_view_ticket(db, fixture_data["responsible_a"], ticket)
+    assert tickets.can_view_ticket(db, fixture_data["technical_a"], ticket)
+    assert not tickets.can_view_ticket(db, fixture_data["responsible_b"], ticket)
+    assert db.scalar(select(TicketParticipant).where(TicketParticipant.ticket_id == ticket.id, TicketParticipant.user_id == fixture_data["responsible_a"].id))
+    assert db.scalar(select(TicketWatcher).where(TicketWatcher.ticket_id == ticket.id, TicketWatcher.user_id == fixture_data["responsible_a"].id))
+    assert db.scalar(select(AuditLog).where(AuditLog.action == "ticket.create_partner_on_behalf", AuditLog.entity_id == ticket.id))
+    assert db.scalar(select(Notification).where(Notification.event == "ticket_created_on_behalf", Notification.recipient_email == fixture_data["responsible_a"].email))
+
+
+def test_create_partner_ticket_on_behalf_rejects_invalid_roles_and_relationships(db, fixture_data):
+    with pytest.raises(PermissionDenied):
+        tickets.create_partner_ticket_on_behalf(
+            db,
+            actor=fixture_data["l1"],
+            partner_id=fixture_data["partner_a"].id,
+            owner_ref=fixture_data["responsible_a"].id,
+            ticket_type="Question",
+            priority="Normal",
+            title="Not allowed",
+            description="Nope",
+            source="test",
+        )
+
+    with pytest.raises(PermissionDenied):
+        tickets.create_partner_ticket_on_behalf(
+            db,
+            actor=fixture_data["responsible_a"],
+            partner_id=fixture_data["partner_a"].id,
+            owner_ref=fixture_data["responsible_a"].id,
+            ticket_type="Question",
+            priority="Normal",
+            title="Not allowed",
+            description="Nope",
+            source="test",
+        )
+
+    with pytest.raises(ValidationError):
+        tickets.create_partner_ticket_on_behalf(
+            db,
+            actor=fixture_data["dm"],
+            partner_id=fixture_data["partner_a"].id,
+            owner_ref=fixture_data["technical_a"].id,
+            ticket_type="Question",
+            priority="Normal",
+            title="Technical owner",
+            description="Technical user cannot own the ticket",
+            source="test",
+        )
+
+    client_b = admin.create_client(db, partner_key_or_id=fixture_data["partner_b"].id, name="Client B", source="test")
+    with pytest.raises(ValidationError):
+        tickets.create_partner_ticket_on_behalf(
+            db,
+            actor=fixture_data["dm"],
+            partner_id=fixture_data["partner_a"].id,
+            owner_ref=fixture_data["responsible_a"].id,
+            ticket_type="Question",
+            priority="Normal",
+            title="Wrong client",
+            description="Client belongs elsewhere",
+            client_id=client_b.id,
+            source="test",
+        )
+
+
+def test_ticket_export_hides_internal_data_from_partner_and_keeps_partner_isolation(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+    ticket.custom_owner = "Internal coordinator"
+    tickets.add_internal_note(db, ticket=ticket, actor=fixture_data["dm"], body="Internal only", source="test")
+    db.add(
+        GitLabLink(
+            id=new_id(),
+            ticket_id=ticket.id,
+            is_main=True,
+            project_id="project",
+            issue_iid="42",
+            web_url="https://gitlab.example.test/issues/42",
+            status="Open",
+        )
+    )
+    tickets.create_partner_ticket(
+        db,
+        actor=fixture_data["responsible_b"],
+        ticket_type="Question",
+        priority="Normal",
+        title="Other partner",
+        description="Must not leak",
+        source="test",
+    )
+    db.commit()
+
+    result = ticket_exports.build_ticket_export(db, actor=fixture_data["responsible_a"], export_format="json", filters={})
+    payload = json.loads(result.content)
+
+    assert [row["id"] for row in payload["tickets"]] == [ticket.id]
+    assert "custom_owner" not in payload["tickets"][0]
+    assert "internal_notes" not in payload
+    assert "audit" not in payload
+    assert "gitlab_link" not in payload["tickets"][0]
+    assert "web_url" not in payload["gitlab"][0]
+    assert payload["gitlab"][0]["gitlab_status"] == "Open"
+
+
+def test_internal_ticket_export_formats_include_allowed_internal_data(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+    ticket.custom_owner = "Internal coordinator"
+    tickets.add_internal_note(db, ticket=ticket, actor=fixture_data["dm"], body="Internal note", source="test")
+    db.add(
+        GitLabLink(
+            id=new_id(),
+            ticket_id=ticket.id,
+            is_main=True,
+            project_id="project",
+            issue_iid="7",
+            web_url="https://gitlab.example.test/issues/7",
+            status="Open",
+        )
+    )
+    db.commit()
+
+    json_result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="json", filters={})
+    payload = json.loads(json_result.content)
+    assert payload["tickets"][0]["custom_owner"] == "Internal coordinator"
+    assert payload["tickets"][0]["gitlab_link"] == "https://gitlab.example.test/issues/7"
+    assert payload["internal_notes"][0]["body"] == "Internal note"
+    assert payload["audit"]
+
+    csv_result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="csv", filters={})
+    with zipfile.ZipFile(BytesIO(csv_result.content)) as archive:
+        assert {"tickets.csv", "internal_notes.csv", "audit.csv", "gitlab.csv"}.issubset(set(archive.namelist()))
+        assert "Internal coordinator" in archive.read("tickets.csv").decode()
+
+    xlsx_result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="xlsx", filters={})
+    with zipfile.ZipFile(BytesIO(xlsx_result.content)) as archive:
+        assert "xl/workbook.xml" in archive.namelist()
+        assert "xl/worksheets/sheet1.xml" in archive.namelist()
+
+
+def test_ticket_export_respects_filters_and_rejects_unknown_format(db, fixture_data):
+    create_partner_ticket(db, fixture_data)
+    tickets.create_partner_ticket(
+        db,
+        actor=fixture_data["responsible_a"],
+        ticket_type="Question",
+        priority="High",
+        title="High priority",
+        description="Filtered ticket",
+        client_id=fixture_data["client_a"].id,
+        source="test",
+    )
+    db.commit()
+
+    result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="json", filters={"priority": "High"})
+    payload = json.loads(result.content)
+    assert result.ticket_count == 1
+    assert payload["tickets"][0]["priority"] == "High"
+
+    with pytest.raises(ValidationError):
+        ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="pdf", filters={})
+
+
+def test_export_endpoint_audits_export_metadata(db, fixture_data):
+    create_partner_ticket(db, fixture_data)
+
+    def override_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[current_user] = lambda: fixture_data["dm"]
+    try:
+        response = TestClient(app).get("/api/tickets/export?format=json")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    row = db.scalar(select(AuditLog).where(AuditLog.action == "tickets.export"))
+    assert row
+    assert row.new_value["format"] == "json"
+    assert row.new_value["ticket_count"] == 1

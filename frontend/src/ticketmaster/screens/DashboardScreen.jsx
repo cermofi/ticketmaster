@@ -2,6 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import {
   Button,
+  ButtonDropdown,
+  DropdownItem,
+  DropdownMenu,
+  DropdownToggle,
   Form,
   FormGroup,
   Input,
@@ -27,6 +31,8 @@ function Dashboard({ user }) {
   const [filters, setFilters] = useState({ search: '', status: '', priority: '', type: '', resolver_team: '', internal: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportLoading, setExportLoading] = useState('');
 
   const load = async () => {
     setError('');
@@ -46,18 +52,48 @@ function Dashboard({ user }) {
     }
   };
 
+  const exportTickets = async (format) => {
+    setError('');
+    setExportLoading(format);
+    try {
+      const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ''));
+      const response = await api.get('/tickets/export', { params: { ...params, format }, responseType: 'blob' });
+      downloadResponse(response, `ticketmaster_export.${format === 'csv' ? 'zip' : format}`);
+    } catch (err) {
+      setError(await exportError(err));
+    } finally {
+      setExportLoading('');
+    }
+  };
+
   useEffect(() => {
     load();
   }, []);
+
+  const canCreateOnBehalf = user.kind === 'internal' && ['Admin', 'DeliveryManager'].includes(user.internal_role);
 
   return (
     <div className="tm-screen">
       <PageHeader
         title="Tickets"
         actions={(
-          <Button color="primary" outline onClick={load} title="Refresh tickets">
-            <i className="bi bi-arrow-clockwise" />
-          </Button>
+          <>
+            {canCreateOnBehalf && (
+              <Button color="primary" tag={Link} to="/tickets/new?mode=partner">
+                <i className="bi bi-building-add" />
+                Přidat ticket za partnera
+              </Button>
+            )}
+            <ExportMenu
+              isOpen={exportOpen}
+              setOpen={setExportOpen}
+              loading={exportLoading}
+              onExport={exportTickets}
+            />
+            <Button color="primary" outline onClick={load} title="Refresh tickets">
+              <i className="bi bi-arrow-clockwise" />
+            </Button>
+          </>
         )}
       />
       <ErrorBanner error={error} />
@@ -69,6 +105,56 @@ function Dashboard({ user }) {
       )}
     </div>
   );
+}
+
+function ExportMenu({ isOpen, setOpen, loading, onExport }) {
+  const formats = [
+    { value: 'json', label: 'JSON' },
+    { value: 'xlsx', label: 'XLSX' },
+    { value: 'csv', label: 'CSV ZIP' }
+  ];
+  return (
+    <ButtonDropdown isOpen={isOpen} toggle={() => setOpen(!isOpen)}>
+      <DropdownToggle color="secondary" outline caret disabled={Boolean(loading)}>
+        <i className="bi bi-download" />
+        {loading ? 'Exportuji...' : 'Export ticketů'}
+      </DropdownToggle>
+      <DropdownMenu end>
+        {formats.map((format) => (
+          <DropdownItem key={format.value} onClick={() => onExport(format.value)} disabled={Boolean(loading)}>
+            {format.label}
+          </DropdownItem>
+        ))}
+      </DropdownMenu>
+    </ButtonDropdown>
+  );
+}
+
+function downloadResponse(response, fallbackName) {
+  const disposition = response.headers?.['content-disposition'] || '';
+  const match = disposition.match(/filename="?([^"]+)"?/i);
+  const filename = match?.[1] || fallbackName;
+  const blob = new Blob([response.data], { type: response.headers?.['content-type'] || 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function exportError(err) {
+  if (err.response?.data instanceof Blob) {
+    const text = await err.response.data.text();
+    try {
+      return JSON.parse(text).detail || text;
+    } catch {
+      return text || 'Export se nepodařilo vytvořit.';
+    }
+  }
+  return apiError(err);
 }
 
 function TicketFilters({ filters, setFilters, meta, user, onApply }) {
@@ -235,6 +321,93 @@ export function InternalTicketForm({ meta, onCreated }) {
         <Button color="primary" type="submit">
           <i className="bi bi-plus-circle me-1" />
           Vytvořit interní ticket
+        </Button>
+      </div>
+    </Form>
+  );
+}
+
+export function PartnerOnBehalfTicketForm({ meta, partners, clients, users, onCreated }) {
+  const [form, setForm] = useState({
+    partner_id: '',
+    owner_id: '',
+    type: 'Question',
+    priority: 'Normal',
+    title: '',
+    description: '',
+    client_id: '',
+    participant_ids: []
+  });
+  const [error, setError] = useState('');
+  const update = (key, value) => setForm({ ...form, [key]: value });
+  const updatePartner = (partnerId) => setForm({
+    ...form,
+    partner_id: partnerId,
+    owner_id: '',
+    client_id: '',
+    participant_ids: []
+  });
+  const partnerRows = asArray(partners);
+  const clientRows = asArray(clients).filter((client) => client.partner_id === form.partner_id);
+  const partnerUsers = asArray(users).filter((row) => row.kind === 'partner' && row.active && row.partner_id === form.partner_id);
+  const owners = partnerUsers.filter((row) => row.partner_role === 'responsible');
+  const participantOptions = partnerUsers.filter((row) => row.id !== form.owner_id);
+  const submit = async (event) => {
+    event.preventDefault();
+    setError('');
+    try {
+      await api.post('/tickets/on-behalf', {
+        ...form,
+        client_id: form.client_id || null,
+        participant_ids: form.participant_ids
+      });
+      setForm({ ...form, title: '', description: '', participant_ids: [] });
+      onCreated();
+    } catch (err) {
+      setError(apiError(err));
+    }
+  };
+  return (
+    <Form className="tm-ticket-create-form" onSubmit={submit}>
+      <div className="tm-form-title">
+        <h2>Přidat ticket za partnera</h2>
+        <p>Vytvoří běžný partnerský ticket s vybranou odpovědnou osobou jako vlastníkem.</p>
+      </div>
+      <ErrorBanner error={error} />
+      <div className="tm-ticket-form-grid">
+        <FormGroup>
+          <Label>Partner</Label>
+          <Input type="select" value={form.partner_id} onChange={(event) => updatePartner(event.target.value)} required>
+            <option value="">Vyberte partnera</option>
+            {partnerRows.map((partner) => <option key={partner.id} value={partner.id}>{partner.name}</option>)}
+          </Input>
+        </FormGroup>
+        <FormGroup>
+          <Label>Vlastník ticketu</Label>
+          <Input type="select" value={form.owner_id} onChange={(event) => update('owner_id', event.target.value)} required disabled={!form.partner_id}>
+            <option value="">Vyberte odpovědnou osobu</option>
+            {owners.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+          </Input>
+        </FormGroup>
+        <FormGroup>
+          <Label>Participanti</Label>
+          <Input
+            className="tm-multi-select"
+            type="select"
+            multiple
+            value={form.participant_ids}
+            disabled={!form.partner_id}
+            onChange={(event) => update('participant_ids', Array.from(event.target.selectedOptions).map((option) => option.value))}
+          >
+            {participantOptions.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+          </Input>
+        </FormGroup>
+      </div>
+      <TicketFormFields form={form} update={update} meta={meta} clients={clientRows} />
+      <div className="tm-form-actions">
+        <Button color="primary" type="submit" disabled={!form.partner_id || !form.owner_id || !form.title.trim() || !form.description.trim()}>
+          <i className="bi bi-plus-circle me-1" />
+          Vytvořit ticket za partnera
         </Button>
       </div>
     </Form>

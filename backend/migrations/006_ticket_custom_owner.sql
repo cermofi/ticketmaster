@@ -1,0 +1,1 @@
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS custom_owner VARCHAR(255);
