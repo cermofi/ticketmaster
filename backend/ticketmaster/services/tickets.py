@@ -22,9 +22,9 @@ from ticketmaster.models.constants import PRIORITIES, RESOLVER_TEAMS, STATUSES, 
 from ticketmaster.models.entities import new_id
 from ticketmaster.services import gitlab, search as ticket_search
 from ticketmaster.services.audit import audit
-from ticketmaster.services.admin import resolve_client, resolve_user
+from ticketmaster.services.admin import resolve_client, resolve_partner, resolve_user
 from ticketmaster.services.errors import ConflictError, NotFoundError, PermissionDenied, ValidationError
-from ticketmaster.services.notifications import queue_email, queue_ticket_watchers
+from ticketmaster.services.notifications import queue_email
 
 
 def validate_ticket_type(ticket_type: str) -> None:
@@ -45,17 +45,11 @@ def get_ticket(db: Session, ticket_id: str) -> Ticket:
 
 
 def can_view_ticket(db: Session, user: User, ticket: Ticket) -> bool:
-    if ticket.owner_id == user.id:
-        return True
     if user.kind == "internal":
         if user.internal_role in {"Admin", "DeliveryManager"}:
             return True
         if user.internal_role in RESOLVER_TEAMS:
-            if ticket.resolver_team == user.internal_role:
-                return True
-            if ticket.assignee_id:
-                assignee = db.get(User, ticket.assignee_id)
-                return bool(assignee and assignee.internal_role == user.internal_role)
+            return ticket.resolver_team == user.internal_role
         return False
     if ticket.internal:
         return False
@@ -76,6 +70,8 @@ def can_comment(db: Session, user: User, ticket: Ticket) -> bool:
         return can_view_ticket(db, user, ticket)
     if not can_view_ticket(db, user, ticket):
         return False
+    if ticket.system:
+        return user.partner_role == "responsible"
     return db.scalar(select(TicketParticipant).where(TicketParticipant.ticket_id == ticket.id, TicketParticipant.user_id == user.id)) is not None
 
 
@@ -124,6 +120,7 @@ def create_partner_ticket(
         owner_id=actor.id,
         created_by_id=actor.id,
         internal=False,
+        system=False,
         type=ticket_type,
         priority=actual_priority,
         status="New",
@@ -140,6 +137,7 @@ def create_partner_ticket(
         _add_participant_if_missing(db, ticket.id, user.id)
     audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.create", actor=actor, source=source, new_value={"status": ticket.status, "partner_id": actor.partner_id})
     _notify_delivery_managers(db, ticket, "New TicketMaster ticket", f"New ticket created: {ticket.title}")
+    queue_email(db, event="ticket_created", recipient_email=actor.email, subject=f"Ticket created: {ticket.title}", body=f"Ticket {ticket.id} was created.", ticket_id=ticket.id)
     ticket_search.enqueue_ticket_index(ticket.id)
     return ticket
 
@@ -168,6 +166,7 @@ def create_internal_ticket(
         owner_id=actor.id,
         created_by_id=actor.id,
         internal=True,
+        system=False,
         type=ticket_type,
         priority=priority,
         status="Assigned" if team else "New",
@@ -181,6 +180,59 @@ def create_internal_ticket(
     audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.create_internal", actor=actor, source=source, new_value={"team": team, "status": ticket.status})
     if team == "L3":
         _ensure_l3_issue(db, ticket, actor, source)
+    ticket_search.enqueue_ticket_index(ticket.id)
+    return ticket
+
+
+def create_system_ticket(
+    db: Session,
+    *,
+    partner_id: str,
+    ticket_type: str,
+    priority: str,
+    title: str,
+    description: str,
+    team: str | None = None,
+    assignee_ref: str | None = None,
+    actor: User | None = None,
+    source: str = "api",
+) -> Ticket:
+    partner = resolve_partner(db, partner_id)
+    validate_ticket_type(ticket_type)
+    validate_priority(priority)
+    if team and team not in RESOLVER_TEAMS:
+        raise ValidationError("Invalid resolver team")
+    assignee = None
+    if assignee_ref:
+        if not team:
+            raise ValidationError("Assignee requires resolver team")
+        assignee = resolve_user(db, assignee_ref)
+        if not assignee.active or assignee.kind != "internal" or assignee.internal_role != team:
+            raise ValidationError("Assignee must be an active internal user from the resolver team")
+    ticket = Ticket(
+        id=new_id(),
+        partner_id=partner.id,
+        client_id=None,
+        owner_id=None,
+        created_by_id=None,
+        internal=False,
+        system=True,
+        type=ticket_type,
+        priority=priority,
+        status="Assigned" if team else "New",
+        resolver_team=team,
+        assignee_id=assignee.id if assignee else None,
+        title=title,
+        description=description,
+    )
+    db.add(ticket)
+    db.flush()
+    if assignee:
+        _add_watcher_if_missing(db, ticket.id, assignee.id)
+    if team == "L3":
+        _ensure_l3_issue(db, ticket, actor, source)
+    audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.create_system", actor=actor, source=source, new_value={"partner_id": partner.id, "team": team, "status": ticket.status})
+    _notify_delivery_managers(db, ticket, "New system TicketMaster ticket", f"New system ticket created: {ticket.title}")
     ticket_search.enqueue_ticket_index(ticket.id)
     return ticket
 
@@ -257,7 +309,7 @@ def _visible_ticket_stmt(
     if actor.kind == "partner":
         stmt = stmt.where(Ticket.internal.is_(False), Ticket.partner_id == actor.partner_id)
     elif actor.internal_role not in {"Admin", "DeliveryManager"}:
-        stmt = stmt.where(or_(Ticket.resolver_team == actor.internal_role, Ticket.assignee_id == actor.id, Ticket.owner_id == actor.id))
+        stmt = stmt.where(Ticket.resolver_team == actor.internal_role)
     if search:
         search_ids = ticket_search.find_ticket_ids(search)
         if search_ids is not None:
@@ -302,7 +354,13 @@ def add_comment(db: Session, *, ticket: Ticket, actor: User, body: str, source: 
     db.add(comment)
     db.flush()
     audit(db, entity_type="Comment", entity_id=comment.id, action="comment.create", actor=actor, source=source, new_value={"ticket_id": ticket.id})
-    queue_ticket_watchers(db, ticket_id=ticket.id, event="comment_created", subject=f"New comment on {ticket.title}", body=body)
+    if ticket.status == "Need more info":
+        old = {"status": ticket.status}
+        ticket.status = "Assigned" if ticket.resolver_team else "New"
+        ticket.updated_at = datetime.now(timezone.utc)
+        audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.status_auto_return", actor=actor, source=source, old_value=old, new_value={"status": ticket.status})
+    if actor.kind == "partner":
+        _notify_partner_comment_recipients(db, ticket, body)
     ticket_search.enqueue_ticket_index(ticket.id)
     return comment
 
@@ -369,7 +427,7 @@ def assign_ticket(
     assignee = None
     if assignee_ref:
         assignee = resolve_user(db, assignee_ref)
-        if assignee.kind != "internal" or assignee.internal_role != team:
+        if not assignee.active or assignee.kind != "internal" or assignee.internal_role != team:
             raise ValidationError("Assignee must be an active internal user from the resolver team")
         _add_watcher_if_missing(db, ticket.id, assignee.id)
     old = {"status": ticket.status, "resolver_team": ticket.resolver_team, "assignee_id": ticket.assignee_id}
@@ -378,10 +436,17 @@ def assign_ticket(
     ticket.assignee_id = assignee.id if assignee else None
     ticket.updated_at = datetime.now(timezone.utc)
     db.flush()
-    audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.assign", actor=actor, source=source, old_value=old, new_value={"status": ticket.status, "resolver_team": team, "assignee_id": ticket.assignee_id})
-    queue_ticket_watchers(db, ticket_id=ticket.id, event="ticket_assigned", subject=f"Ticket assigned: {ticket.title}", body=f"Ticket {ticket.id} was assigned to {team}.")
     if team == "L3":
-        _ensure_l3_issue(db, ticket, actor, source)
+        try:
+            _ensure_l3_issue(db, ticket, actor, source)
+        except Exception:
+            ticket.status = old["status"]
+            ticket.resolver_team = old["resolver_team"]
+            ticket.assignee_id = old["assignee_id"]
+            ticket.updated_at = datetime.now(timezone.utc)
+            db.flush()
+            raise
+    audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.assign", actor=actor, source=source, old_value=old, new_value={"status": ticket.status, "resolver_team": team, "assignee_id": ticket.assignee_id})
     ticket_search.enqueue_ticket_index(ticket.id)
     return ticket
 
@@ -401,7 +466,6 @@ def unassign_ticket(db: Session, *, ticket: Ticket, actor: User, source: str = "
     ticket.updated_at = datetime.now(timezone.utc)
     db.flush()
     audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.unassign", actor=actor, source=source, old_value=old, new_value={"status": ticket.status, "resolver_team": ticket.resolver_team, "assignee_id": None})
-    queue_ticket_watchers(db, ticket_id=ticket.id, event="ticket_unassigned", subject=f"Ticket returned to queue: {ticket.title}", body=f"Ticket {ticket.id} was returned to the {ticket.resolver_team} queue.")
     ticket_search.enqueue_ticket_index(ticket.id)
     return ticket
 
@@ -413,7 +477,6 @@ def transition_ticket(db: Session, *, ticket: Ticket, actor: User, new_status: s
     ticket.updated_at = datetime.now(timezone.utc)
     db.flush()
     audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.status_change", actor=actor, source=source, old_value=old, new_value={"status": new_status})
-    queue_ticket_watchers(db, ticket_id=ticket.id, event="status_changed", subject=f"Ticket status changed: {ticket.title}", body=f"Ticket {ticket.id} is now {new_status}.")
     ticket_search.enqueue_ticket_index(ticket.id)
     return ticket
 
@@ -444,24 +507,20 @@ def available_transitions(db: Session, *, ticket: Ticket, actor: User) -> list[s
 
 
 def close_ticket(db: Session, *, ticket: Ticket, actor: User | None, source: str = "ui") -> Ticket:
-    if actor and actor.kind == "partner":
-        raise PermissionDenied("Partner users cannot close tickets")
+    if actor is None or actor.kind != "internal" or actor.internal_role not in {"Admin", "DeliveryManager"}:
+        raise PermissionDenied("Only Admin or Delivery Manager can close tickets")
     if ticket.status != "Closed":
-        if ticket.status not in {"Resolved", "Rejected", "Duplicate", "Cancelled"}:
-            if actor and actor.internal_role not in {"Admin", "DeliveryManager"}:
-                raise ValidationError("Ticket can be closed from Resolved, Rejected, Duplicate or Cancelled")
         old = {"status": ticket.status}
         ticket.status = "Closed"
         ticket.updated_at = datetime.now(timezone.utc)
         audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.close", actor=actor, source=source, old_value=old, new_value={"status": "Closed"})
-        queue_ticket_watchers(db, ticket_id=ticket.id, event="ticket_closed", subject=f"Ticket closed: {ticket.title}", body=f"Ticket {ticket.id} was closed.")
         ticket_search.enqueue_ticket_index(ticket.id)
     return ticket
 
 
 def transfer_owner(db: Session, *, ticket: Ticket, actor: User | None, new_owner_ref: str, source: str = "ui") -> Ticket:
-    if ticket.internal:
-        raise ValidationError("Internal tickets do not have partner owners")
+    if ticket.internal or ticket.system:
+        raise ValidationError("Only partner tickets have partner owners")
     if actor:
         allowed = actor.kind == "internal" and actor.internal_role in {"Admin", "DeliveryManager"}
         allowed = allowed or (actor.kind == "partner" and ticket.owner_id == actor.id)
@@ -500,50 +559,11 @@ def visible_attachments(db: Session, *, ticket: Ticket, actor: User) -> list[Att
 
 
 def edit_comment(db: Session, *, comment: Comment, actor: User, body: str, source: str = "ui") -> Comment:
-    _require_comment_moderation(actor)
-    ticket = get_ticket(db, comment.ticket_id)
-    require_view(db, actor, ticket)
-    db.add(
-        CommentRevision(
-            id=new_id(),
-            comment_id=comment.id,
-            body=comment.body,
-            action="edit",
-            changed_by_user_id=actor.id,
-        )
-    )
-    old = {"body": comment.body}
-    comment.body = body
-    comment.edited_at = datetime.now(timezone.utc)
-    comment.changed_by_user_id = actor.id
-    db.flush()
-    audit(db, entity_type="Comment", entity_id=comment.id, action="comment.edit", actor=actor, source=source, old_value=old, new_value={"body": body})
-    ticket_search.enqueue_ticket_index(ticket.id)
-    return comment
+    raise PermissionDenied("Comment and internal note editing is disabled")
 
 
 def soft_delete_comment(db: Session, *, comment: Comment, actor: User, source: str = "ui") -> Comment:
-    _require_comment_moderation(actor)
-    ticket = get_ticket(db, comment.ticket_id)
-    require_view(db, actor, ticket)
-    if comment.deleted_at is not None:
-        return comment
-    db.add(
-        CommentRevision(
-            id=new_id(),
-            comment_id=comment.id,
-            body=comment.body,
-            action="delete",
-            changed_by_user_id=actor.id,
-        )
-    )
-    old = {"deleted_at": None}
-    comment.deleted_at = datetime.now(timezone.utc)
-    comment.changed_by_user_id = actor.id
-    db.flush()
-    audit(db, entity_type="Comment", entity_id=comment.id, action="comment.soft_delete", actor=actor, source=source, old_value=old, new_value={"deleted_at": comment.deleted_at.isoformat()})
-    ticket_search.enqueue_ticket_index(ticket.id)
-    return comment
+    raise PermissionDenied("Comment and internal note deletion is disabled")
 
 
 def comment_revisions(db: Session, *, comment: Comment, actor: User) -> list[CommentRevision]:
@@ -562,6 +582,10 @@ def _require_comment_moderation(actor: User) -> None:
 def _require_participant_management(ticket: Ticket, actor: User) -> None:
     if ticket.internal:
         raise ValidationError("Internal tickets do not have partner participants")
+    if ticket.system:
+        if actor.kind == "partner" and actor.partner_id == ticket.partner_id and actor.partner_role == "responsible":
+            return
+        raise PermissionDenied("Only responsible partner users can manage system ticket participants")
     if actor.kind == "partner":
         if ticket.owner_id != actor.id:
             raise PermissionDenied("Only the ticket owner can manage partner participants")
@@ -586,20 +610,28 @@ def _require_transition_permission(actor: User, ticket: Ticket, new_status: str)
         raise PermissionDenied("Only internal users can transition ticket status in MVP")
     if actor.internal_role in {"Admin", "DeliveryManager"}:
         return
-    if ticket.resolver_team == actor.internal_role and new_status in {"In progress", "Resolved", "Need more info", "Assigned", "Closed"}:
+    if ticket.resolver_team == actor.internal_role and new_status in {"In progress", "Resolved", "Need more info", "Assigned"}:
         return
     raise PermissionDenied("Status transition is not allowed for this role")
 
 
 def _ensure_l3_issue(db: Session, ticket: Ticket, actor: User | None, source: str) -> None:
-    try:
-        gitlab.create_main_issue(db, ticket=ticket, actor=actor, source="system" if source == "ui" else source)
-    except ValidationError:
-        # Assignment must remain in place; the guard blocks In progress until the issue exists.
-        pass
+    gitlab.create_main_issue(db, ticket=ticket, actor=actor, source="system" if source == "ui" else source)
 
 
 def _notify_delivery_managers(db: Session, ticket: Ticket, subject: str, body: str) -> None:
     managers = db.scalars(select(User).where(User.kind == "internal", User.internal_role == "DeliveryManager", User.active.is_(True))).all()
     for manager in managers:
         queue_email(db, event="new_ticket", recipient_email=manager.email, subject=subject, body=body, ticket_id=ticket.id)
+
+
+def _notify_partner_comment_recipients(db: Session, ticket: Ticket, body: str) -> None:
+    subject = f"New partner comment: {ticket.title}"
+    if ticket.assignee_id:
+        assignee = db.get(User, ticket.assignee_id)
+        if assignee and assignee.active:
+            queue_email(db, event="partner_comment", recipient_email=assignee.email, subject=subject, body=body, ticket_id=ticket.id)
+        return
+    managers = db.scalars(select(User).where(User.kind == "internal", User.internal_role == "DeliveryManager", User.active.is_(True))).all()
+    for manager in managers:
+        queue_email(db, event="partner_comment", recipient_email=manager.email, subject=subject, body=body, ticket_id=ticket.id)

@@ -142,7 +142,11 @@ function TicketTable({ tickets, user }) {
           {tickets.map((ticket) => (
             <tr key={ticket.id}>
               <td><Link to={`/tickets/${ticket.id}`}>{ticket.id.slice(0, 8)}</Link></td>
-              <td className="tm-row-title">{ticket.internal && <span className="badge text-bg-dark me-2">Internal</span>}{ticket.title}</td>
+              <td className="tm-row-title">
+                {ticket.system && <span className="badge text-bg-info me-2">System</span>}
+                {ticket.internal && <span className="badge text-bg-dark me-2">Internal</span>}
+                {ticket.title}
+              </td>
               <td><StatusPill value={ticket.status} /></td>
               <td><StatusPill value={ticket.priority} priority={ticket.priority} /></td>
               <td>{ticket.type}</td>

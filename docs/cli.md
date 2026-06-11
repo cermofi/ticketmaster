@@ -1,33 +1,16 @@
 # CLI
 
-Backend image instaluje command line entrypoint:
+Backend image obsahuje prikaz:
 
 ```bash
 ticketmaster-cli
 ```
 
-CLI je urcene pro migrace, seed, administraci, GitLab operace, notifikace a search reindex. V Docker stacku se spousti typicky pres API container.
+V Dockeru se spousti pres API container:
 
 ```bash
-cd /home/ticketmaster
 docker compose exec -T api ticketmaster-cli <command>
 ```
-
-## Health
-
-```bash
-ticketmaster-cli health
-```
-
-Overi DB spojeni a vrati JSON status.
-
-## Konfigurace
-
-```bash
-ticketmaster-cli config check
-```
-
-Vraci zakladni runtime konfiguraci, SMTP nastaveni, GitLab konfiguraci a upload dir.
 
 ## Databaze
 
@@ -36,17 +19,23 @@ ticketmaster-cli db migrate
 ticketmaster-cli db seed-dev
 ```
 
-`db migrate` aplikuje SQL migrace. `db seed-dev` vytvori vyvojova data.
+## Prvni Admin
+
+```bash
+ticketmaster-cli user create-internal \
+  --email admin@example.com \
+  --name "Admin" \
+  --role Admin
+```
 
 ## Uzivatele
 
 ```bash
-ticketmaster-cli user create-internal --email admin@example.test --name "Admin User" --role Admin
-ticketmaster-cli user deactivate --email old@example.test
 ticketmaster-cli user list
+ticketmaster-cli user deactivate --email old@example.com
 ```
 
-Role pro internal user:
+Interni role:
 
 - `Admin`
 - `DeliveryManager`
@@ -54,16 +43,11 @@ Role pro internal user:
 - `L2`
 - `L3`
 
-## Partneri
+## Partneri a klienti
 
 ```bash
 ticketmaster-cli partner create --name "Acme Partner"
 ticketmaster-cli partner list
-```
-
-## Klienti
-
-```bash
 ticketmaster-cli client create --partner acme-partner --name "Acme Bank"
 ticketmaster-cli client list --partner acme-partner
 ticketmaster-cli client assign-responsible --client acme-partner-acme-bank --user responsible@acme.example
@@ -79,16 +63,10 @@ ticketmaster-cli partner-user invite \
   --role responsible
 ```
 
-Role:
+Partner role:
 
 - `responsible`
 - `technical`
-
-Deaktivace:
-
-```bash
-ticketmaster-cli partner-user deactivate --email responsible@acme.example
-```
 
 ## Tickety
 
@@ -99,7 +77,7 @@ ticketmaster-cli ticket transfer-owner --id <ticket-id> --new-owner new-owner@ex
 ticketmaster-cli ticket close --id <ticket-id>
 ```
 
-Internal ticket:
+Interni ticket:
 
 ```bash
 ticketmaster-cli ticket create-internal \
@@ -118,28 +96,18 @@ ticketmaster-cli gitlab create-issue --ticket <ticket-id>
 ticketmaster-cli gitlab sync-status --ticket <ticket-id>
 ```
 
-## E-mail a notifikace
+## E-mail
 
 ```bash
 ticketmaster-cli email test --to user@example.com
-ticketmaster-cli notifications retry-failed
 ```
-
-## Search
-
-```bash
-ticketmaster-cli search reindex-tickets
-```
-
-Reindexuje vsechny tickety do Elasticsearch indexu.
 
 ## CLI actor
 
-CLI operace pouzivaji systemoveho uzivatele:
+CLI zapisove operace pouzivaji systemoveho uzivatele:
 
 ```text
 cli-system@ticketmaster.local
 ```
 
 Pokud neexistuje, CLI ho vytvori jako internal `Admin`.
-

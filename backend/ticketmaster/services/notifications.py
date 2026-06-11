@@ -4,11 +4,10 @@ import smtplib
 from datetime import datetime, timezone
 from email.message import EmailMessage
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ticketmaster.core.config import settings
-from ticketmaster.models import Notification, TicketWatcher, User
+from ticketmaster.models import Notification
 from ticketmaster.models.entities import new_id
 
 
@@ -31,21 +30,7 @@ def queue_email(
         status="pending",
     )
     db.add(row)
-    try:
-        from ticketmaster.services.jobs import enqueue_job
-
-        enqueue_job("notifications.retry_failed")
-    except Exception:
-        pass
     return row
-
-
-def queue_ticket_watchers(db: Session, *, ticket_id: str, event: str, subject: str, body: str) -> None:
-    rows = db.execute(
-        select(User.email).join(TicketWatcher, TicketWatcher.user_id == User.id).where(TicketWatcher.ticket_id == ticket_id, User.active.is_(True))
-    ).all()
-    for (email,) in rows:
-        queue_email(db, event=event, recipient_email=email, subject=subject, body=body, ticket_id=ticket_id)
 
 
 def send_notification(notification: Notification) -> None:

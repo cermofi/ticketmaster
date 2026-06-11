@@ -17,7 +17,7 @@ GITLAB_STATUSES = {"Open", "To Do", "In Progress", "Done", "Closed"}
 
 WORKFLOW_TRANSITIONS = {
     "New": {"Need more info", "Assigned", "Rejected", "Duplicate", "Cancelled"},
-    "Need more info": {"Assigned", "Rejected", "Cancelled"},
+    "Need more info": {"New", "Assigned", "Rejected", "Cancelled"},
     "Assigned": {"In progress", "Need more info", "Cancelled"},
     "In progress": {"Resolved", "Need more info", "Assigned"},
     "Resolved": {"Closed"},

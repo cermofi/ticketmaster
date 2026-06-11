@@ -75,7 +75,7 @@ Use the CSS variables in `frontend/src/styles.scss` before adding new colors or 
 ## Existing Product Rules
 
 - Navigation contains Tickets, Vytvořit ticket, Admin, Audit and Nastavení.
-- Partner users do not see internal-only administration and audit links.
+- Internal-only pages must show an access error when opened by a partner user; backend remains the security boundary.
 - Ticket detail keeps description and communication in the main area; metadata and actions stay in the right panel.
 - Partner users see only the current ticket status; internal users see only valid status transitions.
 - Responsible people are managed from the client edit dialog in Admin.

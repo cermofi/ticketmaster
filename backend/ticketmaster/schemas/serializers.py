@@ -50,6 +50,8 @@ def ticket_to_dict(db: Session, ticket: Ticket, *, viewer: User | None = None, i
     data = {
         "id": ticket.id,
         "internal": ticket.internal,
+        "system": ticket.system,
+        "kind": "system" if ticket.system else ("internal" if ticket.internal else "partner"),
         "partner_id": ticket.partner_id,
         "partner_name": partner.name if partner else None,
         "client_id": ticket.client_id,

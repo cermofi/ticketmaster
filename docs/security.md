@@ -1,38 +1,24 @@
 # Security
 
-TicketMaster obsahuje nekolik vrstev ochrany: autentizaci, RBAC, audit, rate-limit, malware scan, security headers a izolaci sluzeb v Docker siti.
+TicketMaster je MVP aplikace, ale backend stale vynucuje zakladni bezpecnostni pravidla.
 
 ## Autentizace
 
-Partner login pouziva e-mail a heslo. Interni login je v MVP reseny dev SSO endpointem pro provisionovane interni uzivatele.
+- Partner uzivatel se prihlasuje e-mailem a heslem.
+- Interni uzivatel v MVP pouziva dev SSO endpoint pro provisionovane ucty.
+- Chranene endpointy vyzaduji Bearer token.
+- Neaktivni uzivatel se nemuze prihlasit ani provadet aktivni akce.
 
-Token se posila jako:
+## Hesla a tokeny
 
-```http
-Authorization: Bearer <token>
-```
+- Heslo pri aktivaci/resetu musi mit alespon 8 znaku.
+- Pozvanka a reset hesla pouzivaji nahodny token.
+- Deaktivace uzivatele maze invitation token.
+- Posledni aktivni Admin je chraneny proti deaktivaci a zmene role.
 
-Produkce by mela nahradit dev SSO realnym SSO providerem.
+## Rate limit
 
-## Hesla a invitation tokeny
-
-Partner uzivatel muze byt pozvan a aktivuje ucet pres invitation token. Password reset vygeneruje novy token a queueuje notifikaci.
-
-Pravidla:
-
-- heslo pri aktivaci musi mit minimalne 8 znaku,
-- deaktivace uzivatele maze invitation token,
-- nelze deaktivovat posledniho aktivniho Admina.
-
-## Login rate-limit
-
-Login rate-limit je vazany na IP a e-mail:
-
-```text
-ticketmaster:login-rate:<ip>:<email>
-```
-
-Pokud Redis neni dostupny, API pouziva in-memory fallback. Po uspesnem loginu se stav smaze.
+Login rate limit je v pameti API procesu a je vazany na IP + e-mail. Po restartu API se vynuluje.
 
 Konfigurace:
 
@@ -41,77 +27,49 @@ Konfigurace:
 
 ## RBAC
 
-Frontend skryva nepovolene akce, ale API vynucuje opravneni v service vrstve. Rozhodujici logika je v `ticketmaster/services/tickets.py` a `ticketmaster/services/admin.py`.
+Frontend skryva nepovolene akce, ale rozhodujici ochrana je v backend service vrstve:
 
-Kriticke pravidlo: nikdy nespolehat jen na UI. Kazdy zapis musi projit backendovou kontrolou.
+- `services/tickets.py`,
+- `services/admin.py`.
 
-## Audit log
+Kazdy zapis musi projit backendovou kontrolou.
 
-Audit log uklada:
+## Izolace dat
 
-- typ entity,
-- ID entity,
-- akci,
-- stare hodnoty,
-- nove hodnoty,
-- actor user ID,
-- source (`ui`, `cli`, `system`),
-- cas zmeny.
+- Partner vidi jen tickety sveho partnera a nevidi interni tickety.
+- Partner nevidi interni poznamky.
+- Partner vidi GitLab status, ale ne GitLab URL.
+- Resolver role vidi jen tickety sveho resolver teamu.
+- System ticket vidi partner, ke kteremu patri, a interni role podle resolver teamu.
 
-Loginy a login failures se take audituji vcetne IP, `X-Forwarded-For` a user-agent.
+## Uploady
 
-## Security headers
+Upload je povoleny jen uzivateli, ktery muze k ticketu komentovat.
 
-API middleware nastavuje:
-
-- `X-Request-ID`,
-- `X-Content-Type-Options: nosniff`,
-- `X-Frame-Options: DENY`,
-- `Referrer-Policy: strict-origin-when-cross-origin`.
-
-Frontend nginx nastavuje:
-
-- `X-Content-Type-Options`,
-- `X-Frame-Options`,
-- `Referrer-Policy`,
-- `Permissions-Policy`.
-
-## Upload security
-
-Uploady jsou omezeny:
+Limity:
 
 - max 25 MB,
-- povolene pripony `.png`, `.jpg`, `.jpeg`, `.pdf`, `.txt`, `.log`, `.zip`,
-- ClamAV scan pred ulozenim,
-- download vyzaduje view opravneni k ticketu.
+- pripony `.png`, `.jpg`, `.jpeg`, `.pdf`, `.txt`, `.log`, `.zip`,
+- download vzdy kontroluje opravneni k ticketu.
 
 Soubor se uklada pod generovanym attachment ID, ne primo pod puvodnim nazvem.
 
-## CORS a trusted hosts
+## Security headers
 
-Produkce musi nastavit konkretni hodnoty:
+API a nginx nastavují zakladni headers:
 
-```env
-CORS_ORIGINS=https://ticketmaster.example.com
-TRUSTED_HOSTS=ticketmaster.example.com,localhost,127.0.0.1
-```
-
-Vychozi `*` je vhodne jen pro development.
+- `X-Content-Type-Options: nosniff`,
+- `X-Frame-Options: DENY`,
+- `Referrer-Policy: strict-origin-when-cross-origin`,
+- `Permissions-Policy` na frontendu.
 
 ## Secrets
 
-Tyto hodnoty musi byt v produkci zmenene:
+V produkci zmenit:
 
 - `APP_SECRET`,
 - `POSTGRES_PASSWORD`,
-- `SMTP_PASSWORD`,
-- `GITLAB_TOKEN`,
-- `GRAFANA_ADMIN_PASSWORD`,
-- `SENTRY_DSN`, pokud se pouziva.
+- `SMTP_PASSWORD`, pokud se pouziva,
+- `GITLAB_TOKEN`, pokud se pouziva realny GitLab.
 
-`.env` nepatri do verejneho repozitare.
-
-## Sentry
-
-Sentry SDK je aktivni pouze pri nastavenem `SENTRY_DSN`. Do Sentry neodesilat citliva data, tokeny ani hesla. Pri rozsireni telemetry pridavat scrub pravidla pro request bodies.
-
+Soubor `.env` nepatri do repozitare.

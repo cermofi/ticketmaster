@@ -32,6 +32,16 @@ def require_admin(actor: User | None) -> None:
         raise PermissionDenied("Admin role is required")
 
 
+def _require_internal_user_management(actor: User | None, *, target: User | None = None, next_role: str | None = None) -> None:
+    if target and target.kind == "internal" and target.internal_role == "Admin":
+        require_admin(actor)
+        return
+    if next_role == "Admin":
+        require_admin(actor)
+        return
+    require_admin_or_dm(actor)
+
+
 def _clean_required(value: str, field: str) -> str:
     cleaned = value.strip()
     if not cleaned:
@@ -92,6 +102,8 @@ def create_internal_user(
 ) -> User:
     if role not in INTERNAL_ROLES:
         raise ValidationError(f"Unsupported internal role: {role}")
+    if actor is not None:
+        _require_internal_user_management(actor, next_role=role)
     email = _clean_email(email)
     name = _clean_required(name, "Name")
     existing = db.scalar(select(User).where(User.email == email))
@@ -123,7 +135,7 @@ def deactivate_user_by_id(db: Session, *, user_id: str, actor: User | None = Non
     if actor and actor.id == user.id:
         raise ValidationError("Cannot deactivate your own user")
     if user.kind == "internal":
-        require_admin(actor)
+        _require_internal_user_management(actor, target=user)
     _guard_last_active_admin(db, user, next_active=False)
     old = {"active": user.active}
     user.active = False
@@ -148,7 +160,7 @@ def update_user(
     if not user:
         raise NotFoundError("User not found")
     if user.kind == "internal":
-        require_admin(actor)
+        _require_internal_user_management(actor, target=user, next_role=role)
     old = {
         "email": user.email,
         "name": user.name,
@@ -321,7 +333,7 @@ def send_password_reset(db: Session, *, user_id: str, actor: User | None = None,
     if not user:
         raise NotFoundError("User not found")
     if user.kind == "internal":
-        require_admin(actor)
+        _require_internal_user_management(actor, target=user)
     if not user.active:
         raise ValidationError("Password reset can be sent only to active users")
     token = secrets.token_urlsafe(32)

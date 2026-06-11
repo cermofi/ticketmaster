@@ -1,313 +1,125 @@
 # API Reference
 
-Backend API bezi jako FastAPI aplikace. V Docker stacku je dostupne pres frontend proxy na `/api`.
+Backend API bezi jako FastAPI aplikace a pres frontend proxy je dostupne na `/api`.
 
-## Obecna pravidla
+## Autentizace
 
-### Base URL
-
-```text
-/api
-```
-
-### Autentizace
-
-Chranene endpointy vyzaduji bearer token:
+Chranene endpointy vyzaduji:
 
 ```http
 Authorization: Bearer <token>
 ```
 
-Token vraci login endpointy. Frontend ho uklada do `localStorage`.
-
-### Error format
-
-Business chyby vraci JSON:
+Chyby vraci JSON:
 
 ```json
 {"detail":"Human readable error message"}
 ```
 
-Typicke status kody:
-
-| Status | Vyznam |
-| --- | --- |
-| `400` | validacni chyba nebo konflikt workflow |
-| `401` | chybejici/neplatna autentizace |
-| `403` | nedostatecne opravneni |
-| `404` | entita neexistuje |
-| `409` | konflikt business pravidel |
-| `429` | prilis mnoho login pokusu |
-| `500` | neocekavana chyba |
-
-## Public/system endpointy
+## System endpointy
 
 | Method | Path | Popis |
 | --- | --- | --- |
-| `GET` | `/api/health` | jednoducha liveness odpoved |
-| `GET` | `/api/ready` | readiness vcetne DB checku |
-| `GET` | `/api/meta` | ticket typy, priority, statusy a resolver tymy |
-| `GET` | `/metrics` | Prometheus metriky |
+| `GET` | `/api/health` | liveness |
+| `GET` | `/api/ready` | readiness vcetne DB |
+| `GET` | `/api/meta` | typy, priority, statusy, resolver teamy |
 
 ## Auth
 
-### Partner login
+| Method | Path | Popis |
+| --- | --- | --- |
+| `POST` | `/api/auth/login` | partner login e-mailem a heslem |
+| `POST` | `/api/auth/dev-sso` | dev SSO pro interni uzivatele |
+| `POST` | `/api/auth/activate` | aktivace/reset hesla tokenem |
+| `GET` | `/api/auth/me` | aktualni uzivatel |
 
-```http
-POST /api/auth/login
-```
-
-Request:
-
-```json
-{
-  "email": "responsible@acme.example",
-  "password": "ChangeMe123!"
-}
-```
-
-Response:
-
-```json
-{
-  "token": "...",
-  "user": {
-    "id": "...",
-    "email": "responsible@acme.example",
-    "kind": "partner",
-    "partner_role": "responsible"
-  }
-}
-```
-
-### Internal dev SSO
-
-```http
-POST /api/auth/dev-sso
-```
-
-Request:
-
-```json
-{"email":"admin@example.test"}
-```
-
-### Aktivace pozvanky
-
-```http
-POST /api/auth/activate
-```
-
-Request:
-
-```json
-{
-  "token": "invitation-token",
-  "password": "new-password"
-}
-```
-
-### Aktualni uzivatel
-
-```http
-GET /api/auth/me
-```
+Neaktivni uzivatel se nemuze prihlasit ani provadet aktivni akce.
 
 ## Tickets
 
-### List ticketu
+| Method | Path | Popis |
+| --- | --- | --- |
+| `GET` | `/api/tickets` | list viditelnych ticketu |
+| `POST` | `/api/tickets` | vytvoreni partner ticketu odpovednou osobou |
+| `POST` | `/api/tickets/internal` | vytvoreni interniho ticketu |
+| `GET` | `/api/tickets/{ticket_id}` | detail ticketu |
+| `POST` | `/api/tickets/{ticket_id}/comments` | verejny komentar |
+| `POST` | `/api/tickets/{ticket_id}/internal-notes` | interni poznamka |
+| `POST` | `/api/tickets/{ticket_id}/assign` | prirazeni teamu/asignee |
+| `POST` | `/api/tickets/{ticket_id}/unassign` | vraceni do fronty stejneho teamu |
+| `POST` | `/api/tickets/{ticket_id}/transition` | zmena statusu |
+| `POST` | `/api/tickets/{ticket_id}/close` | uzavreni Admin/Delivery Manager |
+| `POST` | `/api/tickets/{ticket_id}/participants` | pridani partner osoby |
+| `DELETE` | `/api/tickets/{ticket_id}/participants/{user_id}` | odebrani partner osoby |
+| `GET` | `/api/tickets/{ticket_id}/attachments` | prilohy |
+| `POST` | `/api/tickets/{ticket_id}/attachments` | upload prilohy |
+
+Editace a mazani komentaru i internich poznamek jsou v MVP zakazane.
+
+## Jednoduche partnerske API
+
+Prvni verze API podporuje pouze list ticketu partnera a vytvoreni system ticketu pro partnera. API nevytvari partner ticket.
+
+Aktualni technicke rozhodnuti MVP: API pouziva stejny Bearer token jako UI. Samostatne API klice nejsou soucasti MVP.
+
+### List ticketu partnera
 
 ```http
-GET /api/tickets
+GET /api/partner-api/partners/{partner_id}/tickets
 ```
 
 Query parametry:
 
 | Parametr | Popis |
 | --- | --- |
-| `search` | fulltext pres ticket ID/title/description/comments |
-| `status` | presny status |
-| `priority` | presna priorita |
-| `type` | presny ticket type |
-| `resolver_team` | `L1`, `L2`, `L3` |
-| `partner_id` | filtr partnera pro interni uzivatele |
-| `internal` | `true`/`false` |
-| `limit` | pocet zaznamu, default `50`, max `200` |
-| `offset` | offset pro strankovani |
+| `status` | volitelny status |
+| `priority` | volitelna priorita |
+| `type` | volitelny typ ticketu |
+| `limit` | velikost stranky |
+| `offset` | offset |
 
-Response:
-
-```json
-{
-  "items": [],
-  "total": 0,
-  "limit": 50,
-  "offset": 0
-}
-```
-
-### Vytvoreni partner ticketu
+### Vytvoreni system ticketu
 
 ```http
-POST /api/tickets
+POST /api/partner-api/partners/{partner_id}/tickets
 ```
-
-Request:
-
-```json
-{
-  "type": "Question",
-  "priority": "Normal",
-  "title": "Question title",
-  "description": "Detailed description",
-  "client_id": "optional-client-id",
-  "participant_ids": []
-}
-```
-
-Vyuzitelne pouze pro partner `responsible`.
-
-### Vytvoreni internal ticketu
-
-```http
-POST /api/tickets/internal
-```
-
-Request:
 
 ```json
 {
   "type": "Operational Request",
   "priority": "Normal",
-  "title": "Internal title",
-  "description": "Detailed description",
-  "team": "L1"
+  "title": "Integration event",
+  "description": "Event description",
+  "team": "L1",
+  "assignee": null
 }
 ```
 
-### Detail ticketu
+System ticket:
 
-```http
-GET /api/tickets/{ticket_id}
-```
+- patri pod konkretniho partnera,
+- nema klienta, vlastnika ani autora,
+- ma `system: true`,
+- partner ho vidi cely,
+- za partnera ho smi komentovat pouze odpovedna osoba,
+- interně ho vidi Admin, Delivery Manager a resolver role podle `resolver_team`.
 
-Vraci ticket vcetne detailu, participantu a `available_transitions`.
-
-### Komentare
-
-| Method | Path | Popis |
-| --- | --- | --- |
-| `GET` | `/api/tickets/{ticket_id}/comments` | seznam viditelnych komentaru |
-| `POST` | `/api/tickets/{ticket_id}/comments` | pridani verejneho komentare |
-| `POST` | `/api/tickets/{ticket_id}/internal-notes` | pridani interni poznamky |
-| `PATCH` | `/api/comments/{comment_id}` | editace komentare Admin/DeliveryManager |
-| `DELETE` | `/api/comments/{comment_id}` | soft delete komentare Admin/DeliveryManager |
-| `GET` | `/api/comments/{comment_id}/revisions` | historie komentare pro interni uzivatele |
-
-Request pro komentar:
-
-```json
-{"body":"Comment text"}
-```
-
-### Participanti
+## Admin
 
 | Method | Path | Popis |
 | --- | --- | --- |
-| `POST` | `/api/tickets/{ticket_id}/participants` | pridat participanta |
-| `DELETE` | `/api/tickets/{ticket_id}/participants/{user_id}` | odebrat participanta |
-
-Request:
-
-```json
-{"user_id":"user-id"}
-```
-
-### Assignment a workflow
-
-| Method | Path | Popis |
-| --- | --- | --- |
-| `POST` | `/api/tickets/{ticket_id}/assign` | prirazeni resolver tymu a volitelne assignee |
-| `POST` | `/api/tickets/{ticket_id}/transition` | zmena statusu |
-| `POST` | `/api/tickets/{ticket_id}/transfer-owner` | transfer partner ownera |
-| `POST` | `/api/tickets/{ticket_id}/close` | uzavreni ticketu |
-
-Assignment request:
-
-```json
-{"team":"L2","assignee":"l2@example.test"}
-```
-
-Transition request:
-
-```json
-{"status":"In progress"}
-```
-
-Transfer owner request:
-
-```json
-{"new_owner":"new-owner@example.test"}
-```
-
-### Prilohy
-
-| Method | Path | Popis |
-| --- | --- | --- |
-| `GET` | `/api/tickets/{ticket_id}/attachments` | seznam priloh |
-| `POST` | `/api/tickets/{ticket_id}/attachments` | multipart upload |
-| `GET` | `/api/attachments/{attachment_id}/download` | download prilohy |
-
-Upload omezeni:
-
-- maximalne 25 MB,
-- pripony `.png`, `.jpg`, `.jpeg`, `.pdf`, `.txt`, `.log`, `.zip`,
-- ClamAV scan pred ulozenim.
-
-## Admin API
-
-Admin API je chranene rolemi `Admin` a `DeliveryManager`, s nekterymi operacemi pouze pro `Admin`.
-
-| Method | Path | Popis |
-| --- | --- | --- |
-| `GET` | `/api/partners` | seznam partneru |
+| `GET` | `/api/partners` | list partneru |
 | `POST` | `/api/partners` | vytvoreni partnera |
-| `DELETE` | `/api/partners/{partner_id}` | deaktivace partnera |
-| `GET` | `/api/clients` | seznam klientu |
+| `GET` | `/api/clients` | list klientu |
 | `POST` | `/api/clients` | vytvoreni klienta |
 | `PATCH` | `/api/clients/{client_id}` | uprava klienta |
-| `DELETE` | `/api/clients/{client_id}` | deaktivace klienta |
-| `POST` | `/api/client-assignments` | prirazeni odpovedne osoby ke klientovi |
-| `GET` | `/api/client-assignments?client_id=...` | seznam prirazeni |
-| `DELETE` | `/api/client-assignments/{assignment_id}` | odebrani prirazeni |
-| `GET` | `/api/users` | seznam uzivatelu |
+| `GET` | `/api/users` | list uzivatelu |
 | `POST` | `/api/users/internal` | vytvoreni interniho uzivatele |
 | `POST` | `/api/users/partner` | pozvani partner uzivatele |
-| `PATCH` | `/api/users/{user_id}` | uprava uzivatele |
+| `PATCH` | `/api/users/{user_id}` | uprava uzivatele vcetne active |
 | `DELETE` | `/api/users/{user_id}` | deaktivace uzivatele |
-| `POST` | `/api/users/{user_id}/password-reset` | password reset |
+| `POST` | `/api/users/{user_id}/password-reset` | reset hesla |
+| `POST` | `/api/client-assignments` | prirazeni odpovedne osoby ke klientovi |
+| `DELETE` | `/api/client-assignments/{assignment_id}` | odebrani odpovedne osoby |
 
-## Audit API
-
-```http
-GET /api/audit
-GET /api/audit?entity_id=<id>
-```
-
-Dostupne pouze pro `Admin` a `DeliveryManager`.
-
-## GitLab API
-
-| Method | Path | Popis |
-| --- | --- | --- |
-| `GET` | `/api/gitlab/check` | kontrola konfigurace |
-| `POST` | `/api/tickets/{ticket_id}/gitlab/create-issue` | zalozeni GitLab issue |
-| `POST` | `/api/tickets/{ticket_id}/gitlab/sync-status` | synchronizace GitLab statusu |
-
-## Notifications API
-
-| Method | Path | Popis |
-| --- | --- | --- |
-| `POST` | `/api/email/test?to=user@example.com` | test SMTP |
-| `POST` | `/api/notifications/retry-failed` | manualni retry notifikaci |
-
+Partneri a klienti se v MVP nemazou a nemaji active/inactive stav.

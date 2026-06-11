@@ -1,0 +1,4 @@
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS system BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS ix_tickets_system ON tickets(system);
+
+ALTER TABLE tickets ALTER COLUMN created_by_id DROP NOT NULL;

@@ -78,11 +78,19 @@ function TicketDetail({ user }) {
   const responsibleUsers = partnerUsers.filter((row) => row.partner_role === 'responsible');
   const availableTransitions = asArray(ticket?.available_transitions);
   const participants = asArray(ticket?.participants);
+  const participantIds = participants.map((participant) => participant.id);
   const resolverTeams = asArray(meta?.resolver_teams);
   const assignmentTeam = ticket?.resolver_team || assignment.team;
-  const canTransferOwner = !ticket?.internal && responsibleUsers.length > 0;
+  const canTransferOwner = !ticket?.internal && !ticket?.system && responsibleUsers.length > 0;
+  const canManageParticipants = ticket?.system
+    ? user.kind === 'partner' && user.partner_role === 'responsible'
+    : !ticket?.internal && (user.kind === 'internal' || ticket?.owner_id === user.id);
   const showActions = user.kind === 'internal' || canTransferOwner;
-  const canAddCommunication = ticket?.status !== 'Closed';
+  const canAddCommunication = ticket?.status !== 'Closed' && (
+    user.kind === 'internal'
+    || (ticket?.system && user.partner_role === 'responsible')
+    || (!ticket?.system && participantIds.includes(user.id))
+  );
   const canAssignTicket = ticket?.status !== 'Closed';
   const canReturnToQueue = canAssignTicket
     && user.kind === 'internal'
@@ -148,6 +156,7 @@ function TicketDetail({ user }) {
               <Table borderless responsive size="sm" className="tm-meta-table">
                 <tbody>
                   <InfoRow label="ID" value={ticket.id} />
+                  <InfoRow label="Kind" value={ticket.kind || (ticket.system ? 'system' : (ticket.internal ? 'internal' : 'partner'))} />
                   <InfoRow label="Type" value={ticket.type} />
                   <InfoRow label="Partner" value={ticket.partner_name || '-'} />
                   <InfoRow label="Client" value={ticket.client_name || '-'} />
@@ -253,7 +262,7 @@ function TicketDetail({ user }) {
                 ))}
                 {participants.length === 0 && <span className="tm-muted">No participants.</span>}
               </div>
-              {partnerUsers.length > 0 && (
+              {canManageParticipants && partnerUsers.length > 0 && (
                 <Form className="d-flex gap-2" onSubmit={(event) => {
                   event.preventDefault();
                   action(() => api.post(`/tickets/${ticket.id}/participants`, { user_id: participantId }));
@@ -273,6 +282,7 @@ function TicketDetail({ user }) {
                 attachments={attachments}
                 uploadFile={uploadFile}
                 setUploadFile={setUploadFile}
+                canUpload={canAddCommunication}
                 onUpload={() => action(async () => {
                   const formData = new FormData();
                   formData.append('file', uploadFile);
@@ -297,7 +307,7 @@ function InfoRow({ label, value }) {
   );
 }
 
-function AttachmentPanel({ attachments, uploadFile, setUploadFile, onUpload }) {
+function AttachmentPanel({ attachments, uploadFile, setUploadFile, canUpload, onUpload }) {
   return (
     <div className="mb-3">
       <h3>Attachments</h3>
@@ -324,15 +334,17 @@ function AttachmentPanel({ attachments, uploadFile, setUploadFile, onUpload }) {
           </tbody>
         </Table>
       </div>
-      <Form className="d-flex gap-2" onSubmit={(event) => {
-        event.preventDefault();
-        if (uploadFile) onUpload();
-      }}>
-        <Input type="file" accept=".png,.jpg,.jpeg,.pdf,.txt,.log,.zip" onChange={(event) => setUploadFile(event.target.files?.[0] || null)} />
-        <Button color="secondary" outline type="submit" disabled={!uploadFile}>
-          <i className="bi bi-upload" />
-        </Button>
-      </Form>
+      {canUpload && (
+        <Form className="d-flex gap-2" onSubmit={(event) => {
+          event.preventDefault();
+          if (uploadFile) onUpload();
+        }}>
+          <Input type="file" accept=".png,.jpg,.jpeg,.pdf,.txt,.log,.zip" onChange={(event) => setUploadFile(event.target.files?.[0] || null)} />
+          <Button color="secondary" outline type="submit" disabled={!uploadFile}>
+            <i className="bi bi-upload" />
+          </Button>
+        </Form>
+      )}
     </div>
   );
 }

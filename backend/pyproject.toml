@@ -10,9 +10,6 @@ dependencies = [
   "psycopg2-binary==2.9.10",
   "python-multipart==0.0.20",
   "httpx==0.28.1",
-  "prometheus-client==0.21.1",
-  "redis==5.2.1",
-  "sentry-sdk[fastapi]==2.19.2",
 ]
 
 [project.optional-dependencies]
@@ -22,7 +19,6 @@ test = [
 
 [project.scripts]
 ticketmaster-cli = "ticketmaster.cli.main:main"
-ticketmaster-worker = "ticketmaster.worker:main"
 
 [build-system]
 requires = ["setuptools>=75.0"]

@@ -83,6 +83,7 @@ class Ticket(Base):
     owner_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     created_by_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     internal: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     type: Mapped[str] = mapped_column(String(80), nullable=False)
     priority: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="New", index=True)

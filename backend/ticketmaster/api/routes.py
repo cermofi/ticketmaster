@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 
 from ticketmaster.api.deps import CurrentUser, DbSession
 from ticketmaster.core.config import settings
@@ -27,7 +27,6 @@ from ticketmaster.schemas.serializers import (
 from ticketmaster.services import admin, auth, gitlab, malware, notifications, tickets
 from ticketmaster.services.audit import audit
 from ticketmaster.services.errors import NotFoundError, PermissionDenied, ValidationError
-from ticketmaster.services.redis_client import get_redis
 
 
 router = APIRouter()
@@ -107,6 +106,15 @@ class InternalTicketCreateBody(BaseModel):
     team: str | None = None
 
 
+class SystemTicketCreateBody(BaseModel):
+    type: str
+    priority: str
+    title: str
+    description: str
+    team: str | None = None
+    assignee: str | None = None
+
+
 class CommentBody(BaseModel):
     body: str = Field(min_length=1)
 
@@ -159,15 +167,6 @@ def _request_audit_info(request: Request, **extra: str | None) -> dict:
 def _check_login_rate_limit(request: Request, email: str) -> None:
     ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "unknown")
     key = f"{ip}:{email.lower()}"
-    client = get_redis()
-    if client:
-        redis_key = f"ticketmaster:login-rate:{key}"
-        attempts = client.incr(redis_key)
-        if attempts == 1:
-            client.expire(redis_key, settings.login_rate_limit_window_seconds)
-        if attempts > settings.login_rate_limit_attempts:
-            raise HTTPException(status_code=429, detail="Too many login attempts")
-        return
     now = time.time()
     window_start = now - settings.login_rate_limit_window_seconds
     attempts = [stamp for stamp in _login_attempts.get(key, []) if stamp >= window_start]
@@ -180,10 +179,17 @@ def _check_login_rate_limit(request: Request, email: str) -> None:
 def _clear_login_rate_limit(request: Request, email: str) -> None:
     ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "unknown")
     key = f"{ip}:{email.lower()}"
-    client = get_redis()
-    if client:
-        client.delete(f"ticketmaster:login-rate:{key}")
     _login_attempts.pop(key, None)
+
+
+def _require_partner_api_access(user: User, partner_id: str, *, create: bool) -> None:
+    if user.kind == "internal" and user.internal_role in {"Admin", "DeliveryManager"}:
+        return
+    if user.kind == "partner" and user.partner_id == partner_id:
+        if create and user.partner_role != "responsible":
+            raise PermissionDenied("Only responsible partner users can create system tickets through the partner API")
+        return
+    raise PermissionDenied("Partner API access is not allowed for this partner")
 
 
 @router.get("/ready")
@@ -243,7 +249,7 @@ def partners_list(db: DbSession, user: CurrentUser) -> list[dict]:
 
 @router.post("/partners")
 def partners_create(db: DbSession, user: CurrentUser, body: PartnerBody) -> dict:
-    admin.require_admin(user)
+    admin.require_admin_or_dm(user)
     partner = admin.create_partner(db, name=body.name, actor=user)
     db.commit()
     return partner_to_dict(partner)
@@ -341,7 +347,7 @@ def users_list(db: DbSession, user: CurrentUser, partner: str | None = None) -> 
 
 @router.post("/users/internal")
 def users_create_internal(db: DbSession, user: CurrentUser, body: InternalUserBody) -> dict:
-    admin.require_admin(user)
+    admin.require_admin_or_dm(user)
     row = admin.create_internal_user(db, email=body.email, name=body.name, role=body.role, actor=user)
     db.commit()
     return user_to_dict(row)
@@ -496,6 +502,71 @@ def tickets_create_internal(db: DbSession, user: CurrentUser, body: InternalTick
         title=body.title,
         description=body.description,
         team=body.team,
+    )
+    db.commit()
+    return ticket_to_dict(db, ticket, viewer=user, include_detail=True)
+
+
+@router.get("/partner-api/partners/{partner_id}/tickets")
+def partner_api_tickets_list(
+    db: DbSession,
+    user: CurrentUser,
+    partner_id: str,
+    status: str | None = None,
+    priority: str | None = None,
+    type: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> dict:
+    partner = admin.resolve_partner(db, partner_id)
+    _require_partner_api_access(user, partner.id, create=False)
+    actual_limit = min(max(limit or settings.ticket_page_default_limit, 1), settings.ticket_page_max_limit)
+    actual_offset = max(offset, 0)
+    if user.kind == "partner":
+        rows, total = tickets.list_visible_tickets_page(
+            db,
+            actor=user,
+            status=status,
+            priority=priority,
+            ticket_type=type,
+            partner_id=partner.id,
+            internal=False,
+            limit=actual_limit,
+            offset=actual_offset,
+        )
+    else:
+        stmt = select(Ticket).where(Ticket.internal.is_(False), Ticket.partner_id == partner.id)
+        if status:
+            stmt = stmt.where(Ticket.status == status)
+        if priority:
+            stmt = stmt.where(Ticket.priority == priority)
+        if type:
+            stmt = stmt.where(Ticket.type == type)
+        total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+        rows = list(db.scalars(stmt.order_by(Ticket.created_at.desc()).limit(actual_limit).offset(actual_offset)).all())
+    return {
+        "items": [ticket_to_dict(db, ticket, viewer=user) for ticket in rows],
+        "total": total,
+        "limit": actual_limit,
+        "offset": actual_offset,
+    }
+
+
+@router.post("/partner-api/partners/{partner_id}/tickets")
+def partner_api_tickets_create(db: DbSession, user: CurrentUser, partner_id: str, body: SystemTicketCreateBody) -> dict:
+    partner = admin.resolve_partner(db, partner_id)
+    _require_partner_api_access(user, partner.id, create=True)
+    ticket = tickets.create_system_ticket(
+        db,
+        partner_id=partner.id,
+        ticket_type=body.type,
+        priority=body.priority,
+        title=body.title,
+        description=body.description,
+        team=body.team,
+        assignee_ref=body.assignee,
+        actor=user,
+        source="api",
     )
     db.commit()
     return ticket_to_dict(db, ticket, viewer=user, include_detail=True)
@@ -729,6 +800,4 @@ def email_test(db: DbSession, user: CurrentUser, to: str) -> dict:
 def notifications_retry(db: DbSession, user: CurrentUser) -> dict:
     if user.kind != "internal" or user.internal_role not in {"Admin", "DeliveryManager"}:
         raise PermissionDenied("Only Admin or Delivery Manager can retry notifications")
-    sent = notifications.retry_failed(db)
-    db.commit()
-    return {"sent": sent}
+    raise PermissionDenied("Manual notification retry is not available in MVP")

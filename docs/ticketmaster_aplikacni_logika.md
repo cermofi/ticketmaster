@@ -394,7 +394,7 @@ System ticket:
 - je viditelny vsem aktivnim uzivatelum daneho partnera,
 - partner uzivatele ho mohou komentovat pouze tehdy, pokud maji roli `responsible`,
 - osoby na strane partnera mohou pridavat pouze partner uzivatele s roli `responsible`,
-- za interni tym ho vidi pouze `Admin` a `DeliveryManager`,
+- za interni tym ho vidi `Admin`, `DeliveryManager` a resolver role `L1`, `L2` nebo `L3`, pokud ma system ticket nastaveny jejich resolver team,
 - muze byt smerovan do resolver teamu,
 - muze byt prirazen konkretnimu assignee.
 
@@ -1128,7 +1128,7 @@ Po vytvoreni system ticketu pres API plati:
 - nema vlastnika,
 - nema autora,
 - ticket se zobrazuje v partnerskem seznamu ticketu,
-- za interni tym ho vidi pouze `Admin` a `DeliveryManager`.
+- za interni tym ho vidi `Admin`, `DeliveryManager` a resolver role `L1`, `L2` nebo `L3`, pokud ma system ticket nastaveny jejich resolver team.
 
 Pokud je uveden resolver team, musi byt jedna z hodnot:
 
@@ -1349,4 +1349,3 @@ MVP nemusi resit opakovane odesilani neuspesnych notifikaci.
 | Videt GitLab odkaz | Ano | Ano | Omezene | Ne | Ne | Ne |
 | Videt audit | Ano | Ano | Ne | Ne | Ne | Ne |
 | Znovu zpracovat neuspesne notifikace | Ne | Ne | Ne | Ne | Ne | Ne |
-

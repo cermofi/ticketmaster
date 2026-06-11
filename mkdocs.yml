@@ -12,6 +12,7 @@ markdown_extensions:
       permalink: true
 nav:
   - Overview: index.md
+  - Aplikacni logika: ticketmaster_aplikacni_logika.md
   - Product Guide: product.md
   - Architecture: architecture.md
   - UI Guide: ui.md
@@ -19,7 +20,7 @@ nav:
   - RBAC & Workflow: rbac.md
   - Docker & Deployment: deployment.md
   - Configuration: configuration.md
-  - Operations & Monitoring: operations.md
+  - Operations: operations.md
   - Security: security.md
   - CLI: cli.md
   - GitLab Integration: gitlab-integration.md

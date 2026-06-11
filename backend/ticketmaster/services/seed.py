@@ -72,5 +72,18 @@ def seed_dev(db: Session) -> dict:
         )
         created["tickets"].append(ticket.id)
 
+    if not db.scalar(select(Ticket).where(Ticket.title == "Seeded system integration ticket")):
+        ticket = tickets.create_system_ticket(
+            db,
+            partner_id=partner.id,
+            ticket_type="Operational Request",
+            priority="Normal",
+            title="Seeded system integration ticket",
+            description="This system ticket is created by seed-dev for API smoke tests.",
+            team="L1",
+            source="cli",
+        )
+        created["tickets"].append(ticket.id)
+
     db.commit()
     return {**created, "dev_partner_password": settings.dev_password}

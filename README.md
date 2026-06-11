@@ -1,39 +1,22 @@
 # TicketMaster MVP
 
-TicketMaster is a Dockerized MVP ticketing system for partner communication, internal resolver queues, e-mail notifications, GitLab-backed L3 work, audit logging, and an application CLI.
+TicketMaster is a small Docker Compose ticketing application for partner support, internal resolver teams, system tickets, audit logging, notifications, attachments, and GitLab-backed L3 work.
+
+The current product source of truth is `docs/ticketmaster_aplikacni_logika.md`.
 
 ## Quick Start
 
 ```bash
 cp .env.example .env
-docker compose up --build
-```
-
-On this Mac the legacy Compose binary is installed, so the equivalent verified command is:
-
-```bash
-docker-compose up --build
+docker compose up -d --build
+docker compose exec -T api ticketmaster-cli db seed-dev
 ```
 
 Open:
 
-- WebUI and proxied API: http://localhost:3006
-- API docs through nginx: http://localhost:3006/api/docs
-- Mailpit: internal Docker service `mailpit:8025`
-
-Seed development data:
-
-```bash
-docker compose exec api ticketmaster-cli db migrate
-docker compose exec api ticketmaster-cli db seed-dev
-```
-
-Legacy local equivalent:
-
-```bash
-docker-compose exec api ticketmaster-cli db migrate
-docker-compose exec api ticketmaster-cli db seed-dev
-```
+- Web UI and proxied API: http://localhost:3006
+- API docs: http://localhost:3006/api/docs
+- MkDocs documentation: http://localhost:3006/docs/
 
 Default seeded users:
 
@@ -46,27 +29,21 @@ Default seeded users:
 ## Stack
 
 - Backend: FastAPI, SQLAlchemy, PostgreSQL.
-- Frontend: React, ASAB WebUI shell/components, Reactstrap, Bootstrap.
-- Mail: Mailpit in development, SMTP configurable.
+- Frontend: React with TeskaLabs ASAB WebUI shell/components, Reactstrap, Bootstrap.
+- Database: PostgreSQL, private inside the Docker network.
+- Mail: Mailpit by default, SMTP configurable.
 - GitLab: dry-run by default, real GitLab API when configured.
 - CLI: `ticketmaster-cli` inside the `api` container.
 
-## Documentation
-
-MkDocs site:
+## Common Commands
 
 ```bash
-python -m pip install -r docs/requirements.txt
-mkdocs serve
+docker compose ps
+docker compose logs --tail=100 api
+docker compose exec -T api ticketmaster-cli db migrate
+docker compose exec -T api ticketmaster-cli db seed-dev
+docker compose exec -T api python -m pytest -q
+docker compose down
 ```
 
-- [Architecture](docs/architecture.md)
-- [UI Guide](docs/ui.md)
-- [Development](docs/development.md)
-- [Deployment](docs/deployment.md)
-- [Configuration](docs/configuration.md)
-- [CLI](docs/cli.md)
-- [API](docs/api.md)
-- [RBAC](docs/rbac.md)
-- [GitLab integration](docs/gitlab-integration.md)
-- [Testing](docs/testing.md)
+Persistent data is stored in Docker volumes `postgres_data`, `uploads`, and `api_logs`.
