@@ -226,6 +226,35 @@ def test_assigned_ticket_can_change_assignee_within_resolver_team(db, fixture_da
     assert ticket.assignee_id == fixture_data["l1"].id
 
 
+def test_admin_and_delivery_manager_can_change_ticket_type(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+
+    tickets.change_ticket_type(db, ticket=ticket, actor=fixture_data["dm"], ticket_type="Integration", source="test")
+    assert ticket.type == "Integration"
+
+    tickets.change_ticket_type(db, ticket=ticket, actor=fixture_data["admin"], ticket_type="Security Issue", source="test")
+    assert ticket.type == "Security Issue"
+    assert ticket.priority == "Critical"
+    assert db.scalar(select(AuditLog).where(AuditLog.action == "ticket.type_change", AuditLog.entity_id == ticket.id))
+
+
+def test_non_admin_roles_cannot_change_ticket_type(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+
+    with pytest.raises(PermissionDenied):
+        tickets.change_ticket_type(db, ticket=ticket, actor=fixture_data["l1"], ticket_type="Integration", source="test")
+
+    with pytest.raises(PermissionDenied):
+        tickets.change_ticket_type(db, ticket=ticket, actor=fixture_data["responsible_a"], ticket_type="Integration", source="test")
+
+
+def test_change_ticket_type_rejects_unknown_type(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+
+    with pytest.raises(ValidationError):
+        tickets.change_ticket_type(db, ticket=ticket, actor=fixture_data["dm"], ticket_type="Unsupported Type", source="test")
+
+
 def test_l3_in_progress_requires_gitlab_issue(db, fixture_data):
     ticket = create_partner_ticket(db, fixture_data)
     tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L3", source="test")

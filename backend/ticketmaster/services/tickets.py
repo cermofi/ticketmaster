@@ -580,6 +580,34 @@ def transition_ticket(db: Session, *, ticket: Ticket, actor: User, new_status: s
     return ticket
 
 
+def change_ticket_type(db: Session, *, ticket: Ticket, actor: User, ticket_type: str, source: str = "ui") -> Ticket:
+    if not actor.active:
+        raise PermissionDenied("Account is inactive")
+    if actor.kind != "internal" or actor.internal_role not in {"Admin", "DeliveryManager"}:
+        raise PermissionDenied("Only Admin or Delivery Manager can change ticket type")
+    validate_ticket_type(ticket_type)
+    if ticket.type == ticket_type:
+        return ticket
+    old = {"type": ticket.type, "priority": ticket.priority}
+    ticket.type = ticket_type
+    if ticket.type == "Security Issue" and ticket.priority == "Normal":
+        ticket.priority = "Critical"
+    ticket.updated_at = datetime.now(timezone.utc)
+    db.flush()
+    audit(
+        db,
+        entity_type="Ticket",
+        entity_id=ticket.id,
+        action="ticket.type_change",
+        actor=actor,
+        source=source,
+        old_value=old,
+        new_value={"type": ticket.type, "priority": ticket.priority},
+    )
+    ticket_search.enqueue_ticket_index(ticket.id)
+    return ticket
+
+
 def validate_transition(db: Session, *, ticket: Ticket, actor: User, new_status: str) -> None:
     if new_status not in STATUSES:
         raise ValidationError("Invalid ticket status")

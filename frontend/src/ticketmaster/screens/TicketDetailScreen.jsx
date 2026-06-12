@@ -36,6 +36,7 @@ function TicketDetail({ user }) {
   const [commentBody, setCommentBody] = useState('');
   const [internalNoteBody, setInternalNoteBody] = useState('');
   const [assignment, setAssignment] = useState({ team: 'L1', assignee: '' });
+  const [ticketType, setTicketType] = useState('');
   const [transferOwner, setTransferOwner] = useState('');
   const [participantId, setParticipantId] = useState('');
   const [uploadFile, setUploadFile] = useState(null);
@@ -56,6 +57,7 @@ function TicketDetail({ user }) {
       setMeta(metaResponse.data);
       setUsers(usersResponse.data);
       setAssignment({ team: ticketResponse.data.resolver_team || 'L1', assignee: ticketResponse.data.assignee_id || '' });
+      setTicketType(ticketResponse.data.type || '');
     } catch (err) {
       setError(apiError(err));
     }
@@ -104,11 +106,15 @@ function TicketDetail({ user }) {
   const participants = asArray(ticket?.participants);
   const participantIds = participants.map((participant) => participant.id);
   const resolverTeams = asArray(meta?.resolver_teams);
+  const ticketTypes = asArray(meta?.ticket_types);
   const assignmentTeam = ticket?.resolver_team || assignment.team;
   const canTransferOwner = !ticket?.internal && !ticket?.system && responsibleUsers.length > 0;
   const canManageParticipants = ticket?.system
     ? user.kind === 'partner' && user.partner_role === 'responsible'
     : !ticket?.internal && (user.kind === 'internal' || ticket?.owner_id === user.id);
+  const canEditTicketType = user.kind === 'internal'
+    && ['Admin', 'DeliveryManager'].includes(user.internal_role)
+    && ticketTypes.length > 0;
   const showActions = user.kind === 'internal' || canTransferOwner;
   const canAddCommunication = ticket?.status !== 'Closed' && (
     user.kind === 'internal'
@@ -204,6 +210,26 @@ function TicketDetail({ user }) {
                 <h2>Akce</h2>
                 {user.kind === 'internal' && (
                   <>
+                    {canEditTicketType && (
+                      <div className="tm-action-group">
+                        <h3>Typ ticketu</h3>
+                        <Form onSubmit={(event) => {
+                          event.preventDefault();
+                          action(() => api.post(`/tickets/${ticket.id}/type`, { type: ticketType }));
+                        }}>
+                          <FormGroup>
+                            <Label>Typ</Label>
+                            <Input type="select" value={ticketType || ticket.type || ''} onChange={(event) => setTicketType(event.target.value)}>
+                              {ticketTypes.map((type) => <option key={type} value={type}>{labelValue(type)}</option>)}
+                            </Input>
+                          </FormGroup>
+                          <Button color="secondary" outline type="submit" disabled={!ticketType || ticketType === ticket.type} className="w-100">
+                            <i className="bi bi-tag me-1" />
+                            Uložit typ
+                          </Button>
+                        </Form>
+                      </div>
+                    )}
                     <div className="tm-action-group">
                       <div className="tm-action-group-head">
                         <h3>Stav</h3>

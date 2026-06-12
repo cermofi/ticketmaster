@@ -147,6 +147,10 @@ class TransitionBody(BaseModel):
     status: str
 
 
+class TicketTypeBody(BaseModel):
+    type: str
+
+
 class TransferOwnerBody(BaseModel):
     new_owner: str
 
@@ -742,6 +746,16 @@ def tickets_unassign(db: DbSession, user: CurrentUser, ticket_id: str) -> dict:
 def tickets_transition(db: DbSession, user: CurrentUser, ticket_id: str, body: TransitionBody) -> dict:
     ticket = tickets.get_ticket(db, ticket_id)
     tickets.transition_ticket(db, ticket=ticket, actor=user, new_status=body.status)
+    db.commit()
+    data = ticket_to_dict(db, ticket, viewer=user, include_detail=True)
+    data["available_transitions"] = tickets.available_transitions(db, ticket=ticket, actor=user)
+    return data
+
+
+@router.post("/tickets/{ticket_id}/type")
+def tickets_change_type(db: DbSession, user: CurrentUser, ticket_id: str, body: TicketTypeBody) -> dict:
+    ticket = tickets.get_ticket(db, ticket_id)
+    tickets.change_ticket_type(db, ticket=ticket, actor=user, ticket_type=body.type)
     db.commit()
     data = ticket_to_dict(db, ticket, viewer=user, include_detail=True)
     data["available_transitions"] = tickets.available_transitions(db, ticket=ticket, actor=user)
