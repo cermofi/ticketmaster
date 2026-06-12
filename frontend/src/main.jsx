@@ -8,6 +8,68 @@ import './styles.scss';
 
 import TicketMasterModule from './ticketmaster/TicketMasterModule.jsx';
 
+const CHUNK_RELOAD_KEY = 'ticketmaster.chunk_reload_attempt';
+const CHUNK_RELOAD_COOLDOWN_MS = 30000;
+
+function extractErrorMessage(reason) {
+  if (!reason) return '';
+  if (typeof reason === 'string') return reason;
+  if (reason instanceof Error) return reason.message || '';
+  if (typeof reason.message === 'string') return reason.message;
+  return String(reason);
+}
+
+function isChunkLoadFailure(message) {
+  if (!message) return false;
+  return (
+    /failed to fetch dynamically imported module/i.test(message)
+    || /importing a module script failed/i.test(message)
+    || /loading chunk [\d]+ failed/i.test(message)
+    || /chunkloaderror/i.test(message)
+  );
+}
+
+function shouldReloadForChunkError() {
+  const now = Date.now();
+  const currentLocation = `${window.location.pathname}${window.location.hash}`;
+  try {
+    const raw = sessionStorage.getItem(CHUNK_RELOAD_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (
+        parsed
+        && parsed.location === currentLocation
+        && now - Number(parsed.at || 0) < CHUNK_RELOAD_COOLDOWN_MS
+      ) {
+        return false;
+      }
+    }
+    sessionStorage.setItem(CHUNK_RELOAD_KEY, JSON.stringify({ location: currentLocation, at: now }));
+  } catch {
+    // If sessionStorage is blocked, fail open and still try one reload.
+  }
+  return true;
+}
+
+function installChunkRecovery() {
+  const recover = (message) => {
+    if (!isChunkLoadFailure(message)) return;
+    if (shouldReloadForChunkError()) {
+      window.location.reload();
+    }
+  };
+
+  window.addEventListener('unhandledrejection', (event) => {
+    recover(extractErrorMessage(event?.reason));
+  });
+
+  window.addEventListener('error', (event) => {
+    recover(extractErrorMessage(event?.error || event?.message));
+  }, true);
+}
+
+installChunkRecovery();
+
 const ConfigDefaults = {
   title: 'TicketMaster',
   BASE_URL: window.location.origin,
