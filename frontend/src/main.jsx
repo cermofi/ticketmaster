@@ -70,6 +70,37 @@ function installChunkRecovery() {
 
 installChunkRecovery();
 
+function releaseBootModeWhenReady() {
+  const clearBootMode = () => document.body.classList.remove('tm-app-booting');
+  const appRoot = document.getElementById('app');
+  if (!appRoot) {
+    clearBootMode();
+    return;
+  }
+
+  const appReady = () => (
+    Boolean(document.querySelector('#app-main'))
+    && !document.querySelector('.tm-loading-state')
+  );
+
+  if (appReady()) {
+    clearBootMode();
+    return;
+  }
+
+  const observer = new MutationObserver(() => {
+    if (!appReady()) return;
+    clearBootMode();
+    observer.disconnect();
+  });
+
+  observer.observe(appRoot, { childList: true, subtree: true, attributes: true });
+  window.setTimeout(() => {
+    clearBootMode();
+    observer.disconnect();
+  }, 6000);
+}
+
 const ConfigDefaults = {
   title: 'TicketMaster',
   BASE_URL: window.location.origin,
@@ -108,3 +139,5 @@ createRoot(document.getElementById('app')).render(
     />
   </ApplicationHashRouter>
 );
+
+releaseBootModeWhenReady();

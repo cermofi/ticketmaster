@@ -16,8 +16,7 @@ export function ErrorBanner({ error }) {
 export function Loading() {
   return (
     <div className="tm-screen tm-loading-state" aria-live="polite">
-      <Spinner />
-      <span className="tm-muted">Loading...</span>
+      <Spinner className="tm-loading-spinner" />
     </div>
   );
 }

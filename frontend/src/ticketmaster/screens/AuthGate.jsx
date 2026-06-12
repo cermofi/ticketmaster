@@ -16,16 +16,18 @@ import {
 
 import api, { clearSession, currentUser, saveSession } from '../../api/client.js';
 import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
-import { roleLabel } from './helpers.jsx';
+import { Loading, roleLabel } from './helpers.jsx';
 
 export function useSession() {
   const [user, setUserState] = useState(currentUser());
+  const [loading, setLoading] = useState(true);
 
   const setUser = (nextUser) => {
     if (nextUser) {
       localStorage.setItem('ticketmaster.user', JSON.stringify(nextUser));
     }
     setUserState(nextUser);
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -40,7 +42,10 @@ export function useSession() {
 
   const refreshUser = useCallback(() => {
     const token = localStorage.getItem('ticketmaster.token');
-    if (!token) return;
+    if (!token) {
+      setLoading(false);
+      return;
+    }
     api.get('/auth/me')
       .then((response) => {
         setUser(response.data);
@@ -48,6 +53,9 @@ export function useSession() {
       .catch(() => {
         clearSession();
         setUserState(null);
+      })
+      .finally(() => {
+        setLoading(false);
       });
   }, []);
 
@@ -59,10 +67,12 @@ export function useSession() {
 
   return {
     user,
+    loading,
     setUser,
     logout: () => {
       clearSession();
       setUserState(null);
+      setLoading(false);
       window.location.hash = '#/';
     }
   };
@@ -70,6 +80,9 @@ export function useSession() {
 
 export default function AuthGate({ children }) {
   const session = useSession();
+  if (session.loading) {
+    return <Loading />;
+  }
   if (!session.user) {
     return <LoginScreen onLogin={session.setUser} />;
   }

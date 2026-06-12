@@ -4,9 +4,49 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TicketMaster</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+
+      body.tm-app-booting {
+        background: #111417;
+      }
+
+      .tm-bootstrap-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #111417;
+      }
+
+      .tm-bootstrap-spinner {
+        width: 36px;
+        height: 36px;
+        border-radius: 9999px;
+        border: 3px solid #27313d;
+        border-top-color: #60a5fa;
+        animation: tm-bootstrap-spin .8s linear infinite;
+      }
+
+      @keyframes tm-bootstrap-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
   </head>
-  <body>
-    <div id="app"></div>
+  <body class="tm-app-booting">
+    <div id="app">
+      <div class="tm-bootstrap-loader" aria-hidden="true">
+        <span class="tm-bootstrap-spinner"></span>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

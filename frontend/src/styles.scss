@@ -149,15 +149,25 @@ body.tm-login-session #app-brandimage,
 body.tm-login-session #app-sidebar,
 body.tm-login-session #app-header,
 body.tm-login-session #app-sidepanel,
+body.tm-app-booting #app-brandimage,
+body.tm-app-booting #app-sidebar,
+body.tm-app-booting #app-header,
+body.tm-app-booting #app-sidepanel,
 #app:has(.tm-login) #app-brandimage,
 #app:has(.tm-login) #app-sidebar,
 #app:has(.tm-login) #app-header,
-#app:has(.tm-login) #app-sidepanel {
+#app:has(.tm-login) #app-sidepanel,
+#app:has(.tm-loading-state) #app-brandimage,
+#app:has(.tm-loading-state) #app-sidebar,
+#app:has(.tm-loading-state) #app-header,
+#app:has(.tm-loading-state) #app-sidepanel {
   display: none !important;
 }
 
 body.tm-login-session #app-main,
-#app:has(.tm-login) #app-main {
+body.tm-app-booting #app-main,
+#app:has(.tm-login) #app-main,
+#app:has(.tm-loading-state) #app-main {
   left: 0 !important;
   margin-left: 0 !important;
   width: 100% !important;
@@ -457,9 +467,23 @@ body[data-tm-density="compact"] .tm-login-form {
 }
 
 .tm-loading-state {
-  display: inline-flex;
+  min-height: 100vh;
+  display: flex;
   align-items: center;
-  gap: var(--tm-space-2);
+  justify-content: center;
+  background: var(--tm-surface);
+}
+
+.tm-loading-state .tm-loading-spinner,
+.tm-loading-state .spinner-border,
+.tm-loading-state .spinner-grow {
+  width: 2.2rem;
+  height: 2.2rem;
+}
+
+.tm-loading-state .spinner-border {
+  border-width: .18rem;
+  color: var(--tm-accent);
 }
 
 .tm-back-link {
