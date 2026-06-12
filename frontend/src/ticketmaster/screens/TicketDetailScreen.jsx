@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router';
 import {
   Alert,
@@ -403,7 +403,7 @@ function CommentList({ comments }) {
             <span className="tm-muted"><TimeCell value={comment.created_at} /></span>
           </div>
           {comment.visibility === 'internal_note' && <span className="badge text-bg-warning mb-1">Interní poznámka</span>}
-          <div className="tm-comment-body">{comment.body}</div>
+          <MarkdownText content={comment.body} className="tm-markdown tm-comment-body" />
         </div>
       ))}
       {comments.length === 0 && <EmptyState icon="bi-chat-left-text" title="Zatím žádné komentáře" message="Komunikace k ticketu se zobrazí zde." />}
@@ -445,6 +445,58 @@ function saveDownloadResponse(response, fallbackName) {
 }
 
 function CommentForm({ title, value, setValue, onSubmit }) {
+  const inputRef = useRef(null);
+
+  const setValueWithSelection = (nextValue, selectionStart, selectionEnd) => {
+    setValue(nextValue);
+    requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus();
+      if (typeof selectionStart === 'number' && typeof selectionEnd === 'number') {
+        input.setSelectionRange(selectionStart, selectionEnd);
+      }
+    });
+  };
+
+  const insertWrapped = (prefix, suffix = '', placeholder = '') => {
+    const input = inputRef.current;
+    const currentValue = value || '';
+    const selectionStart = input?.selectionStart ?? currentValue.length;
+    const selectionEnd = input?.selectionEnd ?? currentValue.length;
+    const selectedText = currentValue.slice(selectionStart, selectionEnd);
+    const body = selectedText || placeholder;
+    const nextValue = `${currentValue.slice(0, selectionStart)}${prefix}${body}${suffix}${currentValue.slice(selectionEnd)}`;
+    const cursorStart = selectionStart + prefix.length;
+    const cursorEnd = cursorStart + body.length;
+    setValueWithSelection(nextValue, cursorStart, cursorEnd);
+  };
+
+  const insertAtCursor = (text) => {
+    const input = inputRef.current;
+    const currentValue = value || '';
+    const selectionStart = input?.selectionStart ?? currentValue.length;
+    const selectionEnd = input?.selectionEnd ?? currentValue.length;
+    const nextValue = `${currentValue.slice(0, selectionStart)}${text}${currentValue.slice(selectionEnd)}`;
+    const cursor = selectionStart + text.length;
+    setValueWithSelection(nextValue, cursor, cursor);
+  };
+
+  const prefixSelectedLines = (prefix) => {
+    const input = inputRef.current;
+    const currentValue = value || '';
+    const selectionStart = input?.selectionStart ?? currentValue.length;
+    const selectionEnd = input?.selectionEnd ?? currentValue.length;
+    if (selectionStart === selectionEnd) {
+      insertAtCursor(prefix);
+      return;
+    }
+    const selected = currentValue.slice(selectionStart, selectionEnd);
+    const prefixed = selected.split('\n').map((line) => (line ? `${prefix}${line}` : prefix.trimEnd())).join('\n');
+    const nextValue = `${currentValue.slice(0, selectionStart)}${prefixed}${currentValue.slice(selectionEnd)}`;
+    setValueWithSelection(nextValue, selectionStart, selectionStart + prefixed.length);
+  };
+
   return (
     <Form className="mb-3" onSubmit={(event) => {
       event.preventDefault();
@@ -452,7 +504,50 @@ function CommentForm({ title, value, setValue, onSubmit }) {
     }}>
       <FormGroup>
         <Label>{title}</Label>
-        <Input type="textarea" rows="3" value={value} onChange={(event) => setValue(event.target.value)} />
+        <div className="tm-md-editor">
+          <div className="tm-md-editor-toolbar" role="toolbar" aria-label={`${title} markdown panel`}>
+            <Button type="button" color="secondary" outline size="sm" onClick={() => insertWrapped('**', '**', 'tučný text')}>
+              <i className="bi bi-type-bold" />
+            </Button>
+            <Button type="button" color="secondary" outline size="sm" onClick={() => insertWrapped('_', '_', 'kurzíva')}>
+              <i className="bi bi-type-italic" />
+            </Button>
+            <Button type="button" color="secondary" outline size="sm" onClick={() => insertAtCursor('## ')}>
+              <i className="bi bi-type-h2" />
+            </Button>
+            <Button type="button" color="secondary" outline size="sm" onClick={() => prefixSelectedLines('> ')}>
+              <i className="bi bi-blockquote-left" />
+            </Button>
+            <Button type="button" color="secondary" outline size="sm" onClick={() => prefixSelectedLines('- ')}>
+              <i className="bi bi-list-ul" />
+            </Button>
+            <Button type="button" color="secondary" outline size="sm" onClick={() => prefixSelectedLines('1. ')}>
+              <i className="bi bi-list-ol" />
+            </Button>
+            <Button type="button" color="secondary" outline size="sm" onClick={() => insertWrapped('[', '](https://)', 'odkaz')}>
+              <i className="bi bi-link-45deg" />
+            </Button>
+            <Button type="button" color="secondary" outline size="sm" onClick={() => insertWrapped('```\n', '\n```', 'kód')}>
+              <i className="bi bi-code-square" />
+            </Button>
+          </div>
+          <Input
+            innerRef={inputRef}
+            type="textarea"
+            rows="4"
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+          />
+        </div>
+        <div className="tm-muted tm-field-help">Podporuje Markdown (nadpisy, seznamy, odkazy, tučné písmo, kód).</div>
+        <div className="tm-markdown-preview">
+          <div className="tm-markdown-preview-head">Náhled markdownu</div>
+          <MarkdownText
+            content={value}
+            className="tm-markdown tm-markdown-preview-body"
+            emptyMessage="Náhled se zobrazí po vyplnění textu."
+          />
+        </div>
       </FormGroup>
       <Button color="primary" outline type="submit" disabled={!value.trim()}>
         <i className="bi bi-chat-left-text me-1" />
