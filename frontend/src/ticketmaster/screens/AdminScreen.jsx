@@ -497,11 +497,12 @@ function DirectoryPanel({
             </FormGroup>
           </>
         )}
-        <div className="tm-admin-filter-reset">
+        <FormGroup className="tm-admin-filter-reset">
+          <Label className="tm-admin-filter-reset-label" aria-hidden="true">&nbsp;</Label>
           <Button outline color="secondary" type="button" onClick={resetFilters}>
             Reset
           </Button>
-        </div>
+        </FormGroup>
       </div>
       {view === 'partners' && <PartnersTable rows={partnerRows} />}
       {view === 'clients' && <ClientsTable rows={clientRows} partners={partners} onEdit={onEditClient} />}

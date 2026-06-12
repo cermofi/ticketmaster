@@ -1261,11 +1261,14 @@ body[data-tm-density="compact"] .tm-login-form {
 }
 
 .tm-admin-filter-reset {
-  display: contents;
+  grid-column: -1;
+}
+
+.tm-admin-filter-reset-label {
+  visibility: hidden;
 }
 
 .tm-admin-filter-reset .btn {
-  align-self: end;
   min-width: 4.8rem;
   white-space: nowrap;
 }
