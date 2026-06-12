@@ -164,18 +164,18 @@ body.tm-login-session #app-main,
 }
 
 #app {
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 194px 1fr;
 }
 
 #app.sidebar-collapsed {
-  grid-template-columns: 60px 1fr;
+  grid-template-columns: 194px 1fr;
 }
 
 #app-brandimage {
   display: flex !important;
   align-items: center;
-  min-height: 60px;
-  padding: 0 16px;
+  min-height: 58px;
+  padding: 0 14px;
   background: #121820 !important;
   border-bottom: 1px solid var(--tm-line) !important;
   overflow: hidden;
@@ -194,7 +194,7 @@ body.tm-login-session #app-main,
 #app-brandimage > a::before {
   content: "TicketMaster";
   color: #d6e0ef;
-  font-size: 1.15rem;
+  font-size: 1.03rem;
   font-weight: 600;
   line-height: 1.2;
   white-space: nowrap;
@@ -214,15 +214,15 @@ body.tm-login-session #app-main,
 
 #app-sidebar .nav-item {
   width: 100%;
-  margin-bottom: 4px !important;
+  margin-bottom: 3px !important;
 }
 
 #app-sidebar .nav-link {
   display: flex;
   align-items: center;
-  min-height: 44px;
-  height: 44px;
-  padding: 0 16px;
+  min-height: 42px;
+  height: 42px;
+  padding: 0 14px;
   color: #d6e0ef !important;
   font-weight: 500;
   border-left: 2px solid transparent;
@@ -287,12 +287,12 @@ body.tm-login-session #app-main,
 }
 
 #app-sidebar > .nav-item[role="group"] {
-  display: flex !important;
-  align-items: center;
-  min-height: 52px;
-  margin-top: 8px;
-  padding: 0 16px;
-  border-top: 1px solid var(--tm-line);
+  display: none !important;
+}
+
+#app-sidebar-collapse,
+#app-sidebar-expand {
+  display: none !important;
 }
 
 #app-sidebar > .nav-item[role="group"] #app-sidebar-collapse {
@@ -342,31 +342,29 @@ body.tm-login-session #app-main,
 }
 
 #app.sidebar-collapsed #app-brandimage {
-  justify-content: center;
-  padding: 0;
+  justify-content: flex-start;
+  padding: 0 14px;
 }
 
 #app.sidebar-collapsed #app-sidebar {
-  width: 60px;
+  width: 194px;
 }
 
 #app.sidebar-collapsed #app-sidebar .nav-item {
-  margin-bottom: 6px !important;
+  margin-bottom: 3px !important;
 }
 
 #app.sidebar-collapsed #app-sidebar .nav-link {
-  justify-content: center;
-  width: calc(100% - 16px);
-  margin: 0 8px;
-  padding: 0;
-  border-left: 0;
-  border-radius: 8px;
+  justify-content: flex-start;
+  width: 100%;
+  margin: 0;
+  padding: 0 14px;
+  border-left: 2px solid transparent;
+  border-radius: 0 8px 8px 0;
 }
 
 #app.sidebar-collapsed #app-sidebar > .nav-item[role="group"] {
-  justify-content: center;
-  padding: 0;
-  margin-top: 6px;
+  display: none !important;
 }
 
 #app.sidebar-collapsed #app-sidebar > .nav-item[role="group"] .nav-item {
@@ -377,7 +375,20 @@ body.tm-login-session #app-main,
 }
 
 #app.sidebar-collapsed #app-brandimage a::before {
-  content: "";
+  content: "TicketMaster";
+}
+
+#app.sidebar-collapsed #app-sidebar .sidebar-item-name {
+  visibility: visible !important;
+}
+
+#app.sidebar-collapsed #app-sidebar .nav-link .sidebar-item-name.d-flex {
+  display: flex !important;
+  gap: 12px;
+}
+
+#app.sidebar-collapsed #app-sidebar .nav-link .sidebar-item-name.d-flex > .sidebar-item-name {
+  display: block !important;
 }
 
 .tm-screen {
