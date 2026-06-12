@@ -163,17 +163,25 @@ body.tm-login-session #app-main,
   width: 100% !important;
 }
 
+#app {
+  grid-template-columns: 240px 1fr;
+}
+
+#app.sidebar-collapsed {
+  grid-template-columns: 60px 1fr;
+}
+
 #app-brandimage {
   display: flex !important;
   align-items: center;
-  min-height: 3rem;
-  padding: 0 .7rem;
+  min-height: 60px;
+  padding: 0 16px;
   background: #121820 !important;
   border-bottom: 1px solid var(--tm-line) !important;
   overflow: hidden;
 }
 
-#app-brandimage a {
+#app-brandimage > a {
   display: flex;
   align-items: center;
   width: 100%;
@@ -183,12 +191,12 @@ body.tm-login-session #app-main,
   overflow: hidden;
 }
 
-#app-brandimage a::before {
+#app-brandimage > a::before {
   content: "TicketMaster";
   color: #d6e0ef;
-  font-size: .92rem;
+  font-size: 1.15rem;
   font-weight: 600;
-  letter-spacing: .01em;
+  line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -200,59 +208,123 @@ body.tm-login-session #app-main,
   border-color: var(--tm-line) !important;
 }
 
-#app-sidebar-logo {
-  display: none !important;
+#app-sidebar {
+  overflow-x: hidden;
 }
 
-#app-sidebar-collapse,
-#app-sidebar-expand {
-  color: #91a4bc !important;
-  margin: 0 auto;
-  padding: .35rem;
-  border-radius: .4rem;
+#app-sidebar .nav-item {
+  width: 100%;
+  margin-bottom: 4px !important;
 }
 
-#app-sidebar-collapse:hover,
-#app-sidebar-expand:hover {
-  background: rgba(255, 255, 255, .06);
-}
-
-#app-sidebar-expand {
-  display: inline-flex;
+#app-sidebar .nav-link {
+  display: flex;
   align-items: center;
-  justify-content: center;
-}
-
-#app-sidebar a {
-  min-height: 2.45rem;
+  min-height: 44px;
+  height: 44px;
+  padding: 0 16px;
   color: #d6e0ef !important;
   font-weight: 500;
   border-left: 2px solid transparent;
+  border-radius: 0 8px 8px 0;
+  overflow: hidden;
+  text-decoration: none;
+}
+
+#app-sidebar .nav-link > .d-flex {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+#app-sidebar .nav-link .sidebar-item-name.d-flex {
+  display: flex !important;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+#app-sidebar .nav-link .sidebar-item-icon {
+  width: 24px;
+  min-width: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 !important;
+  padding-right: 0 !important;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+#app-sidebar .nav-link .sidebar-item-name.d-flex > .sidebar-item-name {
+  min-width: 0;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.2;
 }
 
-#app-sidebar a i {
-  width: 1rem;
-  min-width: 1rem;
-  text-align: center;
+#app-sidebar .nav-link .sidebar-badge-collapsed {
+  margin-left: .35rem;
 }
 
-#app-sidebar .sidebar-item-name > span {
-  margin-left: .1rem;
-}
-
-#app-sidebar a:hover {
+#app-sidebar .nav-link:hover {
   background: #1a222d !important;
   color: #ffffff !important;
 }
 
-#app-sidebar a.active,
-#app-sidebar a[aria-current="page"] {
+#app-sidebar .nav-link.active,
+#app-sidebar .nav-link[aria-current="page"] {
   border-left-color: var(--tm-accent) !important;
   background: rgba(96, 165, 250, .12) !important;
   color: #ffffff !important;
+}
+
+#app-sidebar-logo {
+  display: none !important;
+}
+
+#app-sidebar > .nav-item[role="group"] {
+  display: flex !important;
+  align-items: center;
+  min-height: 52px;
+  margin-top: 8px;
+  padding: 0 16px;
+  border-top: 1px solid var(--tm-line);
+}
+
+#app-sidebar > .nav-item[role="group"] #app-sidebar-collapse {
+  width: 24px;
+  min-width: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border-radius: 6px;
+  color: #91a4bc !important;
+}
+
+#app-sidebar > .nav-item[role="group"] #app-sidebar-collapse:hover {
+  background: rgba(255, 255, 255, .08);
+}
+
+#app-sidebar-expand {
+  width: 44px;
+  height: 44px;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border-radius: 8px;
+  color: #91a4bc !important;
+}
+
+#app-sidebar-expand:hover {
+  background: rgba(255, 255, 255, .08);
 }
 
 #app-header {
@@ -270,8 +342,38 @@ body.tm-login-session #app-main,
 }
 
 #app.sidebar-collapsed #app-brandimage {
-  padding: 0;
   justify-content: center;
+  padding: 0;
+}
+
+#app.sidebar-collapsed #app-sidebar {
+  width: 60px;
+}
+
+#app.sidebar-collapsed #app-sidebar .nav-item {
+  margin-bottom: 6px !important;
+}
+
+#app.sidebar-collapsed #app-sidebar .nav-link {
+  justify-content: center;
+  width: calc(100% - 16px);
+  margin: 0 8px;
+  padding: 0;
+  border-left: 0;
+  border-radius: 8px;
+}
+
+#app.sidebar-collapsed #app-sidebar > .nav-item[role="group"] {
+  justify-content: center;
+  padding: 0;
+  margin-top: 6px;
+}
+
+#app.sidebar-collapsed #app-sidebar > .nav-item[role="group"] .nav-item {
+  margin-bottom: 0 !important;
+  display: flex;
+  justify-content: center;
+  width: 100%;
 }
 
 #app.sidebar-collapsed #app-brandimage a::before {
