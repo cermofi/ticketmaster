@@ -1,6 +1,6 @@
 import React from 'react';
 import { Alert } from 'reactstrap';
-import { DateTime, Spinner } from 'asab_webui_components';
+import { Spinner } from 'asab_webui_components';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -17,7 +17,7 @@ export function Loading() {
   return (
     <div className="tm-screen tm-loading-state" aria-live="polite">
       <Spinner />
-      <span className="tm-muted">Načítání...</span>
+      <span className="tm-muted">Loading...</span>
     </div>
   );
 }
@@ -56,14 +56,14 @@ export function EmptyRow({ colSpan, title, message }) {
 }
 
 export function StatusPill({ value, priority, tone }) {
-  const normalizedTone = tone || (priority === 'Critical' ? 'danger' : statusTone(value));
+  const normalizedTone = tone || (priority ? priorityTone(priority) : statusTone(value));
   const className = `tm-status tm-status-${normalizedTone}`;
-  return <span className={className}>{labelValue(value) || 'Bez hodnoty'}</span>;
+  return <span className={className}>{labelValue(value) || 'No value'}</span>;
 }
 
 export function TimeCell({ value }) {
   if (!value) return <span className="tm-muted">-</span>;
-  return <DateTime value={value} />;
+  return <span>{formatDateTime(value)}</span>;
 }
 
 export function MarkdownText({ content, className = '', emptyMessage = '' }) {
@@ -89,13 +89,13 @@ export function MarkdownText({ content, className = '', emptyMessage = '' }) {
 
 export function roleLabel(role) {
   if (role === 'DeliveryManager') return 'Delivery Manager';
-  if (role === 'responsible') return 'Odpovědná osoba';
-  if (role === 'technical') return 'Technická osoba';
+  if (role === 'responsible') return 'Responsible';
+  if (role === 'technical') return 'Technical';
   return role;
 }
 
 export function apiError(err) {
-  return err.response?.data?.detail || err.message || 'Neočekávaná chyba';
+  return err.response?.data?.detail || err.message || 'Unexpected error';
 }
 
 export function asArray(value) {
@@ -108,40 +108,49 @@ export function asArray(value) {
 
 export function labelValue(value) {
   const labels = {
-    Question: 'Dotaz',
-    Incident: 'Incident',
-    Change: 'Změna',
-    'Operational Request': 'Provozní požadavek',
-    Normal: 'Normální',
-    High: 'Vysoká',
-    Critical: 'Kritická',
-    Low: 'Nízká',
-    Open: 'Otevřený',
-    New: 'Nový',
-    Queued: 'Ve frontě',
-    Assigned: 'Přiřazený',
-    'In Progress': 'V řešení',
-    'Waiting for Customer': 'Čeká na klienta',
-    'Waiting for Partner': 'Čeká na partnera',
-    Resolved: 'Vyřešený',
-    Closed: 'Uzavřený',
-    Rejected: 'Zamítnutý',
-    Blocked: 'Blokovaný',
-    Done: 'Hotovo',
-    Failed: 'Selhalo',
-    system: 'Systémový',
-    internal: 'Interní',
-    partner: 'Partnerský',
-    System: 'Systémový',
-    Internal: 'Interní'
+    DeliveryManager: 'Delivery Manager',
+    system: 'System',
+    internal: 'Internal',
+    partner: 'Partner',
+    System: 'System',
+    Internal: 'Internal'
   };
   return labels[value] || value;
 }
 
 function statusTone(value) {
-  if (['Closed', 'Resolved', 'Done'].includes(value)) return 'success';
-  if (['Rejected', 'Blocked', 'Failed'].includes(value)) return 'danger';
-  if (['In Progress', 'Waiting for Customer', 'Waiting for Partner'].includes(value)) return 'warning';
+  if (value === 'Resolved') return 'success';
+  if (['Rejected', 'Failed'].includes(value)) return 'danger';
+  if (['In progress', 'Need more info', 'Assigned'].includes(value)) return 'warning';
+  if (['Closed', 'Cancelled', 'Duplicate'].includes(value)) return 'muted';
+  if (value === 'New') return 'neutral';
   if (!value) return 'muted';
-  return 'neutral';
+  return 'soft';
+}
+
+function priorityTone(priority) {
+  if (priority === 'Critical') return 'danger';
+  if (priority === 'High') return 'warning';
+  return 'muted';
+}
+
+function formatDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const rowDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.round((today.getTime() - rowDay.getTime()) / 86400000);
+
+  const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' }).format(date);
+  if (diffDays === 0) return `Today ${time}`;
+  if (diffDays === 1) return `Yesterday ${time}`;
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: date.getFullYear() === now.getFullYear() ? undefined : 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date);
 }

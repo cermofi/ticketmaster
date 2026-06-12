@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Alert,
   Button,
@@ -57,18 +58,26 @@ export default function AuthGate({ children }) {
   }
   return (
     <>
-      <div className="tm-session-bar">
-        <div>
-          <strong>{session.user.name}</strong>
-          <span className="tm-muted ms-2">{roleLabel(session.user.internal_role || session.user.partner_role)}</span>
-        </div>
-        <Button size="sm" outline color="secondary" onClick={session.logout}>
-          <i className="bi bi-box-arrow-right me-1" />
-          Odhlásit
-        </Button>
-      </div>
+      <HeaderSession user={session.user} onLogout={session.logout} />
       {children(session.user)}
     </>
+  );
+}
+
+function HeaderSession({ user, onLogout }) {
+  const header = document.getElementById('app-header');
+  if (!header) return null;
+  return createPortal(
+    <div className="tm-header-session">
+      <div className="tm-header-user">
+        <strong>{user.name}</strong>
+        <span className="tm-muted">{roleLabel(user.internal_role || user.partner_role)}</span>
+      </div>
+      <Button size="sm" outline color="secondary" onClick={onLogout}>
+        Logout
+      </Button>
+    </div>,
+    header
   );
 }
 
@@ -105,11 +114,9 @@ function LoginScreen({ onLogin }) {
         {!activationToken && (
           <ButtonGroup className="mb-3 w-100">
             <Button color={mode === 'internal' ? 'primary' : 'secondary'} outline={mode !== 'internal'} onClick={() => setMode('internal')} type="button">
-              <i className="bi bi-building-lock me-1" />
-              Interní SSO
+              Internal SSO
             </Button>
             <Button color={mode === 'partner' ? 'primary' : 'secondary'} outline={mode !== 'partner'} onClick={() => setMode('partner')} type="button">
-              <i className="bi bi-person-badge me-1" />
               Partner
             </Button>
           </ButtonGroup>
@@ -118,29 +125,28 @@ function LoginScreen({ onLogin }) {
         {activationToken ? (
           <>
             <FormGroup>
-              <Label>Token pro reset</Label>
+              <Label>Reset token</Label>
               <Input value={activationToken} onChange={(event) => setActivationToken(event.target.value)} />
             </FormGroup>
             <FormGroup>
-              <Label>Nové heslo</Label>
+              <Label>New password</Label>
               <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" />
             </FormGroup>
           </>
         ) : (
           <FormGroup>
-            <Label>E-mail</Label>
+            <Label>Email</Label>
             <Input value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
           </FormGroup>
         )}
         {!activationToken && mode === 'partner' && (
           <FormGroup>
-            <Label>Heslo</Label>
+            <Label>Password</Label>
             <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
           </FormGroup>
         )}
         <Button color="primary" type="submit" className="w-100">
-          <i className="bi bi-box-arrow-in-right me-1" />
-          {activationToken ? 'Nastavit heslo' : 'Přihlásit'}
+          {activationToken ? 'Set password' : 'Sign in'}
         </Button>
       </Form>
     </div>

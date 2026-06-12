@@ -41,8 +41,8 @@ function PartnerOverview({ user }) {
   if (user.kind !== 'partner') {
     return (
       <div className="tm-screen">
-        <PageHeader title="Přehled klientů" />
-        <EmptyState icon="bi-shield-lock" title="Přístup pouze pro partnery" message="Tento přehled je dostupný jen partner uživatelům." />
+        <PageHeader title="Partner overview" />
+        <EmptyState icon="bi-shield-lock" title="Partner-only access" message="This overview is available only to partner users." />
       </div>
     );
   }
@@ -53,16 +53,16 @@ function PartnerOverview({ user }) {
 
   return (
     <div className="tm-screen">
-      <PageHeader title="Přehled klientů">
+      <PageHeader title="Partner overview">
         {user.partner_role === 'responsible'
-          ? `${responsibleClientCount} klientů vedených u vás`
-          : `${clients.length} klientů partnera`}
+          ? `${responsibleClientCount} clients assigned to you`
+          : `${clients.length} partner clients`}
       </PageHeader>
       <ErrorBanner error={error} />
       {loading ? <Loading /> : (
         <div className="tm-partner-overview-grid">
           <section className="tm-panel">
-            <h2>Klienti a odpovědné osoby</h2>
+            <h2>Clients and responsible users</h2>
             <div className="tm-client-list">
               {clients.map((client) => {
                 const responsibleUsers = asArray(client.responsible_users);
@@ -74,21 +74,21 @@ function PartnerOverview({ user }) {
                     </div>
                     <div className="tm-person-list">
                       {responsibleUsers.map((row) => <PersonChip key={row.id} user={row} />)}
-                      {responsibleUsers.length === 0 && <span className="tm-muted">Bez přiřazené odpovědné osoby.</span>}
+                      {responsibleUsers.length === 0 && <span className="tm-muted">No responsible user assigned.</span>}
                     </div>
                   </article>
                 );
               })}
               {clients.length === 0 && (
-                <EmptyState icon="bi-building" title="Žádní klienti" message="Partner zatím nemá žádné klienty." />
+                <EmptyState icon="bi-building" title="No clients" message="This partner has no clients yet." />
               )}
             </div>
           </section>
           <aside className="tm-panel">
-            <h2>Technické osoby</h2>
+            <h2>Technical users</h2>
             <div className="tm-person-list tm-person-list-vertical">
               {technicalUsers.map((row) => <PersonChip key={row.id} user={row} />)}
-              {technicalUsers.length === 0 && <span className="tm-muted">Žádné technické osoby.</span>}
+              {technicalUsers.length === 0 && <span className="tm-muted">No technical users.</span>}
             </div>
           </aside>
         </div>

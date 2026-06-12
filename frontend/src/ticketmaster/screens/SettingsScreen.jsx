@@ -38,26 +38,26 @@ function Settings() {
 
   return (
     <div className="tm-screen">
-      <PageHeader title="Nastavení">
-        Lokální nastavení pro tento prohlížeč.
+      <PageHeader title="Settings">
+        Local browser preferences.
       </PageHeader>
-      <section className="tm-form-page">
+      <section className="tm-form-page tm-settings-card">
         <FormGroup>
-          <Label>Hustota rozhraní</Label>
+          <Label>Interface density</Label>
           <Input type="select" value={settings.density} onChange={(event) => update('density', event.target.value)}>
-            <option value="comfortable">Pohodlná</option>
-            <option value="compact">Kompaktní</option>
+            <option value="comfortable">Comfortable</option>
+            <option value="compact">Compact</option>
           </Input>
         </FormGroup>
         <FormGroup>
-          <Label>Kontrast</Label>
+          <Label>Contrast</Label>
           <Input type="select" value={settings.contrast} onChange={(event) => update('contrast', event.target.value)}>
-            <option value="default">Výchozí</option>
-            <option value="high">Vysoký kontrast</option>
+            <option value="default">Default</option>
+            <option value="high">High contrast</option>
           </Input>
         </FormGroup>
         <div className="tm-switch-row">
-          <span>Omezit animace</span>
+          <span>Reduce motion</span>
           <button
             type="button"
             className={`tm-switch ${settings.reduceMotion ? 'is-on' : ''}`}

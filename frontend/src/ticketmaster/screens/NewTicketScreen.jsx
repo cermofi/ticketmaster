@@ -24,6 +24,7 @@ function NewTicket({ user }) {
   const [error, setError] = useState('');
   const canCreateOnBehalf = user.kind === 'internal' && ['Admin', 'DeliveryManager'].includes(user.internal_role);
   const onBehalfMode = canCreateOnBehalf && searchParams.get('mode') === 'partner';
+  const handleCancel = () => navigate('/');
   const handleCreated = (ticket, failedUploads = []) => {
     const notice = buildUploadNotice(failedUploads);
     navigate(`/tickets/${ticket.id}`, notice ? { state: { notice } } : undefined);
@@ -49,12 +50,10 @@ function NewTicket({ user }) {
 
   return (
     <div className="tm-screen">
-      <PageHeader title={onBehalfMode ? 'Přidat ticket za partnera' : 'Vytvořit ticket'}>
-        {onBehalfMode ? 'Partnerský ticket vytvořený interním uživatelem.' : 'Nový požadavek pro podporu.'}
-      </PageHeader>
+      <PageHeader title={onBehalfMode ? 'Create for partner' : 'Create ticket'} />
       <ErrorBanner error={error} />
       <section className="tm-new-ticket-page">
-        {user.kind === 'partner' && <PartnerTicketForm meta={meta} clients={clients} onCreated={handleCreated} />}
+        {user.kind === 'partner' && <PartnerTicketForm meta={meta} clients={clients} onCreated={handleCreated} onCancel={handleCancel} />}
         {user.kind === 'internal' && onBehalfMode && (
           <PartnerOnBehalfTicketForm
             meta={meta}
@@ -62,9 +61,10 @@ function NewTicket({ user }) {
             clients={clients}
             users={users}
             onCreated={handleCreated}
+            onCancel={handleCancel}
           />
         )}
-        {user.kind === 'internal' && !onBehalfMode && <InternalTicketForm meta={meta} onCreated={handleCreated} />}
+        {user.kind === 'internal' && !onBehalfMode && <InternalTicketForm meta={meta} onCreated={handleCreated} onCancel={handleCancel} />}
       </section>
     </div>
   );
@@ -74,6 +74,6 @@ function buildUploadNotice(failedUploads) {
   if (!Array.isArray(failedUploads) || failedUploads.length === 0) return '';
   const names = failedUploads.map((item) => item.name).filter(Boolean);
   const listed = names.slice(0, 3).join(', ');
-  const rest = names.length > 3 ? ` a dalších ${names.length - 3}` : '';
-  return `Ticket byl vytvořen, ale ${failedUploads.length} příloh se nepodařilo nahrát (${listed}${rest}). Nahraj je prosím z detailu ticketu v sekci Přílohy.`;
+  const rest = names.length > 3 ? ` and ${names.length - 3} more` : '';
+  return `Ticket was created, but ${failedUploads.length} attachments failed to upload (${listed}${rest}). Upload them from the ticket detail in the Attachments section.`;
 }
