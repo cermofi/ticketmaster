@@ -333,6 +333,11 @@ body.tm-login-session #app-main,
   background: #121820 !important;
   border-bottom: 1px solid var(--tm-line) !important;
   color: var(--tm-ink) !important;
+  overflow: visible;
+}
+
+#app-header nav {
+  overflow: visible;
 }
 
 #app-sidepanel img,
@@ -470,15 +475,22 @@ body[data-tm-density="compact"] .tm-login-form {
   gap: .5rem;
   flex-shrink: 0;
   margin-left: .45rem;
+  position: relative;
+  z-index: 2;
+}
+
+.tm-header-user-menu {
+  display: inline-flex;
+  align-items: center;
 }
 
 .tm-header-user-menu .dropdown-toggle.tm-header-user-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  min-width: 34px;
-  height: 34px;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: 999px;
@@ -509,8 +521,8 @@ body[data-tm-density="compact"] .tm-login-form {
 }
 
 .tm-header-avatar {
-  width: 100%;
-  height: 100%;
+  width: 32px;
+  height: 32px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
@@ -518,8 +530,10 @@ body[data-tm-density="compact"] .tm-login-form {
   font-size: .74rem;
   font-weight: 700;
   letter-spacing: .02em;
-  color: #dce7f6;
-  background: linear-gradient(135deg, #334155, #1f2937);
+  color: #eff6ff;
+  border: 1px solid rgba(191, 219, 254, .42);
+  background: linear-gradient(145deg, #2563eb, #1d4ed8);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, .35);
 }
 
 .tm-header-account-menu {
@@ -913,6 +927,40 @@ body[data-tm-density="compact"] .tm-login-form {
 .tm-settings-card {
   width: min(560px, 100%);
   box-shadow: none;
+}
+
+.tm-account-card {
+  width: min(620px, 100%);
+}
+
+.tm-field-note {
+  margin-top: .25rem;
+  color: var(--tm-muted);
+  font-size: .76rem;
+}
+
+.tm-account-meta {
+  display: grid;
+  gap: .25rem;
+  margin: .35rem 0 1rem;
+  color: var(--tm-muted);
+  font-size: .76rem;
+}
+
+.tm-account-meta code {
+  width: fit-content;
+  padding: .14rem .38rem;
+  border: 1px solid var(--tm-line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .03);
+  color: var(--tm-ink);
+}
+
+.tm-account-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: .55rem;
+  margin-top: 1.1rem;
 }
 
 .tm-form-page h2 {

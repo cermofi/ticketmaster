@@ -18,7 +18,14 @@ import api, { clearSession, currentUser, saveSession } from '../../api/client.js
 import { roleLabel } from './helpers.jsx';
 
 export function useSession() {
-  const [user, setUser] = useState(currentUser());
+  const [user, setUserState] = useState(currentUser());
+
+  const setUser = (nextUser) => {
+    if (nextUser) {
+      localStorage.setItem('ticketmaster.user', JSON.stringify(nextUser));
+    }
+    setUserState(nextUser);
+  };
 
   useEffect(() => {
     const isPartnerSession = user?.kind === 'partner';
@@ -35,12 +42,11 @@ export function useSession() {
     if (!token) return;
     api.get('/auth/me')
       .then((response) => {
-        localStorage.setItem('ticketmaster.user', JSON.stringify(response.data));
         setUser(response.data);
       })
       .catch(() => {
         clearSession();
-        setUser(null);
+        setUserState(null);
       });
   }, []);
 
@@ -49,7 +55,7 @@ export function useSession() {
     setUser,
     logout: () => {
       clearSession();
-      setUser(null);
+      setUserState(null);
       window.location.hash = '#/';
     }
   };
@@ -63,7 +69,7 @@ export default function AuthGate({ children }) {
   return (
     <>
       <HeaderSession user={session.user} onLogout={session.logout} />
-      {children(session.user)}
+      {children(session.user, session)}
     </>
   );
 }
@@ -73,13 +79,15 @@ function HeaderSession({ user, onLogout }) {
   const displayName = (user?.name || user?.email || 'User').trim();
   const role = roleLabel(user?.internal_role || user?.partner_role);
   const email = (user?.email || '').trim();
-  const initials = userInitials(displayName);
+  const initials = userInitials(user?.name, email);
 
   useEffect(() => {
     let observer = null;
 
     const resolveHeaderNav = () => {
-      const node = document.querySelector('#app-header nav');
+      const node = document.querySelector('#app-header nav')
+        || document.querySelector('#app-header .navbar-nav:last-of-type')
+        || document.querySelector('#app-header');
       if (!node) return false;
       setHeaderNav(node);
       return true;
@@ -101,6 +109,14 @@ function HeaderSession({ user, onLogout }) {
     event.preventDefault();
     window.location.hash = '#/settings';
   };
+  const openAccountSettings = (event) => {
+    event.preventDefault();
+    window.location.hash = '#/account';
+  };
+  const openChangePassword = (event) => {
+    event.preventDefault();
+    window.location.hash = '#/account/password';
+  };
 
   if (!headerNav) return null;
   return createPortal(
@@ -120,9 +136,8 @@ function HeaderSession({ user, onLogout }) {
             {role && <div className="tm-header-account-role">{role}</div>}
             {email && <div className="tm-header-account-email">{email}</div>}
           </div>
-          <DropdownItem disabled>My account</DropdownItem>
-          <DropdownItem disabled>Account settings</DropdownItem>
-          <DropdownItem disabled>Change password</DropdownItem>
+          <DropdownItem onClick={openAccountSettings}>Account settings</DropdownItem>
+          <DropdownItem onClick={openChangePassword}>Change password</DropdownItem>
           <DropdownItem onClick={openSettings}>Preferences</DropdownItem>
           <DropdownItem divider />
           <DropdownItem className="tm-header-logout-item" onClick={onLogout}>
@@ -135,15 +150,19 @@ function HeaderSession({ user, onLogout }) {
   );
 }
 
-function userInitials(name) {
+function userInitials(name, email = '') {
   const normalized = (name || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
   const parts = normalized.split(/[\s._@-]+/).filter(Boolean);
-  const first = parts[0]?.charAt(0) || '';
-  const second = parts[1]?.charAt(0) || parts[0]?.charAt(1) || '';
-  const letters = `${first}${second}`.toUpperCase();
-  return letters || 'U';
+  if (parts.length > 0) {
+    const first = parts[0]?.charAt(0) || '';
+    const second = parts[1]?.charAt(0) || parts[0]?.charAt(1) || '';
+    const letters = `${first}${second}`.toUpperCase();
+    if (letters.trim()) return letters;
+  }
+  const emailLetter = email.trim().charAt(0).toUpperCase();
+  return emailLetter || 'U';
 }
 
 function LoginScreen({ onLogin }) {

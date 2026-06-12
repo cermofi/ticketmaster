@@ -9,6 +9,8 @@ const PartnerOverviewScreen = lazy(() => import('./screens/PartnerOverviewScreen
 const AdminScreen = lazy(() => import('./screens/AdminScreen.jsx'));
 const AuditScreen = lazy(() => import('./screens/AuditScreen.jsx'));
 const SettingsScreen = lazy(() => import('./screens/SettingsScreen.jsx'));
+const AccountSettingsScreen = lazy(() => import('./screens/AccountSettingsScreen.jsx'));
+const ChangePasswordScreen = lazy(() => import('./screens/ChangePasswordScreen.jsx'));
 
 export default class TicketMasterModule extends Module {
   constructor(app) {
@@ -20,6 +22,8 @@ export default class TicketMasterModule extends Module {
     app.Router.addRoute({ path: '/partner-overview', end: true, name: 'Partner overview', component: PartnerOverviewScreen, resource: '*' });
     app.Router.addRoute({ path: '/admin', end: true, name: 'Admin', component: AdminScreen, resource: '*' });
     app.Router.addRoute({ path: '/audit', end: true, name: 'Audit', component: AuditScreen, resource: '*' });
+    app.Router.addRoute({ path: '/account', end: true, name: 'Account settings', component: AccountSettingsScreen, resource: '*' });
+    app.Router.addRoute({ path: '/account/password', end: true, name: 'Change password', component: ChangePasswordScreen, resource: '*' });
     app.Router.addRoute({ path: '/settings', end: true, name: 'Settings', component: SettingsScreen, resource: '*' });
 
     app.Navigation.addItem({ name: 'Tickets', url: '/', icon: 'bi bi-ticket-detailed' });

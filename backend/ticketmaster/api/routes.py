@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select, text
 
 from ticketmaster.api.deps import CurrentUser, DbSession
@@ -24,7 +24,7 @@ from ticketmaster.schemas.serializers import (
     ticket_to_dict,
     user_to_dict,
 )
-from ticketmaster.services import admin, auth, gitlab, malware, notifications, ticket_exports, tickets
+from ticketmaster.services import account, admin, auth, gitlab, malware, notifications, ticket_exports, tickets
 from ticketmaster.services.audit import audit
 from ticketmaster.services.errors import NotFoundError, PermissionDenied, ValidationError
 
@@ -83,6 +83,21 @@ class UserUpdateBody(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     role: str | None = Field(default=None, min_length=1, max_length=40)
     active: bool | None = None
+
+
+class AccountUpdateBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    email: str | None = Field(default=None, min_length=1, max_length=320)
+
+
+class ChangePasswordBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: str = Field(min_length=1, max_length=300)
+    new_password: str = Field(min_length=1, max_length=300)
+    confirm_password: str = Field(min_length=1, max_length=300)
 
 
 class PasswordResetBody(BaseModel):
@@ -254,6 +269,31 @@ def activate(db: DbSession, request: Request, body: ActivateBody) -> dict:
 @router.get("/auth/me")
 def me(user: CurrentUser) -> dict:
     return user_to_dict(user)
+
+
+@router.get("/account/me")
+def account_me(user: CurrentUser) -> dict:
+    return account.profile_to_dict(user)
+
+
+@router.patch("/account/me")
+def account_update(db: DbSession, user: CurrentUser, body: AccountUpdateBody) -> dict:
+    row = account.update_own_profile(db, user=user, name=body.name, email=body.email)
+    db.commit()
+    return account.profile_to_dict(row)
+
+
+@router.post("/account/change-password")
+def account_change_password(db: DbSession, user: CurrentUser, body: ChangePasswordBody) -> dict:
+    account.change_own_password(
+        db,
+        user=user,
+        current_password=body.current_password,
+        new_password=body.new_password,
+        confirm_password=body.confirm_password,
+    )
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/partners")
