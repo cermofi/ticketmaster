@@ -714,6 +714,15 @@ body[data-tm-density="compact"] .tm-login-form {
   text-decoration: underline;
 }
 
+.tm-row-client {
+  display: inline-block;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
 .tm-ticket-meta {
   display: flex;
   flex-wrap: wrap;

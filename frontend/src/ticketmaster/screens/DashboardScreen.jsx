@@ -287,6 +287,7 @@ function TicketTable({ tickets }) {
             <th>Status</th>
             <th>Priority</th>
             <th>Partner</th>
+            <th>Client</th>
             <th className="text-end">Updated</th>
           </tr>
         </thead>
@@ -307,11 +308,16 @@ function TicketTable({ tickets }) {
               <td><StatusPill value={ticket.status} /></td>
               <td><StatusPill value={ticket.priority} priority={ticket.priority} /></td>
               <td className="tm-quiet-cell">{ticket.partner_name || '-'}</td>
+              <td className="tm-quiet-cell">
+                <span className="tm-row-client" title={ticket.client_name || '-'}>
+                  {ticket.client_name || '-'}
+                </span>
+              </td>
               <td className="text-end tm-quiet-cell"><TimeCell value={ticket.updated_at} /></td>
             </tr>
           ))}
           {tickets.length === 0 && (
-            <EmptyRow colSpan="5" title="No tickets found" message="Try updating filters or create a new ticket." />
+            <EmptyRow colSpan="6" title="No tickets found" message="Try updating filters or create a new ticket." />
           )}
         </tbody>
       </Table>
