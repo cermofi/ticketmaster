@@ -86,7 +86,7 @@ function TicketDetail({ user }) {
     setError('');
     setDownloadingAttachmentId(attachment.id);
     try {
-      const response = await api.get(attachment.download_url, { responseType: 'blob' });
+      const response = await api.get(normalizeApiPath(attachment.download_url), { responseType: 'blob' });
       saveDownloadResponse(response, attachment.filename || 'attachment');
     } catch (err) {
       setError(apiError(err));
@@ -421,6 +421,12 @@ function formatBytes(size) {
 function asArray(value) {
   if (Array.isArray(value)) return value;
   return [];
+}
+
+function normalizeApiPath(path) {
+  if (typeof path !== 'string') return path;
+  if (path.startsWith('/api/')) return path.slice(4);
+  return path;
 }
 
 function saveDownloadResponse(response, fallbackName) {
