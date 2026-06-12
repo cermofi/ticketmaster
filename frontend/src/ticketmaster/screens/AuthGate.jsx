@@ -4,10 +4,14 @@ import {
   Alert,
   Button,
   ButtonGroup,
+  DropdownItem,
+  DropdownMenu,
+  DropdownToggle,
   Form,
   FormGroup,
   Input,
-  Label
+  Label,
+  UncontrolledDropdown
 } from 'reactstrap';
 
 import api, { clearSession, currentUser, saveSession } from '../../api/client.js';
@@ -66,7 +70,10 @@ export default function AuthGate({ children }) {
 
 function HeaderSession({ user, onLogout }) {
   const [headerNav, setHeaderNav] = useState(null);
-  const role = roleLabel(user.internal_role || user.partner_role);
+  const displayName = (user?.name || user?.email || 'User').trim();
+  const role = roleLabel(user?.internal_role || user?.partner_role);
+  const email = (user?.email || '').trim();
+  const initials = userInitials(displayName);
 
   useEffect(() => {
     let observer = null;
@@ -90,19 +97,53 @@ function HeaderSession({ user, onLogout }) {
     return () => observer?.disconnect();
   }, []);
 
+  const openSettings = (event) => {
+    event.preventDefault();
+    window.location.hash = '#/settings';
+  };
+
   if (!headerNav) return null;
   return createPortal(
     <div className="tm-header-session mx-1">
-      <span className="tm-header-user">
-        <strong>{user.name}</strong>
-        <span className="tm-muted">{role}</span>
-      </span>
-      <Button color="outline-secondary" size="sm" className="tm-header-logout-btn" onClick={onLogout}>
-        Logout
-      </Button>
+      <UncontrolledDropdown className="tm-header-user-menu">
+        <DropdownToggle
+          tag="button"
+          type="button"
+          className="tm-header-user-toggle tm-header-avatar-toggle"
+          aria-label="Open user menu"
+        >
+          <span className="tm-header-avatar" aria-hidden="true">{initials}</span>
+        </DropdownToggle>
+        <DropdownMenu end className="tm-header-account-menu">
+          <div className="tm-header-account-head">
+            <strong className="tm-header-account-name">{displayName}</strong>
+            {role && <div className="tm-header-account-role">{role}</div>}
+            {email && <div className="tm-header-account-email">{email}</div>}
+          </div>
+          <DropdownItem disabled>My account</DropdownItem>
+          <DropdownItem disabled>Account settings</DropdownItem>
+          <DropdownItem disabled>Change password</DropdownItem>
+          <DropdownItem onClick={openSettings}>Preferences</DropdownItem>
+          <DropdownItem divider />
+          <DropdownItem className="tm-header-logout-item" onClick={onLogout}>
+            Logout
+          </DropdownItem>
+        </DropdownMenu>
+      </UncontrolledDropdown>
     </div>,
     headerNav
   );
+}
+
+function userInitials(name) {
+  const normalized = (name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const parts = normalized.split(/[\s._@-]+/).filter(Boolean);
+  const first = parts[0]?.charAt(0) || '';
+  const second = parts[1]?.charAt(0) || parts[0]?.charAt(1) || '';
+  const letters = `${first}${second}`.toUpperCase();
+  return letters || 'U';
 }
 
 function LoginScreen({ onLogin }) {

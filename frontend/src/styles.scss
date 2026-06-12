@@ -467,78 +467,119 @@ body[data-tm-density="compact"] .tm-login-form {
 .tm-header-session {
   display: inline-flex;
   align-items: center;
-  gap: .55rem;
+  gap: .5rem;
   flex-shrink: 0;
-  max-width: min(24rem, calc(100vw - 11rem));
-  margin-left: .35rem;
-}
-
-.tm-header-user {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: flex-end;
-  min-width: 0;
-  line-height: 1.15;
-}
-
-.tm-header-user strong {
-  display: block;
-  max-width: min(13rem, calc(100vw - 16rem));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: .81rem;
-  font-weight: 600;
-}
-
-.tm-header-user .tm-muted {
-  display: block;
-  max-width: min(13rem, calc(100vw - 16rem));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: .72rem;
-}
-
-.tm-header-logout-btn {
-  flex-shrink: 0;
-  min-height: 2rem;
-  padding: .2rem .55rem;
-  border-color: var(--tm-line-strong);
-  white-space: nowrap;
-}
-
-.tm-header-logout-btn:hover {
-  border-color: var(--tm-line-strong);
+  margin-left: .45rem;
 }
 
 .tm-header-user-menu .dropdown-toggle.tm-header-user-toggle {
   display: inline-flex;
   align-items: center;
-  gap: .5rem;
-  max-width: min(17rem, calc(100vw - 14rem));
-  min-height: 2rem;
-  padding: .2rem .45rem;
+  justify-content: center;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
   border: 1px solid transparent;
-  border-radius: var(--tm-radius-sm);
+  border-radius: 999px;
   text-decoration: none;
   color: var(--tm-ink);
   background: transparent;
 }
 
 .tm-header-user-menu .dropdown-toggle.tm-header-user-toggle:hover {
-  border-color: var(--tm-line);
+  border-color: rgba(148, 163, 184, .45);
   background: rgba(255, 255, 255, .04);
   color: var(--tm-ink);
+}
+
+.tm-header-user-menu .dropdown-toggle.tm-header-user-toggle:focus-visible {
+  border-color: var(--tm-accent);
+  box-shadow: 0 0 0 .2rem rgba(37, 99, 235, .16);
+  outline: none;
+}
+
+.tm-header-user-menu.show .dropdown-toggle.tm-header-user-toggle {
+  border-color: rgba(148, 163, 184, .45);
+  background: rgba(255, 255, 255, .05);
 }
 
 .tm-header-user-menu .dropdown-toggle.tm-header-user-toggle::after {
   display: none;
 }
 
-.tm-header-user-menu .dropdown-toggle.tm-header-user-toggle i {
+.tm-header-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .74rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: #dce7f6;
+  background: linear-gradient(135deg, #334155, #1f2937);
+}
+
+.tm-header-account-menu {
+  width: min(17rem, calc(100vw - 1rem));
+  min-width: 14rem;
+  margin-top: .32rem;
+  padding: .28rem 0;
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-radius-sm);
+  z-index: 1100;
+}
+
+.tm-header-account-head {
+  padding: .28rem .75rem .55rem;
+  border-bottom: 1px solid var(--tm-line);
+  margin-bottom: .18rem;
+}
+
+.tm-header-account-name {
+  display: block;
+  font-size: .87rem;
+  font-weight: 650;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.tm-header-account-role {
+  margin-top: .1rem;
+  font-size: .76rem;
   color: var(--tm-muted);
-  font-size: .78rem;
+}
+
+.tm-header-account-email {
+  margin-top: .06rem;
+  font-size: .74rem;
+  color: var(--tm-muted);
+  overflow-wrap: anywhere;
+}
+
+.tm-header-account-menu .dropdown-item {
+  font-size: .84rem;
+  padding: .4rem .75rem;
+}
+
+.tm-header-account-menu .dropdown-divider {
+  border-top-color: var(--tm-line);
+  margin: .3rem 0;
+}
+
+.tm-header-account-menu .dropdown-item:disabled {
+  color: #788396;
+}
+
+.tm-header-account-menu .tm-header-logout-item {
+  color: #f8b4b4;
+}
+
+.tm-header-account-menu .tm-header-logout-item:hover,
+.tm-header-account-menu .tm-header-logout-item:focus {
+  color: #ffd0d0;
 }
 
 .tm-toolbar {
@@ -1849,15 +1890,12 @@ body[data-tm-contrast="high"] {
 
 @media (max-width: 640px) {
   .tm-header-session {
-    max-width: calc(100vw - 6.5rem);
+    margin-left: .25rem;
   }
 
-  .tm-header-user {
-    max-width: 6rem;
-  }
-
-  .tm-header-user .tm-muted {
-    display: none;
+  .tm-header-account-menu {
+    min-width: 12.75rem;
+    max-width: calc(100vw - .75rem);
   }
 
   .tm-screen {
