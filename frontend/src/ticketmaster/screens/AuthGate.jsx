@@ -119,13 +119,14 @@ function HeaderSession({ user, onLogout }) {
 
   if (!headerNavList) return null;
   return createPortal(
-    <li className="tm-header-session nav-item mx-1">
+    <li className="tm-header-session nav-item">
       <UncontrolledDropdown className="tm-header-user-menu">
         <DropdownToggle
           tag="button"
           type="button"
           className="tm-header-user-toggle tm-header-avatar-toggle"
           aria-label="Open user menu"
+          title="Account menu"
         >
           <span className="tm-header-avatar" aria-hidden="true">{initials}</span>
         </DropdownToggle>
@@ -150,13 +151,20 @@ function HeaderSession({ user, onLogout }) {
 }
 
 function userInitials(name, email = '') {
-  const normalized = (name || '')
+  const rawParts = String(name || '').trim().split(/[\s._@-]+/).filter(Boolean);
+  if (rawParts.length > 0) {
+    const first = rawParts[0]?.charAt(0) || '';
+    const second = rawParts[1]?.charAt(0) || rawParts[0]?.charAt(1) || '';
+    const letters = `${first}${second}`.toLocaleUpperCase('cs-CZ');
+    if (letters.trim()) return letters;
+  }
+  const normalized = String(name || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
-  const parts = normalized.split(/[\s._@-]+/).filter(Boolean);
-  if (parts.length > 0) {
-    const first = parts[0]?.charAt(0) || '';
-    const second = parts[1]?.charAt(0) || parts[0]?.charAt(1) || '';
+  const normalizedParts = normalized.split(/[\s._@-]+/).filter(Boolean);
+  if (normalizedParts.length > 0) {
+    const first = normalizedParts[0]?.charAt(0) || '';
+    const second = normalizedParts[1]?.charAt(0) || normalizedParts[0]?.charAt(1) || '';
     const letters = `${first}${second}`.toUpperCase();
     if (letters.trim()) return letters;
   }
