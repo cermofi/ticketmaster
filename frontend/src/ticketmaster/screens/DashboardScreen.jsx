@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import {
   Button,
@@ -23,6 +23,13 @@ const TICKETS_POLL_MS = 30000;
 const ATTACHMENT_ACCEPT = '.png,.jpg,.jpeg,.pdf,.txt,.log,.zip';
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const ALLOWED_ATTACHMENT_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.pdf', '.txt', '.log', '.zip']);
+const DEFAULT_SORT = { key: 'updated', direction: 'desc' };
+const PRIORITY_RANK = new Map([
+  ['Critical', 0],
+  ['High', 1],
+  ['Normal', 2],
+  ['Low', 3]
+]);
 
 export default function DashboardScreen() {
   return (
@@ -36,6 +43,7 @@ function Dashboard({ user }) {
   const [meta, setMeta] = useState(null);
   const [tickets, setTickets] = useState([]);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [sortConfig, setSortConfig] = useState(DEFAULT_SORT);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -88,6 +96,20 @@ function Dashboard({ user }) {
     }
   }, [loading, meta]);
 
+  const statusRank = useMemo(() => buildRankMap(asArray(meta?.statuses)), [meta]);
+  const sortedTickets = useMemo(
+    () => sortTickets(tickets, sortConfig, statusRank),
+    [tickets, sortConfig, statusRank]
+  );
+
+  const onSortChange = (key) => {
+    setSortConfig((current) => (
+      current.key === key
+        ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+        : { key, direction: key === 'updated' ? 'desc' : 'asc' }
+    ));
+  };
+
   const canCreateOnBehalf = user.kind === 'internal' && ['Admin', 'DeliveryManager'].includes(user.internal_role);
 
   return (
@@ -123,7 +145,7 @@ function Dashboard({ user }) {
               load(EMPTY_FILTERS);
             }}
           />
-          <TicketTable tickets={tickets} />
+          <TicketTable tickets={sortedTickets} sortConfig={sortConfig} onSortChange={onSortChange} />
         </>
       )}
     </div>
@@ -273,18 +295,43 @@ function TicketFilters({ filters, setFilters, meta, user, onApply, onReset }) {
   );
 }
 
-function TicketTable({ tickets }) {
+function TicketTable({ tickets, sortConfig, onSortChange }) {
+  const sortHeaders = [
+    { key: 'title', label: 'Title' },
+    { key: 'status', label: 'Status' },
+    { key: 'priority', label: 'Priority' },
+    { key: 'partner', label: 'Partner' },
+    { key: 'client', label: 'Client' },
+    { key: 'updated', label: 'Updated', align: 'end' }
+  ];
+
   return (
     <div className="tm-table-wrap">
       <Table hover responsive className="tm-table">
         <thead>
           <tr>
-            <th>Title</th>
-            <th>Status</th>
-            <th>Priority</th>
-            <th>Partner</th>
-            <th>Client</th>
-            <th className="text-end">Updated</th>
+            {sortHeaders.map((header) => {
+              const isActive = sortConfig.key === header.key;
+              const direction = isActive ? sortConfig.direction : null;
+              const ariaSort = isActive
+                ? (direction === 'asc' ? 'ascending' : 'descending')
+                : 'none';
+              return (
+                <th key={header.key} className={header.align === 'end' ? 'text-end' : undefined} aria-sort={ariaSort}>
+                  <button
+                    type="button"
+                    className={`tm-sort-button${isActive ? ' is-active' : ''}${header.align === 'end' ? ' is-end' : ''}`}
+                    onClick={() => onSortChange(header.key)}
+                    aria-label={`Sort by ${header.label}${isActive ? ` (${direction})` : ''}`}
+                  >
+                    <span>{header.label}</span>
+                    <span className="tm-sort-indicator" aria-hidden="true">
+                      {isActive ? (direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </span>
+                  </button>
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
@@ -319,6 +366,88 @@ function TicketTable({ tickets }) {
       </Table>
     </div>
   );
+}
+
+function buildRankMap(values) {
+  const map = new Map();
+  values.forEach((value, index) => {
+    if (!map.has(value)) map.set(value, index);
+  });
+  return map;
+}
+
+function parseTimestamp(value) {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function normalizeText(value) {
+  return String(value || '').trim();
+}
+
+function isEmpty(value) {
+  return value === null || value === undefined || value === '';
+}
+
+function compareNullable(left, right, direction, compare) {
+  const leftEmpty = isEmpty(left);
+  const rightEmpty = isEmpty(right);
+  if (leftEmpty && rightEmpty) return 0;
+  if (leftEmpty) return 1;
+  if (rightEmpty) return -1;
+  return compare(left, right) * direction;
+}
+
+function compareText(left, right) {
+  return left.localeCompare(right, undefined, { sensitivity: 'base', numeric: true });
+}
+
+function compareByRankWithFallback(left, right, rankMap) {
+  const leftRank = rankMap.get(left) ?? Number.MAX_SAFE_INTEGER;
+  const rightRank = rankMap.get(right) ?? Number.MAX_SAFE_INTEGER;
+  if (leftRank !== rightRank) return leftRank - rightRank;
+  return compareText(left, right);
+}
+
+function compareTickets(left, right, sortConfig, statusRank) {
+  const direction = sortConfig.direction === 'asc' ? 1 : -1;
+  switch (sortConfig.key) {
+    case 'title':
+      return compareNullable(normalizeText(left.title), normalizeText(right.title), direction, compareText);
+    case 'status':
+      return compareNullable(
+        normalizeText(left.status),
+        normalizeText(right.status),
+        direction,
+        (a, b) => compareByRankWithFallback(a, b, statusRank)
+      );
+    case 'priority':
+      return compareNullable(
+        normalizeText(left.priority),
+        normalizeText(right.priority),
+        direction,
+        (a, b) => compareByRankWithFallback(a, b, PRIORITY_RANK)
+      );
+    case 'partner':
+      return compareNullable(normalizeText(left.partner_name), normalizeText(right.partner_name), direction, compareText);
+    case 'client':
+      return compareNullable(normalizeText(left.client_name), normalizeText(right.client_name), direction, compareText);
+    case 'updated':
+    default:
+      return compareNullable(parseTimestamp(left.updated_at), parseTimestamp(right.updated_at), direction, (a, b) => a - b);
+  }
+}
+
+function sortTickets(rows, sortConfig, statusRank) {
+  return rows
+    .map((ticket, index) => ({ ticket, index }))
+    .sort((left, right) => {
+      const compared = compareTickets(left.ticket, right.ticket, sortConfig, statusRank);
+      if (compared !== 0) return compared;
+      return left.index - right.index;
+    })
+    .map(({ ticket }) => ticket);
 }
 
 export function PartnerTicketForm({ meta, clients, onCreated, onCancel = () => {} }) {

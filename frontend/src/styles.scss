@@ -721,6 +721,51 @@ body[data-tm-density="compact"] .tm-login-form {
   padding: .72rem .85rem;
 }
 
+.tm-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.tm-sort-button.is-end {
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.tm-sort-button:hover {
+  color: #dbe6f6;
+}
+
+.tm-sort-button:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: 0 0 0 .14rem rgba(37, 99, 235, .2);
+}
+
+.tm-sort-button.is-active {
+  color: #eef2f7;
+}
+
+.tm-sort-indicator {
+  min-width: .7rem;
+  color: #7f8da1;
+  font-size: .72rem;
+  line-height: 1;
+}
+
+.tm-sort-button.is-active .tm-sort-indicator {
+  color: #93c5fd;
+}
+
 .tm-table tbody td {
   border-color: var(--tm-line);
   color: var(--tm-ink);
