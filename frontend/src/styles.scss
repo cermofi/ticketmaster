@@ -1361,6 +1361,79 @@ body[data-tm-density="compact"] .tm-login-form {
   justify-content: flex-start;
 }
 
+.tm-ticket-side {
+  gap: .55rem;
+}
+
+.tm-ticket-side .tm-panel {
+  padding: .78rem .85rem;
+}
+
+.tm-ticket-side .tm-panel > h2 {
+  font-size: .86rem;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  color: var(--tm-muted);
+  margin-bottom: .45rem;
+}
+
+.tm-side-collapsible {
+  margin: 0;
+  border-top: 1px solid rgba(255, 255, 255, .045);
+  padding-top: .5rem;
+}
+
+.tm-side-collapsible:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.tm-side-collapsible > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  color: var(--tm-ink);
+  font-size: .83rem;
+  font-weight: 600;
+}
+
+.tm-side-collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tm-side-collapsible > summary::after {
+  content: "▸";
+  color: var(--tm-muted);
+  font-size: .75rem;
+}
+
+.tm-side-collapsible[open] > summary::after {
+  content: "▾";
+}
+
+.tm-side-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 999px;
+  padding: 0 .34rem;
+  font-size: .72rem;
+  color: var(--tm-muted);
+  border: 1px solid rgba(148, 163, 184, .33);
+  background: rgba(51, 65, 85, .16);
+}
+
+.tm-side-collapsible-body {
+  margin-top: .45rem;
+  display: grid;
+  gap: .5rem;
+}
+
 .tm-comment {
   border-bottom: 1px solid rgba(255, 255, 255, .04);
   padding: .58rem 0;
@@ -1410,6 +1483,18 @@ body[data-tm-density="compact"] .tm-login-form {
 
 .tm-action-group:last-child {
   padding-bottom: 0;
+}
+
+.tm-action-subgroup {
+  display: grid;
+  gap: .45rem;
+  border-top: 1px solid rgba(255, 255, 255, .04);
+  padding-top: .5rem;
+}
+
+.tm-action-subgroup:first-child {
+  border-top: 0;
+  padding-top: 0;
 }
 
 .tm-action-group-head {
@@ -1481,6 +1566,44 @@ body[data-tm-density="compact"] .tm-login-form {
   flex: 0 0 auto;
 }
 
+.tm-inline-form-compact {
+  gap: .35rem;
+}
+
+.tm-inline-form-compact .form-select,
+.tm-inline-form-compact .form-control {
+  flex: 1 1 145px;
+  min-height: 32px;
+  padding: .25rem .5rem;
+  font-size: .82rem;
+}
+
+.tm-inline-form-compact .btn {
+  min-height: 1.82rem;
+}
+
+.tm-participant-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .32rem;
+}
+
+.tm-participant-pill {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 1.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, .26);
+  background: rgba(51, 65, 85, .16);
+  padding: 0 .48rem;
+  font-size: .76rem;
+  color: #d9e4f2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tm-ticket-side .tm-table-wrap {
   border-color: rgba(255, 255, 255, .06);
 }
@@ -1513,6 +1636,17 @@ body[data-tm-density="compact"] .tm-login-form {
   line-height: 1.25;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.tm-attachments-block-compact .tm-table thead th,
+.tm-attachments-block-compact .tm-table tbody td {
+  padding: .4rem .45rem;
+  font-size: .79rem;
+}
+
+.tm-attachments-block-compact .tm-table th:first-child,
+.tm-attachments-block-compact .tm-table td:first-child {
+  width: 70%;
 }
 
 .tm-comment-form {

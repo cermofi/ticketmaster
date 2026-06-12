@@ -127,6 +127,8 @@ function TicketDetail({ user }) {
     && ['Admin', 'DeliveryManager'].includes(user.internal_role)
     && Boolean(ticket?.resolver_team)
     && Boolean(ticket?.assignee_id);
+  const showPrimaryStatusActions = user.kind === 'internal';
+  const showManagementActions = canEditTicketType || canAssignTicket || canTransferOwner;
 
   return (
     <div className="tm-screen">
@@ -192,7 +194,7 @@ function TicketDetail({ user }) {
           </main>
           <aside className="tm-ticket-side">
             <section className="tm-panel tm-ticket-meta-panel">
-              <h2>Metadata</h2>
+              <h2>Overview</h2>
               <div className="tm-meta-list">
                 <InfoRow label="ID" value={ticket.id} />
                 <InfoRow label="Type" value={labelValue(ticket.type)} />
@@ -209,143 +211,165 @@ function TicketDetail({ user }) {
             {showActions && (
               <section className="tm-panel tm-ticket-actions-panel">
                 <h2>Actions</h2>
-                {user.kind === 'internal' && (
-                  <>
-                    {canEditTicketType && (
-                      <div className="tm-action-group">
-                        <h3>Type</h3>
-                        <Form className="tm-action-form" onSubmit={(event) => {
-                          event.preventDefault();
-                          action(() => api.post(`/tickets/${ticket.id}/type`, { type: ticketType }));
-                        }}>
-                          <FormGroup>
-                            <Label>Type</Label>
-                            <Input type="select" value={ticketType || ticket.type || ''} onChange={(event) => setTicketType(event.target.value)}>
-                              {ticketTypes.map((type) => <option key={type} value={type}>{labelValue(type)}</option>)}
-                            </Input>
-                          </FormGroup>
-                          <Button color="secondary" outline type="submit" size="sm" disabled={!ticketType || ticketType === ticket.type} className="w-100">
-                            Save type
-                          </Button>
-                        </Form>
-                      </div>
-                    )}
-                    <div className="tm-action-group">
-                      <div className="tm-action-group-head">
-                        <h3>Status</h3>
-                        <StatusPill value={ticket.status} />
-                      </div>
-                      <div className="tm-actions">
-                        {availableTransitions.map((status) => (
-                          <Button key={status} size="sm" outline color="primary" onClick={() => action(() => api.post(`/tickets/${ticket.id}/transition`, { status }))}>
-                            {labelValue(status)}
-                          </Button>
-                        ))}
-                        {availableTransitions.length === 0 && <span className="tm-muted">No status changes are available.</span>}
-                      </div>
+                {showPrimaryStatusActions && (
+                  <div className="tm-action-group tm-action-group-primary">
+                    <div className="tm-action-group-head">
+                      <h3>Status</h3>
+                      <StatusPill value={ticket.status} />
                     </div>
-                    {canAssignTicket && <div className="tm-action-group">
-                      <h3>Assignment</h3>
-                      <Form className="tm-action-form" onSubmit={(event) => {
-                        event.preventDefault();
-                        action(() => api.post(`/tickets/${ticket.id}/assign`, { ...assignment, team: assignmentTeam }));
-                      }}>
-                        <FormGroup>
-                          <Label>Team</Label>
-                          {ticket.resolver_team ? (
-                            <div className="tm-readonly-field">{ticket.resolver_team}</div>
-                          ) : (
-                            <Input type="select" value={assignment.team} onChange={(event) => setAssignment({ ...assignment, team: event.target.value })}>
-                              {resolverTeams.map((team) => <option key={team}>{team}</option>)}
-                            </Input>
-                          )}
-                        </FormGroup>
-                        <FormGroup>
-                          <Label>Assignee</Label>
-                          <Input type="select" value={assignment.assignee || ''} onChange={(event) => setAssignment({ ...assignment, assignee: event.target.value })}>
-                            <option value="">Unassigned</option>
-                            {internalUsers.filter((row) => row.internal_role === assignmentTeam).map((row) => <option key={row.id} value={row.email}>{row.name}</option>)}
-                          </Input>
-                        </FormGroup>
-                        <Button color="primary" size="sm" className="w-100" type="submit">
-                          Save assignment
+                    <div className="tm-actions">
+                      {availableTransitions.map((status) => (
+                        <Button key={status} size="sm" outline color="primary" onClick={() => action(() => api.post(`/tickets/${ticket.id}/transition`, { status }))}>
+                          {labelValue(status)}
                         </Button>
-                      </Form>
-                      {canReturnToQueue && (
-                        <Button
-                          color="secondary"
-                          outline
-                          className="w-100 mt-2"
-                          size="sm"
-                          type="button"
-                          onClick={() => action(() => api.post(`/tickets/${ticket.id}/unassign`))}
-                        >
-                          Return to queue
-                        </Button>
-                      )}
-                    </div>}
-                  </>
-                )}
-                {canTransferOwner && (
-                  <div className="tm-action-group">
-                    <h3>Transfer owner</h3>
-                    <Form className="tm-action-form" onSubmit={(event) => {
-                      event.preventDefault();
-                      action(() => api.post(`/tickets/${ticket.id}/transfer-owner`, { new_owner: transferOwner }));
-                    }}>
-                      <FormGroup>
-                        <Label>New owner</Label>
-                        <Input type="select" value={transferOwner} onChange={(event) => setTransferOwner(event.target.value)}>
-                          <option value="">Select owner</option>
-                          {responsibleUsers.map((row) => <option key={row.id} value={row.email}>{row.name}</option>)}
-                        </Input>
-                      </FormGroup>
-                      <Button color="secondary" outline type="submit" size="sm" disabled={!transferOwner} className="w-100">
-                        Transfer
-                      </Button>
-                    </Form>
+                      ))}
+                      {availableTransitions.length === 0 && <span className="tm-muted">No status changes are available.</span>}
+                    </div>
                   </div>
+                )}
+                {showManagementActions && (
+                  <details className="tm-side-collapsible tm-side-collapsible-management">
+                    <summary>Management</summary>
+                    <div className="tm-side-collapsible-body">
+                      {canEditTicketType && (
+                        <div className="tm-action-subgroup">
+                          <h3>Ticket type</h3>
+                          <Form className="tm-action-form" onSubmit={(event) => {
+                            event.preventDefault();
+                            action(() => api.post(`/tickets/${ticket.id}/type`, { type: ticketType }));
+                          }}>
+                            <FormGroup>
+                              <Label>Type</Label>
+                              <Input type="select" value={ticketType || ticket.type || ''} onChange={(event) => setTicketType(event.target.value)}>
+                                {ticketTypes.map((type) => <option key={type} value={type}>{labelValue(type)}</option>)}
+                              </Input>
+                            </FormGroup>
+                            <Button color="secondary" outline type="submit" size="sm" disabled={!ticketType || ticketType === ticket.type} className="w-100">
+                              Save
+                            </Button>
+                          </Form>
+                        </div>
+                      )}
+                      {canAssignTicket && (
+                        <div className="tm-action-subgroup">
+                          <h3>Assignment</h3>
+                          <Form className="tm-action-form" onSubmit={(event) => {
+                            event.preventDefault();
+                            action(() => api.post(`/tickets/${ticket.id}/assign`, { ...assignment, team: assignmentTeam }));
+                          }}>
+                            <FormGroup>
+                              <Label>Team</Label>
+                              {ticket.resolver_team ? (
+                                <div className="tm-readonly-field">{ticket.resolver_team}</div>
+                              ) : (
+                                <Input type="select" value={assignment.team} onChange={(event) => setAssignment({ ...assignment, team: event.target.value })}>
+                                  {resolverTeams.map((team) => <option key={team}>{team}</option>)}
+                                </Input>
+                              )}
+                            </FormGroup>
+                            <FormGroup>
+                              <Label>Assignee</Label>
+                              <Input type="select" value={assignment.assignee || ''} onChange={(event) => setAssignment({ ...assignment, assignee: event.target.value })}>
+                                <option value="">Unassigned</option>
+                                {internalUsers.filter((row) => row.internal_role === assignmentTeam).map((row) => <option key={row.id} value={row.email}>{row.name}</option>)}
+                              </Input>
+                            </FormGroup>
+                            <Button color="primary" size="sm" className="w-100" type="submit">
+                              Save assignment
+                            </Button>
+                          </Form>
+                          {canReturnToQueue && (
+                            <Button
+                              color="secondary"
+                              outline
+                              className="w-100 mt-2"
+                              size="sm"
+                              type="button"
+                              onClick={() => action(() => api.post(`/tickets/${ticket.id}/unassign`))}
+                            >
+                              Return to queue
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                      {canTransferOwner && (
+                        <div className="tm-action-subgroup">
+                          <h3>Transfer owner</h3>
+                          <Form className="tm-action-form" onSubmit={(event) => {
+                            event.preventDefault();
+                            action(() => api.post(`/tickets/${ticket.id}/transfer-owner`, { new_owner: transferOwner }));
+                          }}>
+                            <FormGroup>
+                              <Label>New owner</Label>
+                              <Input type="select" value={transferOwner} onChange={(event) => setTransferOwner(event.target.value)}>
+                                <option value="">Select owner</option>
+                                {responsibleUsers.map((row) => <option key={row.id} value={row.email}>{row.name}</option>)}
+                              </Input>
+                            </FormGroup>
+                            <Button color="secondary" outline type="submit" size="sm" disabled={!transferOwner} className="w-100">
+                              Transfer
+                            </Button>
+                          </Form>
+                        </div>
+                      )}
+                    </div>
+                  </details>
                 )}
               </section>
             )}
-            <section className="tm-panel tm-ticket-participants-panel">
-              <h2>Participants</h2>
-              <div className="mb-3">
-                {participants.map((participant) => (
-                  <span className="badge text-bg-light border me-1 mb-1" key={participant.id}>{participant.name}</span>
-                ))}
-                {participants.length === 0 && <span className="tm-muted">No participants.</span>}
-              </div>
-              {canManageParticipants && partnerUsers.length > 0 && (
-                <Form className="tm-inline-form" onSubmit={(event) => {
-                  event.preventDefault();
-                  action(() => api.post(`/tickets/${ticket.id}/participants`, { user_id: participantId }));
-                }}>
-                  <Input type="select" value={participantId} onChange={(event) => setParticipantId(event.target.value)}>
-                    <option value="">Add participant</option>
-                    {partnerUsers.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
-                  </Input>
-                  <Button color="secondary" outline type="submit" disabled={!participantId}>
-                    Add
-                  </Button>
-                </Form>
-              )}
-            </section>
-            <section className="tm-panel tm-ticket-attachments-panel">
-              <AttachmentPanel
-                attachments={attachments}
-                uploadFile={uploadFile}
-                setUploadFile={setUploadFile}
-                canUpload={canAddCommunication}
-                downloadingAttachmentId={downloadingAttachmentId}
-                onDownload={downloadAttachment}
-                onUpload={() => action(async () => {
-                  const formData = new FormData();
-                  formData.append('file', uploadFile);
-                  await api.post(`/tickets/${ticket.id}/attachments`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-                  setUploadFile(null);
-                })}
-              />
+            <section className="tm-panel tm-ticket-collab-panel">
+              <h2>Participants & attachments</h2>
+              <details className="tm-side-collapsible tm-side-collapsible-participants">
+                <summary>
+                  <span>Participants</span>
+                  <span className="tm-side-count">{participants.length}</span>
+                </summary>
+                <div className="tm-side-collapsible-body">
+                  <div className="tm-participant-list">
+                    {participants.map((participant) => (
+                      <span className="tm-participant-pill" key={participant.id}>{participant.name}</span>
+                    ))}
+                    {participants.length === 0 && <span className="tm-muted">No participants.</span>}
+                  </div>
+                  {canManageParticipants && partnerUsers.length > 0 && (
+                    <Form className="tm-inline-form tm-inline-form-compact" onSubmit={(event) => {
+                      event.preventDefault();
+                      action(() => api.post(`/tickets/${ticket.id}/participants`, { user_id: participantId }));
+                    }}>
+                      <Input type="select" value={participantId} onChange={(event) => setParticipantId(event.target.value)}>
+                        <option value="">Add participant</option>
+                        {partnerUsers.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+                      </Input>
+                      <Button color="secondary" outline size="sm" type="submit" disabled={!participantId}>
+                        Add
+                      </Button>
+                    </Form>
+                  )}
+                </div>
+              </details>
+              <details className="tm-side-collapsible tm-side-collapsible-attachments">
+                <summary>
+                  <span>Attachments</span>
+                  <span className="tm-side-count">{attachments.length}</span>
+                </summary>
+                <div className="tm-side-collapsible-body">
+                  <AttachmentPanel
+                    compact
+                    attachments={attachments}
+                    uploadFile={uploadFile}
+                    setUploadFile={setUploadFile}
+                    canUpload={canAddCommunication}
+                    downloadingAttachmentId={downloadingAttachmentId}
+                    onDownload={downloadAttachment}
+                    onUpload={() => action(async () => {
+                      const formData = new FormData();
+                      formData.append('file', uploadFile);
+                      await api.post(`/tickets/${ticket.id}/attachments`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+                      setUploadFile(null);
+                    })}
+                  />
+                </div>
+              </details>
             </section>
           </aside>
         </div>
@@ -363,18 +387,18 @@ function InfoRow({ label, value }) {
   );
 }
 
-function AttachmentPanel({ attachments, uploadFile, setUploadFile, canUpload, onUpload, onDownload, downloadingAttachmentId }) {
+function AttachmentPanel({ compact = false, attachments, uploadFile, setUploadFile, canUpload, onUpload, onDownload, downloadingAttachmentId }) {
   return (
-    <div className="mb-3">
-      <h3>Attachments</h3>
-      <div className="tm-table-wrap mb-2">
+    <div className={compact ? 'tm-attachments-block tm-attachments-block-compact' : 'mb-3'}>
+      {!compact && <h3>Attachments</h3>}
+      <div className={`tm-table-wrap ${compact ? 'mb-1' : 'mb-2'}`}>
         <Table size="sm" responsive className="tm-table">
           <thead>
             <tr>
               <th>File</th>
               <th>Size</th>
-              <th>Uploaded by</th>
-              <th>Created</th>
+              {!compact && <th>Uploaded by</th>}
+              {!compact && <th>Created</th>}
             </tr>
           </thead>
           <tbody>
@@ -391,21 +415,21 @@ function AttachmentPanel({ attachments, uploadFile, setUploadFile, canUpload, on
                   </Button>
                 </td>
                 <td>{formatBytes(attachment.size_bytes)}</td>
-                <td>{attachment.uploaded_by_name || '-'}</td>
-                <td><TimeCell value={attachment.created_at} /></td>
+                {!compact && <td>{attachment.uploaded_by_name || '-'}</td>}
+                {!compact && <td><TimeCell value={attachment.created_at} /></td>}
               </tr>
             ))}
-            {attachments.length === 0 && <EmptyRow colSpan="4" title="No attachments" message="Uploaded files for this ticket are listed here." />}
+            {attachments.length === 0 && <EmptyRow colSpan={compact ? 2 : 4} title="No attachments" message="Uploaded files for this ticket are listed here." />}
           </tbody>
         </Table>
       </div>
       {canUpload && (
-        <Form className="tm-inline-form" onSubmit={(event) => {
+        <Form className={`tm-inline-form ${compact ? 'tm-inline-form-compact' : ''}`} onSubmit={(event) => {
           event.preventDefault();
           if (uploadFile) onUpload();
         }}>
           <Input type="file" accept=".png,.jpg,.jpeg,.pdf,.txt,.log,.zip" onChange={(event) => setUploadFile(event.target.files?.[0] || null)} />
-          <Button color="secondary" outline type="submit" disabled={!uploadFile}>
+          <Button color="secondary" outline size={compact ? 'sm' : undefined} type="submit" disabled={!uploadFile}>
             Upload
           </Button>
         </Form>
