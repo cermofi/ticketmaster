@@ -767,7 +767,7 @@ body[data-tm-density="compact"] .tm-login-form {
 
 .tm-ticket-searchbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) auto auto;
+  grid-template-columns: minmax(260px, 1fr) auto;
   gap: .5rem;
   align-items: center;
   margin-bottom: .65rem;

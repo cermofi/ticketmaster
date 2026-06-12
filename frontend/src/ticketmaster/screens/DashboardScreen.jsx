@@ -3,7 +3,6 @@ import { Link } from 'react-router';
 import {
   Button,
   ButtonDropdown,
-  Collapse,
   DropdownItem,
   DropdownMenu,
   DropdownToggle,
@@ -40,7 +39,6 @@ function Dashboard({ user }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [exportLoading, setExportLoading] = useState('');
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
@@ -119,8 +117,6 @@ function Dashboard({ user }) {
             setFilters={setFilters}
             meta={meta}
             user={user}
-            filtersOpen={filtersOpen}
-            setFiltersOpen={setFiltersOpen}
             onApply={load}
             onReset={() => {
               setFilters(EMPTY_FILTERS);
@@ -210,7 +206,7 @@ function formatAttachmentSize(size) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function TicketFilters({ filters, setFilters, meta, user, filtersOpen, setFiltersOpen, onApply, onReset }) {
+function TicketFilters({ filters, setFilters, meta, user, onApply, onReset }) {
   const update = (key, value) => setFilters({ ...filters, [key]: value });
   const updateAndApply = (key, value) => {
     const nextFilters = { ...filters, [key]: value };
@@ -234,50 +230,45 @@ function TicketFilters({ filters, setFilters, meta, user, filtersOpen, setFilter
         <Button color="primary" type="submit">
           Search
         </Button>
-        <Button color="secondary" outline type="button" onClick={() => setFiltersOpen(!filtersOpen)}>
-          Filters
-        </Button>
       </Form>
-      <Collapse isOpen={filtersOpen}>
-        <Form className={`tm-ticket-filters-panel${hasQueueFilter ? ' tm-ticket-filters-panel-with-queue' : ''}`}>
+      <Form className={`tm-ticket-filters-panel${hasQueueFilter ? ' tm-ticket-filters-panel-with-queue' : ''}`}>
+        <FormGroup>
+          <Label>Status</Label>
+          <Input type="select" value={filters.status} onChange={(event) => updateAndApply('status', event.target.value)}>
+            <option value="">All</option>
+            {statuses.map((status) => <option key={status} value={status}>{labelValue(status)}</option>)}
+          </Input>
+        </FormGroup>
+        <FormGroup>
+          <Label>Priority</Label>
+          <Input type="select" value={filters.priority} onChange={(event) => updateAndApply('priority', event.target.value)}>
+            <option value="">All</option>
+            {priorities.map((priority) => <option key={priority} value={priority}>{labelValue(priority)}</option>)}
+          </Input>
+        </FormGroup>
+        <FormGroup>
+          <Label>Type</Label>
+          <Input type="select" value={filters.type} onChange={(event) => updateAndApply('type', event.target.value)}>
+            <option value="">All</option>
+            {ticketTypes.map((ticketType) => <option key={ticketType} value={ticketType}>{labelValue(ticketType)}</option>)}
+          </Input>
+        </FormGroup>
+        {hasQueueFilter && (
           <FormGroup>
-            <Label>Status</Label>
-            <Input type="select" value={filters.status} onChange={(event) => updateAndApply('status', event.target.value)}>
+            <Label>Queue</Label>
+            <Input type="select" value={filters.resolver_team} onChange={(event) => updateAndApply('resolver_team', event.target.value)}>
               <option value="">All</option>
-              {statuses.map((status) => <option key={status} value={status}>{labelValue(status)}</option>)}
+              {resolverTeams.map((team) => <option key={team}>{team}</option>)}
             </Input>
           </FormGroup>
-          <FormGroup>
-            <Label>Priority</Label>
-            <Input type="select" value={filters.priority} onChange={(event) => updateAndApply('priority', event.target.value)}>
-              <option value="">All</option>
-              {priorities.map((priority) => <option key={priority} value={priority}>{labelValue(priority)}</option>)}
-            </Input>
-          </FormGroup>
-          <FormGroup>
-            <Label>Type</Label>
-            <Input type="select" value={filters.type} onChange={(event) => updateAndApply('type', event.target.value)}>
-              <option value="">All</option>
-              {ticketTypes.map((ticketType) => <option key={ticketType} value={ticketType}>{labelValue(ticketType)}</option>)}
-            </Input>
-          </FormGroup>
-          {hasQueueFilter && (
-            <FormGroup>
-              <Label>Queue</Label>
-              <Input type="select" value={filters.resolver_team} onChange={(event) => updateAndApply('resolver_team', event.target.value)}>
-                <option value="">All</option>
-                {resolverTeams.map((team) => <option key={team}>{team}</option>)}
-              </Input>
-            </FormGroup>
-          )}
-          <div className="tm-ticket-filters-actions">
-            <Label className="tm-ticket-filters-reset-spacer" aria-hidden="true">&nbsp;</Label>
-            <Button className="tm-ticket-filters-reset-btn" color="secondary" outline type="button" onClick={onReset}>
-              Reset filters
-            </Button>
-          </div>
-        </Form>
-      </Collapse>
+        )}
+        <div className="tm-ticket-filters-actions">
+          <Label className="tm-ticket-filters-reset-spacer" aria-hidden="true">&nbsp;</Label>
+          <Button className="tm-ticket-filters-reset-btn" color="secondary" outline type="button" onClick={onReset}>
+            Reset filters
+          </Button>
+        </div>
+      </Form>
     </>
   );
 }
