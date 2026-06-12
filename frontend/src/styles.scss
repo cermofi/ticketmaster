@@ -1250,11 +1250,24 @@ body[data-tm-density="compact"] .tm-login-form {
 
 .tm-admin-filters .form-group,
 .tm-admin-filters .mb-3 {
+  min-width: 0;
   margin-bottom: 0;
 }
 
+.tm-admin-filters .form-control,
+.tm-admin-filters .form-select,
+.tm-admin-filters .btn {
+  min-height: 2.2rem;
+}
+
+.tm-admin-filter-reset {
+  display: contents;
+}
+
 .tm-admin-filter-reset .btn {
+  align-self: end;
   min-width: 4.8rem;
+  white-space: nowrap;
 }
 
 .tm-admin-actions-panel {
