@@ -208,6 +208,7 @@ function TicketFilters({ filters, setFilters, meta, user, filtersOpen, setFilter
   const priorities = asArray(meta?.priorities);
   const ticketTypes = asArray(meta?.ticket_types);
   const resolverTeams = asArray(meta?.resolver_teams);
+  const hasQueueFilter = user.kind === 'internal';
 
   return (
     <>
@@ -225,7 +226,10 @@ function TicketFilters({ filters, setFilters, meta, user, filtersOpen, setFilter
         </Button>
       </Form>
       <Collapse isOpen={filtersOpen}>
-        <Form className="tm-ticket-filters-panel" onSubmit={(event) => { event.preventDefault(); onApply(); }}>
+        <Form
+          className={`tm-ticket-filters-panel${hasQueueFilter ? ' tm-ticket-filters-panel-with-queue' : ''}`}
+          onSubmit={(event) => { event.preventDefault(); onApply(); }}
+        >
           <FormGroup>
             <Label>Status</Label>
             <Input type="select" value={filters.status} onChange={(event) => update('status', event.target.value)}>
@@ -247,7 +251,7 @@ function TicketFilters({ filters, setFilters, meta, user, filtersOpen, setFilter
               {ticketTypes.map((ticketType) => <option key={ticketType} value={ticketType}>{labelValue(ticketType)}</option>)}
             </Input>
           </FormGroup>
-          {user.kind === 'internal' && (
+          {hasQueueFilter && (
             <FormGroup>
               <Label>Queue</Label>
               <Input type="select" value={filters.resolver_team} onChange={(event) => update('resolver_team', event.target.value)}>
@@ -256,7 +260,7 @@ function TicketFilters({ filters, setFilters, meta, user, filtersOpen, setFilter
               </Input>
             </FormGroup>
           )}
-          <div className="tm-toolbar-actions">
+          <div className="tm-ticket-filters-actions">
             <Button color="secondary" outline type="button" onClick={onReset}>
               Reset filters
             </Button>
