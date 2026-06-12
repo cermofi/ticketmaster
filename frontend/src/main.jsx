@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { Application, ApplicationHashRouter } from 'asab_webui_shell';
+import { Application, ApplicationHashRouter, I18nModule } from 'asab_webui_shell';
 
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -41,7 +41,7 @@ const ConfigDefaults = {
 createRoot(document.getElementById('app')).render(
   <ApplicationHashRouter>
     <Application
-      modules={[TicketMasterModule]}
+      modules={[I18nModule, TicketMasterModule]}
       configdefaults={ConfigDefaults}
     />
   </ApplicationHashRouter>

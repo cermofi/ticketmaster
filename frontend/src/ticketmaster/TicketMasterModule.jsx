@@ -1,5 +1,6 @@
 import { lazy } from 'react';
 import { Module } from 'asab_webui_components';
+import LanguageDropdown from 'asab_webui_shell/dist/modules/i18n/dropdown.js';
 
 const DashboardScreen = lazy(() => import('./screens/DashboardScreen.jsx'));
 const NewTicketScreen = lazy(() => import('./screens/NewTicketScreen.jsx'));
@@ -25,5 +26,10 @@ export default class TicketMasterModule extends Module {
     app.Navigation.addItem({ name: 'Admin', url: '/admin', icon: 'bi bi-sliders' });
     app.Navigation.addItem({ name: 'Audit', url: '/audit', icon: 'bi bi-journal-check' });
     app.Navigation.addItem({ name: 'Settings', url: '/settings', icon: 'bi bi-gear' });
+  }
+
+  initialize() {
+    const headerService = this.App.locateService('HeaderService');
+    headerService?.removeComponent(LanguageDropdown);
   }
 }
