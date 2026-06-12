@@ -71,34 +71,63 @@ function installChunkRecovery() {
 installChunkRecovery();
 
 function releaseBootModeWhenReady() {
-  const clearBootMode = () => document.body.classList.remove('tm-app-booting');
+  let resolved = false;
   const appRoot = document.getElementById('app');
-  if (!appRoot) {
+  const loader = document.getElementById('tm-global-loader');
+  let observer = null;
+  let timeoutId = 0;
+
+  const cleanup = () => {
+    window.removeEventListener('tm:dashboard-ready', resolveBootMode);
+    window.removeEventListener('tm:auth-ready', resolveBootMode);
+    observer?.disconnect();
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+    }
+  };
+
+  const clearBootMode = () => {
+    document.body.classList.remove('tm-app-booting');
+    loader?.remove();
+  };
+
+  function resolveBootMode() {
+    if (resolved) return;
+    resolved = true;
+    cleanup();
     clearBootMode();
-    return;
   }
 
-  const appReady = () => (
-    Boolean(document.querySelector('#app-main'))
+  const isDashboardReady = () => (
+    document.querySelector('.tm-page-header h1')?.textContent?.trim() === 'Tickets'
     && !document.querySelector('.tm-loading-state')
   );
 
-  if (appReady()) {
-    clearBootMode();
+  const isLoginReady = () => Boolean(document.querySelector('.tm-login'));
+  const tryResolve = () => {
+    if (isDashboardReady() || isLoginReady()) {
+      resolveBootMode();
+    }
+  };
+
+  window.addEventListener('tm:dashboard-ready', resolveBootMode);
+  window.addEventListener('tm:auth-ready', resolveBootMode);
+
+  if (!appRoot) {
+    resolveBootMode();
     return;
   }
 
-  const observer = new MutationObserver(() => {
-    if (!appReady()) return;
-    clearBootMode();
-    observer.disconnect();
+  observer = new MutationObserver(() => {
+    tryResolve();
   });
+  observer.observe(appRoot, { childList: true, subtree: true, characterData: true });
 
-  observer.observe(appRoot, { childList: true, subtree: true, attributes: true });
-  window.setTimeout(() => {
-    clearBootMode();
-    observer.disconnect();
-  }, 6000);
+  timeoutId = window.setTimeout(() => {
+    resolveBootMode();
+  }, 15000);
+
+  tryResolve();
 }
 
 const ConfigDefaults = {

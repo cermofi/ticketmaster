@@ -84,6 +84,11 @@ function Dashboard({ user }) {
 
   useRefetchOnFocus(load);
   usePolling(load, TICKETS_POLL_MS);
+  useEffect(() => {
+    if (!loading && meta) {
+      window.dispatchEvent(new Event('tm:dashboard-ready'));
+    }
+  }, [loading, meta]);
 
   const canCreateOnBehalf = user.kind === 'internal' && ['Admin', 'DeliveryManager'].includes(user.internal_role);
 
