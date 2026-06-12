@@ -3,11 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   Alert,
   Button,
-  ButtonDropdown,
   ButtonGroup,
-  DropdownItem,
-  DropdownMenu,
-  DropdownToggle,
   Form,
   FormGroup,
   Input,
@@ -69,27 +65,41 @@ export default function AuthGate({ children }) {
 }
 
 function HeaderSession({ user, onLogout }) {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [headerNav, setHeaderNav] = useState(null);
   const role = roleLabel(user.internal_role || user.partner_role);
-  const headerNav = document.querySelector('#app-header nav');
+
+  useEffect(() => {
+    let observer = null;
+
+    const resolveHeaderNav = () => {
+      const node = document.querySelector('#app-header nav');
+      if (!node) return false;
+      setHeaderNav(node);
+      return true;
+    };
+
+    if (!resolveHeaderNav()) {
+      observer = new MutationObserver(() => {
+        if (resolveHeaderNav()) {
+          observer?.disconnect();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
+
+    return () => observer?.disconnect();
+  }, []);
+
   if (!headerNav) return null;
   return createPortal(
     <div className="tm-header-session mx-1">
-      <ButtonDropdown isOpen={menuOpen} toggle={() => setMenuOpen(!menuOpen)} className="tm-header-user-menu">
-        <DropdownToggle color="link" className="tm-header-user-toggle">
-          <span className="tm-header-user">
-            <strong>{user.name}</strong>
-            <span className="tm-muted">{role}</span>
-          </span>
-          <i className={`bi bi-chevron-${menuOpen ? 'up' : 'down'}`} aria-hidden="true" />
-        </DropdownToggle>
-        <DropdownMenu end>
-          <DropdownItem header>{user.name}</DropdownItem>
-          <DropdownItem disabled>{role}</DropdownItem>
-          <DropdownItem divider />
-          <DropdownItem onClick={onLogout}>Logout</DropdownItem>
-        </DropdownMenu>
-      </ButtonDropdown>
+      <span className="tm-header-user">
+        <strong>{user.name}</strong>
+        <span className="tm-muted">{role}</span>
+      </span>
+      <Button color="outline-secondary" size="sm" className="tm-header-logout-btn" onClick={onLogout}>
+        Logout
+      </Button>
     </div>,
     headerNav
   );

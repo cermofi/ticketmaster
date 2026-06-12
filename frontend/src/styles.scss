@@ -456,8 +456,9 @@ body[data-tm-density="compact"] .tm-login-form {
 .tm-header-session {
   display: inline-flex;
   align-items: center;
+  gap: .55rem;
   flex-shrink: 0;
-  max-width: min(17rem, calc(100vw - 14rem));
+  max-width: min(24rem, calc(100vw - 11rem));
   margin-left: .35rem;
 }
 
@@ -465,12 +466,13 @@ body[data-tm-density="compact"] .tm-login-form {
   display: inline-flex;
   flex-direction: column;
   align-items: flex-end;
+  min-width: 0;
   line-height: 1.15;
 }
 
 .tm-header-user strong {
   display: block;
-  max-width: 100%;
+  max-width: min(13rem, calc(100vw - 16rem));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -480,11 +482,23 @@ body[data-tm-density="compact"] .tm-login-form {
 
 .tm-header-user .tm-muted {
   display: block;
-  max-width: 100%;
+  max-width: min(13rem, calc(100vw - 16rem));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: .72rem;
+}
+
+.tm-header-logout-btn {
+  flex-shrink: 0;
+  min-height: 2rem;
+  padding: .2rem .55rem;
+  border-color: var(--tm-line-strong);
+  white-space: nowrap;
+}
+
+.tm-header-logout-btn:hover {
+  border-color: var(--tm-line-strong);
 }
 
 .tm-header-user-menu .dropdown-toggle.tm-header-user-toggle {
@@ -1487,11 +1501,11 @@ body[data-tm-contrast="high"] {
 
 @media (max-width: 640px) {
   .tm-header-session {
-    max-width: calc(100vw - 7.5rem);
+    max-width: calc(100vw - 6.5rem);
   }
 
   .tm-header-user {
-    max-width: 7rem;
+    max-width: 6rem;
   }
 
   .tm-header-user .tm-muted {
