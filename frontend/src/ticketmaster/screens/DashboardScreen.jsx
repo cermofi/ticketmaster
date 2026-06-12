@@ -20,6 +20,7 @@ import { EmptyRow, ErrorBanner, Loading, MarkdownText, PageHeader, StatusPill, T
 
 const EMPTY_FILTERS = { search: '', status: '', priority: '', type: '', resolver_team: '', internal: '' };
 const TICKETS_POLL_MS = 30000;
+const SEARCH_DEBOUNCE_MS = 320;
 const ATTACHMENT_ACCEPT = '.png,.jpg,.jpeg,.pdf,.txt,.log,.zip';
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const ALLOWED_ATTACHMENT_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.pdf', '.txt', '.log', '.zip']);
@@ -49,6 +50,7 @@ function Dashboard({ user }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [exportLoading, setExportLoading] = useState('');
   const filtersRef = useRef(filters);
+  const isInitialSearchSync = useRef(true);
   filtersRef.current = filters;
 
   const load = useCallback(async (nextFilters) => {
@@ -87,6 +89,17 @@ function Dashboard({ user }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (isInitialSearchSync.current) {
+      isInitialSearchSync.current = false;
+      return undefined;
+    }
+    const timeout = window.setTimeout(() => {
+      load();
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timeout);
+  }, [filters.search, load]);
 
   useRefetchOnFocus(load);
   usePolling(load, TICKETS_POLL_MS);
@@ -247,11 +260,9 @@ function TicketFilters({ filters, setFilters, meta, user, onApply, onReset }) {
         <Input
           value={filters.search}
           onChange={(event) => update('search', event.target.value)}
-          placeholder="Search by ID, title, partner..."
+          placeholder="Search by ID, title, partner, client..."
+          aria-label="Search tickets"
         />
-        <Button color="primary" type="submit">
-          Search
-        </Button>
       </Form>
       <Form className={`tm-ticket-filters-panel${hasQueueFilter ? ' tm-ticket-filters-panel-with-queue' : ''}`}>
         <FormGroup>
