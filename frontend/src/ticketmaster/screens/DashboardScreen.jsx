@@ -126,7 +126,7 @@ function Dashboard({ user }) {
   const canCreateOnBehalf = user.kind === 'internal' && ['Admin', 'DeliveryManager'].includes(user.internal_role);
 
   return (
-    <div className="tm-screen">
+    <div className="tm-screen tm-tickets-screen">
       <PageHeader
         title="Tickets"
         actions={(
@@ -317,8 +317,8 @@ function TicketTable({ tickets, sortConfig, onSortChange }) {
   ];
 
   return (
-    <div className="tm-table-wrap">
-      <Table hover responsive className="tm-table">
+    <div className="tm-table-wrap tm-tickets-table-wrap">
+      <Table hover responsive className="tm-table tm-tickets-table">
         <thead>
           <tr>
             {sortHeaders.map((header) => {
