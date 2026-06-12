@@ -493,11 +493,11 @@ body[data-tm-density="compact"] .tm-login-form {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  min-width: 36px;
-  height: 36px;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
   padding: 0;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: 999px;
   text-decoration: none;
   color: var(--tm-ink);
@@ -505,20 +505,17 @@ body[data-tm-density="compact"] .tm-login-form {
 }
 
 .tm-header-user-menu .dropdown-toggle.tm-header-user-toggle:hover {
-  border-color: rgba(148, 163, 184, .45);
-  background: rgba(255, 255, 255, .04);
+  background: transparent;
   color: var(--tm-ink);
 }
 
 .tm-header-user-menu .dropdown-toggle.tm-header-user-toggle:focus-visible {
-  border-color: var(--tm-accent);
-  box-shadow: 0 0 0 .2rem rgba(37, 99, 235, .16);
+  box-shadow: 0 0 0 .18rem rgba(96, 165, 250, .22);
   outline: none;
 }
 
 .tm-header-user-menu.show .dropdown-toggle.tm-header-user-toggle {
-  border-color: rgba(148, 163, 184, .45);
-  background: rgba(255, 255, 255, .05);
+  background: transparent;
 }
 
 .tm-header-user-menu .dropdown-toggle.tm-header-user-toggle::after {
@@ -526,19 +523,27 @@ body[data-tm-density="compact"] .tm-login-form {
 }
 
 .tm-header-avatar {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: .74rem;
-  font-weight: 700;
-  letter-spacing: .02em;
-  color: #eff6ff;
-  border: 1px solid rgba(191, 219, 254, .42);
-  background: linear-gradient(145deg, #2563eb, #1d4ed8);
-  box-shadow: 0 0 0 1px rgba(15, 23, 42, .35);
+  font-size: .68rem;
+  font-weight: 650;
+  letter-spacing: .01em;
+  color: #d2dceb;
+  border: 1px solid rgba(148, 163, 184, .38);
+  background: rgba(148, 163, 184, .14);
+  transition: background .16s ease, border-color .16s ease, color .16s ease;
+}
+
+.tm-header-user-menu .dropdown-toggle.tm-header-user-toggle:hover .tm-header-avatar,
+.tm-header-user-menu .dropdown-toggle.tm-header-user-toggle:focus-visible .tm-header-avatar,
+.tm-header-user-menu.show .dropdown-toggle.tm-header-user-toggle .tm-header-avatar {
+  background: rgba(148, 163, 184, .24);
+  border-color: rgba(148, 163, 184, .52);
+  color: #e7edf7;
 }
 
 .tm-header-account-menu {
@@ -1943,7 +1948,7 @@ body[data-tm-contrast="high"] {
 
 @media (max-width: 640px) {
   .tm-header-session {
-    margin-left: .25rem;
+    margin-left: 0;
   }
 
   .tm-header-account-menu {
