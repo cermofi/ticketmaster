@@ -71,10 +71,10 @@ export default function AuthGate({ children }) {
 function HeaderSession({ user, onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const role = roleLabel(user.internal_role || user.partner_role);
-  const header = document.getElementById('app-header');
-  if (!header) return null;
+  const headerNav = document.querySelector('#app-header nav');
+  if (!headerNav) return null;
   return createPortal(
-    <div className="tm-header-session">
+    <div className="tm-header-session mx-1">
       <ButtonDropdown isOpen={menuOpen} toggle={() => setMenuOpen(!menuOpen)} className="tm-header-user-menu">
         <DropdownToggle color="link" className="tm-header-user-toggle">
           <span className="tm-header-user">
@@ -91,7 +91,7 @@ function HeaderSession({ user, onLogout }) {
         </DropdownMenu>
       </ButtonDropdown>
     </div>,
-    header
+    headerNav
   );
 }
 

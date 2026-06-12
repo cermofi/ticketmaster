@@ -164,43 +164,22 @@ body.tm-login-session #app-main,
 }
 
 #app-brandimage {
-  min-height: 3rem;
-  display: flex;
-  align-items: center;
-  padding: 0 .75rem;
-  container-type: inline-size;
-  overflow: hidden;
-  border-bottom: 1px solid var(--tm-line);
-  background: #121820;
-}
-
-#app-brandimage img {
   display: none !important;
-}
-
-#app-brandimage::before {
-  content: "TicketMaster";
-  color: #e4ecf7;
-  font-size: .95rem;
-  font-weight: 650;
-  letter-spacing: .01em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-@container (max-width: 84px) {
-  #app-brandimage::before {
-    content: "TM";
-    font-size: .88rem;
-    letter-spacing: .04em;
-  }
 }
 
 #app-sidebar,
 #app-sidepanel {
   background: #121820 !important;
   border-color: var(--tm-line) !important;
+}
+
+#app-sidebar-logo {
+  display: none !important;
+}
+
+#app-sidebar-collapse,
+#app-sidebar-expand {
+  color: #91a4bc !important;
 }
 
 #app-sidebar a {
@@ -319,14 +298,11 @@ body[data-tm-density="compact"] .tm-login-form {
 }
 
 .tm-header-session {
-  position: absolute;
-  top: 50%;
-  right: 4.7rem;
   display: inline-flex;
-  align-items: stretch;
-  max-width: min(18rem, calc(100vw - 18rem));
-  transform: translateY(-50%);
-  z-index: 4;
+  align-items: center;
+  flex-shrink: 0;
+  max-width: min(17rem, calc(100vw - 14rem));
+  margin-left: .35rem;
 }
 
 .tm-header-user {
@@ -359,7 +335,7 @@ body[data-tm-density="compact"] .tm-login-form {
   display: inline-flex;
   align-items: center;
   gap: .5rem;
-  max-width: 100%;
+  max-width: min(17rem, calc(100vw - 14rem));
   min-height: 2rem;
   padding: .2rem .45rem;
   border: 1px solid transparent;
@@ -1355,8 +1331,7 @@ body[data-tm-contrast="high"] {
 
 @media (max-width: 640px) {
   .tm-header-session {
-    right: 3.1rem;
-    max-width: calc(100vw - 8.5rem);
+    max-width: calc(100vw - 7.5rem);
   }
 
   .tm-header-user {
