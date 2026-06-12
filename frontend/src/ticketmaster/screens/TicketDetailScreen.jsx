@@ -13,7 +13,7 @@ import {
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
 import { usePolling, useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
-import { EmptyRow, EmptyState, ErrorBanner, Loading, MarkdownText, PageHeader, StatusPill, TimeCell, apiError, labelValue } from './helpers.jsx';
+import { EmptyRow, EmptyState, ErrorBanner, Loading, MarkdownText, PageHeader, StatusPill, TimeCell, apiError, asArray, downloadResponse, formatAttachmentSize, labelValue, normalizeApiPath } from './helpers.jsx';
 
 const TICKET_DETAIL_POLL_MS = 30000;
 
@@ -95,7 +95,7 @@ function TicketDetail({ user }) {
     setDownloadingAttachmentId(attachment.id);
     try {
       const response = await api.get(normalizeApiPath(attachment.download_url), { responseType: 'blob' });
-      saveDownloadResponse(response, attachment.filename || 'attachment');
+      downloadResponse(response, attachment.filename || 'attachment');
     } catch (err) {
       setError(apiError(err));
     } finally {
@@ -413,7 +413,7 @@ function AttachmentPanel({ compact = false, attachments, uploadFile, setUploadFi
                     {downloadingAttachmentId === attachment.id ? 'Downloading...' : attachment.filename}
                   </Button>
                 </td>
-                <td>{formatBytes(attachment.size_bytes)}</td>
+                <td>{formatAttachmentSize(attachment.size_bytes)}</td>
                 {!compact && <td>{attachment.uploaded_by_name || '-'}</td>}
                 {!compact && <td><TimeCell value={attachment.created_at} /></td>}
               </tr>
@@ -454,39 +454,6 @@ function CommentList({ comments }) {
       {comments.length === 0 && <EmptyState icon="bi-chat-left-text" title="No comments yet" message="Ticket communication will appear here." />}
     </div>
   );
-}
-
-function formatBytes(size) {
-  if (!size) return '0 B';
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function asArray(value) {
-  if (Array.isArray(value)) return value;
-  return [];
-}
-
-function normalizeApiPath(path) {
-  if (typeof path !== 'string') return path;
-  if (path.startsWith('/api/')) return path.slice(4);
-  return path;
-}
-
-function saveDownloadResponse(response, fallbackName) {
-  const disposition = response.headers?.['content-disposition'] || '';
-  const match = disposition.match(/filename="?([^"]+)"?/i);
-  const filename = match?.[1] || fallbackName;
-  const blob = new Blob([response.data], { type: response.headers?.['content-type'] || 'application/octet-stream' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
 }
 
 function CommentForm({ title, value, setValue, onSubmit }) {

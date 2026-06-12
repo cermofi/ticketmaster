@@ -11,7 +11,7 @@ from sqlalchemy import func, select, text
 
 from ticketmaster.api.deps import CurrentUser, DbSession
 from ticketmaster.core.config import settings
-from ticketmaster.models import Attachment, AuditLog, Client, ClientAssignment, Comment, GitLabLink, Partner, Ticket, User
+from ticketmaster.models import Attachment, AuditLog, Client, ClientAssignment, Comment, Partner, Ticket, User
 from ticketmaster.models.constants import PRIORITIES, RESOLVER_TEAMS, STATUSES, TICKET_TYPES
 from ticketmaster.models.entities import new_id
 from ticketmaster.schemas.serializers import (
@@ -98,10 +98,6 @@ class ChangePasswordBody(BaseModel):
     current_password: str = Field(min_length=1, max_length=300)
     new_password: str = Field(min_length=1, max_length=300)
     confirm_password: str = Field(min_length=1, max_length=300)
-
-
-class PasswordResetBody(BaseModel):
-    user_id: str | None = None
 
 
 class TicketCreateBody(BaseModel):
@@ -194,9 +190,23 @@ def _request_audit_info(request: Request, **extra: str | None) -> dict:
     }
 
 
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+    return forwarded or (request.client.host if request.client else "unknown")
+
+
+def _login_rate_limit_key(request: Request, email: str) -> str:
+    return f"{_client_ip(request)}:{email.lower()}"
+
+
+def _ticket_detail(db: DbSession, user: User, ticket: Ticket) -> dict:
+    data = ticket_to_dict(db, ticket, viewer=user, include_detail=True)
+    data["available_transitions"] = tickets.available_transitions(db, ticket=ticket, actor=user)
+    return data
+
+
 def _check_login_rate_limit(request: Request, email: str) -> None:
-    ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "unknown")
-    key = f"{ip}:{email.lower()}"
+    key = _login_rate_limit_key(request, email)
     now = time.time()
     window_start = now - settings.login_rate_limit_window_seconds
     attempts = [stamp for stamp in _login_attempts.get(key, []) if stamp >= window_start]
@@ -207,9 +217,7 @@ def _check_login_rate_limit(request: Request, email: str) -> None:
 
 
 def _clear_login_rate_limit(request: Request, email: str) -> None:
-    ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "unknown")
-    key = f"{ip}:{email.lower()}"
-    _login_attempts.pop(key, None)
+    _login_attempts.pop(_login_rate_limit_key(request, email), None)
 
 
 def _require_partner_api_access(user: User, partner_id: str, *, create: bool) -> None:
@@ -699,9 +707,7 @@ def partner_api_tickets_create(db: DbSession, user: CurrentUser, partner_id: str
 def tickets_detail(db: DbSession, user: CurrentUser, ticket_id: str) -> dict:
     ticket = tickets.get_ticket(db, ticket_id)
     tickets.require_view(db, user, ticket)
-    data = ticket_to_dict(db, ticket, viewer=user, include_detail=True)
-    data["available_transitions"] = tickets.available_transitions(db, ticket=ticket, actor=user)
-    return data
+    return _ticket_detail(db, user, ticket)
 
 
 @router.post("/tickets/{ticket_id}/comments")
@@ -767,9 +773,7 @@ def tickets_assign(db: DbSession, user: CurrentUser, ticket_id: str, body: Assig
     ticket = tickets.get_ticket(db, ticket_id)
     tickets.assign_ticket(db, ticket=ticket, actor=user, team=body.team, assignee_ref=body.assignee)
     db.commit()
-    data = ticket_to_dict(db, ticket, viewer=user, include_detail=True)
-    data["available_transitions"] = tickets.available_transitions(db, ticket=ticket, actor=user)
-    return data
+    return _ticket_detail(db, user, ticket)
 
 
 @router.post("/tickets/{ticket_id}/unassign")
@@ -777,9 +781,7 @@ def tickets_unassign(db: DbSession, user: CurrentUser, ticket_id: str) -> dict:
     ticket = tickets.get_ticket(db, ticket_id)
     tickets.unassign_ticket(db, ticket=ticket, actor=user)
     db.commit()
-    data = ticket_to_dict(db, ticket, viewer=user, include_detail=True)
-    data["available_transitions"] = tickets.available_transitions(db, ticket=ticket, actor=user)
-    return data
+    return _ticket_detail(db, user, ticket)
 
 
 @router.post("/tickets/{ticket_id}/transition")
@@ -787,9 +789,7 @@ def tickets_transition(db: DbSession, user: CurrentUser, ticket_id: str, body: T
     ticket = tickets.get_ticket(db, ticket_id)
     tickets.transition_ticket(db, ticket=ticket, actor=user, new_status=body.status)
     db.commit()
-    data = ticket_to_dict(db, ticket, viewer=user, include_detail=True)
-    data["available_transitions"] = tickets.available_transitions(db, ticket=ticket, actor=user)
-    return data
+    return _ticket_detail(db, user, ticket)
 
 
 @router.post("/tickets/{ticket_id}/type")
@@ -797,9 +797,7 @@ def tickets_change_type(db: DbSession, user: CurrentUser, ticket_id: str, body: 
     ticket = tickets.get_ticket(db, ticket_id)
     tickets.change_ticket_type(db, ticket=ticket, actor=user, ticket_type=body.type)
     db.commit()
-    data = ticket_to_dict(db, ticket, viewer=user, include_detail=True)
-    data["available_transitions"] = tickets.available_transitions(db, ticket=ticket, actor=user)
-    return data
+    return _ticket_detail(db, user, ticket)
 
 
 @router.post("/tickets/{ticket_id}/transfer-owner")
@@ -807,9 +805,7 @@ def tickets_transfer_owner(db: DbSession, user: CurrentUser, ticket_id: str, bod
     ticket = tickets.get_ticket(db, ticket_id)
     tickets.transfer_owner(db, ticket=ticket, actor=user, new_owner_ref=body.new_owner)
     db.commit()
-    data = ticket_to_dict(db, ticket, viewer=user, include_detail=True)
-    data["available_transitions"] = tickets.available_transitions(db, ticket=ticket, actor=user)
-    return data
+    return _ticket_detail(db, user, ticket)
 
 
 @router.post("/tickets/{ticket_id}/close")
@@ -817,9 +813,7 @@ def tickets_close(db: DbSession, user: CurrentUser, ticket_id: str) -> dict:
     ticket = tickets.get_ticket(db, ticket_id)
     tickets.close_ticket(db, ticket=ticket, actor=user)
     db.commit()
-    data = ticket_to_dict(db, ticket, viewer=user, include_detail=True)
-    data["available_transitions"] = tickets.available_transitions(db, ticket=ticket, actor=user)
-    return data
+    return _ticket_detail(db, user, ticket)
 
 
 @router.get("/tickets/{ticket_id}/attachments")

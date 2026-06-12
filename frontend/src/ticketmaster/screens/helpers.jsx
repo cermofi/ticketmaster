@@ -109,6 +109,46 @@ export function apiError(err) {
   return err.response?.data?.detail || err.message || 'Unexpected error';
 }
 
+export function normalizeApiPath(path) {
+  if (typeof path !== 'string') return path;
+  if (path.startsWith('/api/')) return path.slice(4);
+  return path;
+}
+
+export function downloadResponse(response, fallbackName) {
+  const disposition = response.headers?.['content-disposition'] || '';
+  const match = disposition.match(/filename="?([^"]+)"?/i);
+  const filename = match?.[1] || fallbackName;
+  const blob = new Blob([response.data], { type: response.headers?.['content-type'] || 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+export async function exportError(err) {
+  if (err.response?.data instanceof Blob) {
+    const text = await err.response.data.text();
+    try {
+      return JSON.parse(text).detail || text;
+    } catch {
+      return text || 'Export could not be created.';
+    }
+  }
+  return apiError(err);
+}
+
+export function formatAttachmentSize(size) {
+  if (!size) return '0 B';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function asArray(value) {
   if (Array.isArray(value)) return value;
   if (Array.isArray(value?.items)) return value.items;

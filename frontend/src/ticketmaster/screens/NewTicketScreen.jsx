@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router';
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
 import { ErrorBanner, Loading, PageHeader, apiError } from './helpers.jsx';
-import { InternalTicketForm, PartnerOnBehalfTicketForm, PartnerTicketForm } from './DashboardScreen.jsx';
+import { InternalTicketForm, PartnerOnBehalfTicketForm, PartnerTicketForm } from './ticketForms.jsx';
 
 export default function NewTicketScreen() {
   return (
