@@ -147,18 +147,23 @@ function TicketDetail({ user }) {
       {ticket && (
         <div className="tm-ticket-layout">
           <main className="tm-ticket-main">
-            <section className="tm-panel">
+            <section className="tm-panel tm-ticket-summary-panel">
               <div className="tm-ticket-title-row">
-                <div>
-                  <div className="tm-muted">Current status</div>
+                <div className="tm-ticket-summary-pills">
                   <StatusPill value={ticket.status} />
+                  <StatusPill value={ticket.priority} priority={ticket.priority} />
                 </div>
-                <StatusPill value={ticket.priority} priority={ticket.priority} />
+                <div className="tm-ticket-summary-id tm-muted">{ticket.id}</div>
+              </div>
+              <div className="tm-ticket-summary-meta tm-muted">
+                <span>{labelValue(ticket.type) || '-'}</span>
+                <span>{ticket.partner_name || 'No partner'}</span>
+                <span>{ticket.owner_name || 'No owner'}</span>
               </div>
               <h2>Description</h2>
               <MarkdownText content={ticket.description} className="tm-markdown tm-ticket-description" />
             </section>
-            <section className="tm-panel">
+            <section className="tm-panel tm-ticket-communication-panel">
               <h2>Communication</h2>
               <CommentList comments={comments} />
               {canAddCommunication && (
@@ -186,33 +191,30 @@ function TicketDetail({ user }) {
             </section>
           </main>
           <aside className="tm-ticket-side">
-            <section className="tm-panel">
+            <section className="tm-panel tm-ticket-meta-panel">
               <h2>Metadata</h2>
-              <Table borderless responsive size="sm" className="tm-meta-table">
-                <tbody>
-                  <InfoRow label="ID" value={ticket.id} />
-                  <InfoRow label="Kind" value={labelValue(ticket.kind || (ticket.system ? 'system' : (ticket.internal ? 'internal' : 'partner')))} />
-                  <InfoRow label="Type" value={labelValue(ticket.type)} />
-                  <InfoRow label="Partner" value={ticket.partner_name || '-'} />
-                  <InfoRow label="Client" value={ticket.client_name || '-'} />
-                  <InfoRow label="Owner" value={ticket.owner_name || '-'} />
-                  {user.kind === 'internal' && <InfoRow label="Team" value={ticket.resolver_team || '-'} />}
-                  {user.kind === 'internal' && <InfoRow label="Assignee" value={ticket.assignee_name || '-'} />}
-                  {user.kind === 'internal' && <InfoRow label="GitLab" value={ticket.gitlab_link ? <a href={ticket.gitlab_link}>{labelValue(ticket.gitlab_status || 'Open')}</a> : (ticket.gitlab_status || '-')} />}
-                  <InfoRow label="Created" value={<TimeCell value={ticket.created_at} />} />
-                  <InfoRow label="Updated" value={<TimeCell value={ticket.updated_at} />} />
-                </tbody>
-              </Table>
+              <div className="tm-meta-list">
+                <InfoRow label="ID" value={ticket.id} />
+                <InfoRow label="Type" value={labelValue(ticket.type)} />
+                <InfoRow label="Status" value={<StatusPill value={ticket.status} />} />
+                <InfoRow label="Priority" value={<StatusPill value={ticket.priority} priority={ticket.priority} />} />
+                <InfoRow label="Partner" value={ticket.partner_name || '-'} />
+                <InfoRow label="Owner" value={ticket.owner_name || '-'} />
+                {user.kind === 'internal' && <InfoRow label="Assignee" value={ticket.assignee_name || '-'} />}
+                {user.kind === 'internal' && <InfoRow label="Team" value={ticket.resolver_team || '-'} />}
+                <InfoRow label="Created" value={<TimeCell value={ticket.created_at} />} />
+                <InfoRow label="Updated" value={<TimeCell value={ticket.updated_at} />} />
+              </div>
             </section>
             {showActions && (
-              <section className="tm-panel">
+              <section className="tm-panel tm-ticket-actions-panel">
                 <h2>Actions</h2>
                 {user.kind === 'internal' && (
                   <>
                     {canEditTicketType && (
                       <div className="tm-action-group">
                         <h3>Type</h3>
-                        <Form onSubmit={(event) => {
+                        <Form className="tm-action-form" onSubmit={(event) => {
                           event.preventDefault();
                           action(() => api.post(`/tickets/${ticket.id}/type`, { type: ticketType }));
                         }}>
@@ -222,7 +224,7 @@ function TicketDetail({ user }) {
                               {ticketTypes.map((type) => <option key={type} value={type}>{labelValue(type)}</option>)}
                             </Input>
                           </FormGroup>
-                          <Button color="secondary" outline type="submit" disabled={!ticketType || ticketType === ticket.type} className="w-100">
+                          <Button color="secondary" outline type="submit" size="sm" disabled={!ticketType || ticketType === ticket.type} className="w-100">
                             Save type
                           </Button>
                         </Form>
@@ -244,7 +246,7 @@ function TicketDetail({ user }) {
                     </div>
                     {canAssignTicket && <div className="tm-action-group">
                       <h3>Assignment</h3>
-                      <Form onSubmit={(event) => {
+                      <Form className="tm-action-form" onSubmit={(event) => {
                         event.preventDefault();
                         action(() => api.post(`/tickets/${ticket.id}/assign`, { ...assignment, team: assignmentTeam }));
                       }}>
@@ -265,7 +267,7 @@ function TicketDetail({ user }) {
                             {internalUsers.filter((row) => row.internal_role === assignmentTeam).map((row) => <option key={row.id} value={row.email}>{row.name}</option>)}
                           </Input>
                         </FormGroup>
-                        <Button color="primary" className="w-100" type="submit">
+                        <Button color="primary" size="sm" className="w-100" type="submit">
                           Save assignment
                         </Button>
                       </Form>
@@ -274,6 +276,7 @@ function TicketDetail({ user }) {
                           color="secondary"
                           outline
                           className="w-100 mt-2"
+                          size="sm"
                           type="button"
                           onClick={() => action(() => api.post(`/tickets/${ticket.id}/unassign`))}
                         >
@@ -286,7 +289,7 @@ function TicketDetail({ user }) {
                 {canTransferOwner && (
                   <div className="tm-action-group">
                     <h3>Transfer owner</h3>
-                    <Form onSubmit={(event) => {
+                    <Form className="tm-action-form" onSubmit={(event) => {
                       event.preventDefault();
                       action(() => api.post(`/tickets/${ticket.id}/transfer-owner`, { new_owner: transferOwner }));
                     }}>
@@ -297,7 +300,7 @@ function TicketDetail({ user }) {
                           {responsibleUsers.map((row) => <option key={row.id} value={row.email}>{row.name}</option>)}
                         </Input>
                       </FormGroup>
-                      <Button color="secondary" outline type="submit" disabled={!transferOwner} className="w-100">
+                      <Button color="secondary" outline type="submit" size="sm" disabled={!transferOwner} className="w-100">
                         Transfer
                       </Button>
                     </Form>
@@ -305,7 +308,7 @@ function TicketDetail({ user }) {
                 )}
               </section>
             )}
-            <section className="tm-panel">
+            <section className="tm-panel tm-ticket-participants-panel">
               <h2>Participants</h2>
               <div className="mb-3">
                 {participants.map((participant) => (
@@ -314,7 +317,7 @@ function TicketDetail({ user }) {
                 {participants.length === 0 && <span className="tm-muted">No participants.</span>}
               </div>
               {canManageParticipants && partnerUsers.length > 0 && (
-                <Form className="d-flex gap-2" onSubmit={(event) => {
+                <Form className="tm-inline-form" onSubmit={(event) => {
                   event.preventDefault();
                   action(() => api.post(`/tickets/${ticket.id}/participants`, { user_id: participantId }));
                 }}>
@@ -328,7 +331,7 @@ function TicketDetail({ user }) {
                 </Form>
               )}
             </section>
-            <section className="tm-panel">
+            <section className="tm-panel tm-ticket-attachments-panel">
               <AttachmentPanel
                 attachments={attachments}
                 uploadFile={uploadFile}
@@ -353,10 +356,10 @@ function TicketDetail({ user }) {
 
 function InfoRow({ label, value }) {
   return (
-    <tr>
-      <th className="tm-muted tm-meta-label">{label}</th>
-      <td>{value}</td>
-    </tr>
+    <div className="tm-meta-item">
+      <div className="tm-meta-item-label">{label}</div>
+      <div className="tm-meta-item-value">{value}</div>
+    </div>
   );
 }
 
@@ -380,7 +383,7 @@ function AttachmentPanel({ attachments, uploadFile, setUploadFile, canUpload, on
                 <td>
                   <Button
                     color="link"
-                    className="p-0 align-baseline"
+                    className="p-0 align-baseline tm-attachment-name"
                     onClick={() => onDownload(attachment)}
                     disabled={downloadingAttachmentId === attachment.id}
                   >
@@ -397,7 +400,7 @@ function AttachmentPanel({ attachments, uploadFile, setUploadFile, canUpload, on
         </Table>
       </div>
       {canUpload && (
-        <Form className="d-flex gap-2" onSubmit={(event) => {
+        <Form className="tm-inline-form" onSubmit={(event) => {
           event.preventDefault();
           if (uploadFile) onUpload();
         }}>
@@ -417,11 +420,9 @@ function CommentList({ comments }) {
       <h3>Comments and notes</h3>
       {comments.map((comment) => (
         <div key={comment.id} className="tm-comment">
-          <div className="d-flex justify-content-between">
-            <div>
-              <strong>{comment.author_name || comment.author_id}</strong>
-            </div>
-            <span className="tm-muted"><TimeCell value={comment.created_at} /></span>
+          <div className="tm-comment-head">
+            <strong className="tm-comment-author">{comment.author_name || comment.author_id}</strong>
+            <span className="tm-muted tm-comment-time"><TimeCell value={comment.created_at} /></span>
           </div>
           {comment.visibility === 'internal_note' && <span className="badge text-bg-warning mb-1">Internal note</span>}
           <MarkdownText content={comment.body} className="tm-markdown tm-comment-body" />
@@ -519,7 +520,7 @@ function CommentForm({ title, value, setValue, onSubmit }) {
   };
 
   return (
-    <Form className="mb-3" onSubmit={(event) => {
+    <Form className="tm-comment-form mb-3" onSubmit={(event) => {
       event.preventDefault();
       onSubmit();
     }}>
@@ -561,16 +562,16 @@ function CommentForm({ title, value, setValue, onSubmit }) {
           />
         </div>
         <div className="tm-muted tm-field-help">Markdown supported (headings, lists, links, bold, code).</div>
-        <div className="tm-markdown-preview">
-          <div className="tm-markdown-preview-head">Markdown preview</div>
+        <details className="tm-markdown-preview tm-markdown-preview-collapsible">
+          <summary className="tm-markdown-preview-head">Markdown preview</summary>
           <MarkdownText
             content={value}
             className="tm-markdown tm-markdown-preview-body"
             emptyMessage="Preview appears when text is filled."
           />
-        </div>
+        </details>
       </FormGroup>
-      <Button color="primary" outline type="submit" disabled={!value.trim()}>
+      <Button color="primary" outline size="sm" type="submit" disabled={!value.trim()}>
         Send
       </Button>
     </Form>
