@@ -996,7 +996,8 @@ body[data-tm-density="compact"] .tm-login-form {
 }
 
 .tm-new-ticket-page {
-  width: min(920px, 100%);
+  width: 100%;
+  max-width: none;
   border: 1px solid var(--tm-line);
   border-radius: var(--tm-radius);
   background: var(--tm-panel);
