@@ -1072,10 +1072,15 @@ body[data-tm-density="compact"] .tm-login-form {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 1.9rem;
-  min-height: 1.8rem;
-  padding: .1rem .35rem;
-  font-size: .78rem;
+  min-width: 1.95rem;
+  min-height: 1.85rem;
+  padding: .1rem .3rem;
+  font-size: .82rem;
+}
+
+.tm-md-editor-toolbar .tm-md-toolbar-btn i {
+  font-size: .85rem;
+  line-height: 1;
 }
 
 .tm-md-editor-separator {

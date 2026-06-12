@@ -655,33 +655,123 @@ export function TicketFormFields({
         <Label>Description</Label>
         <div className="tm-md-editor">
           <div className="tm-md-editor-toolbar" role="toolbar" aria-label="Markdown toolbar">
-            <Button type="button" color="secondary" outline size="sm" onClick={() => insertWrapped('**', '**', 'bold text')} disabled={editorDisabled}>
-              B
+            <Button
+              type="button"
+              color="secondary"
+              outline
+              size="sm"
+              className="tm-md-toolbar-btn"
+              title="Bold"
+              aria-label="Bold"
+              onClick={() => insertWrapped('**', '**', 'bold text')}
+              disabled={editorDisabled}
+            >
+              <i className="bi bi-type-bold" aria-hidden="true" />
             </Button>
-            <Button type="button" color="secondary" outline size="sm" onClick={() => insertWrapped('_', '_', 'italic text')} disabled={editorDisabled}>
-              I
+            <Button
+              type="button"
+              color="secondary"
+              outline
+              size="sm"
+              className="tm-md-toolbar-btn"
+              title="Italic"
+              aria-label="Italic"
+              onClick={() => insertWrapped('_', '_', 'italic text')}
+              disabled={editorDisabled}
+            >
+              <i className="bi bi-type-italic" aria-hidden="true" />
             </Button>
-            <Button type="button" color="secondary" outline size="sm" onClick={() => insertAtCursor('## ')} disabled={editorDisabled}>
-              H2
+            <Button
+              type="button"
+              color="secondary"
+              outline
+              size="sm"
+              className="tm-md-toolbar-btn"
+              title="Heading"
+              aria-label="Heading"
+              onClick={() => insertAtCursor('## ')}
+              disabled={editorDisabled}
+            >
+              <i className="bi bi-type-h2" aria-hidden="true" />
             </Button>
-            <Button type="button" color="secondary" outline size="sm" onClick={() => prefixSelectedLines('> ')} disabled={editorDisabled}>
-              Quote
+            <Button
+              type="button"
+              color="secondary"
+              outline
+              size="sm"
+              className="tm-md-toolbar-btn"
+              title="Quote"
+              aria-label="Quote"
+              onClick={() => prefixSelectedLines('> ')}
+              disabled={editorDisabled}
+            >
+              <i className="bi bi-chat-square-quote" aria-hidden="true" />
             </Button>
-            <Button type="button" color="secondary" outline size="sm" onClick={() => prefixSelectedLines('- ')} disabled={editorDisabled}>
-              List
+            <Button
+              type="button"
+              color="secondary"
+              outline
+              size="sm"
+              className="tm-md-toolbar-btn"
+              title="Bulleted list"
+              aria-label="Bulleted list"
+              onClick={() => prefixSelectedLines('- ')}
+              disabled={editorDisabled}
+            >
+              <i className="bi bi-list-ul" aria-hidden="true" />
             </Button>
-            <Button type="button" color="secondary" outline size="sm" onClick={() => prefixSelectedLines('1. ')} disabled={editorDisabled}>
-              1.
+            <Button
+              type="button"
+              color="secondary"
+              outline
+              size="sm"
+              className="tm-md-toolbar-btn"
+              title="Numbered list"
+              aria-label="Numbered list"
+              onClick={() => prefixSelectedLines('1. ')}
+              disabled={editorDisabled}
+            >
+              <i className="bi bi-list-ol" aria-hidden="true" />
             </Button>
-            <Button type="button" color="secondary" outline size="sm" onClick={() => insertWrapped('[', '](https://)', 'link text')} disabled={editorDisabled}>
-              Link
+            <Button
+              type="button"
+              color="secondary"
+              outline
+              size="sm"
+              className="tm-md-toolbar-btn"
+              title="Link"
+              aria-label="Link"
+              onClick={() => insertWrapped('[', '](https://)', 'link text')}
+              disabled={editorDisabled}
+            >
+              <i className="bi bi-link-45deg" aria-hidden="true" />
             </Button>
-            <Button type="button" color="secondary" outline size="sm" onClick={() => insertWrapped('```\n', '\n```', 'code')} disabled={editorDisabled}>
-              Code
+            <Button
+              type="button"
+              color="secondary"
+              outline
+              size="sm"
+              className="tm-md-toolbar-btn"
+              title="Code block"
+              aria-label="Code block"
+              onClick={() => insertWrapped('```\n', '\n```', 'code')}
+              disabled={editorDisabled}
+            >
+              <i className="bi bi-code-slash" aria-hidden="true" />
             </Button>
             <span className="tm-md-editor-separator" />
-            <Button type="button" color="secondary" outline size="sm" onClick={pickFiles} disabled={editorDisabled}>
-              Attach
+            <Button
+              type="button"
+              color="secondary"
+              outline
+              size="sm"
+              className="tm-md-toolbar-btn"
+              title="Attach files"
+              aria-label="Attach files"
+              onClick={pickFiles}
+              disabled={editorDisabled}
+            >
+              <i className="bi bi-paperclip" aria-hidden="true" />
             </Button>
             <Input
               innerRef={uploadInputRef}
