@@ -900,6 +900,7 @@ body[data-tm-density="compact"] .tm-login-form {
   display: flex;
   min-width: max-content;
   flex-direction: column;
+  margin-bottom: 0;
 }
 
 .tm-ticket-filters-reset-spacer {
@@ -908,18 +909,21 @@ body[data-tm-density="compact"] .tm-login-form {
 }
 
 .tm-ticket-filters-reset-btn {
-  align-self: flex-start;
-  height: calc(1.5em + .75rem + 2px);
-  min-height: calc(1.5em + .75rem + 2px);
+  align-self: stretch;
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
   white-space: nowrap;
-  border-color: rgba(148, 163, 184, .3);
+  text-align: left;
+  cursor: pointer;
+  border-color: rgba(148, 163, 184, .25);
   background-color: #121a23;
   color: var(--tm-ink);
 }
 
 .tm-ticket-filters-reset-btn:hover,
 .tm-ticket-filters-reset-btn:focus-visible {
-  border-color: rgba(148, 163, 184, .5);
+  border-color: rgba(148, 163, 184, .45);
   background-color: #18222d;
   color: var(--tm-ink);
 }
