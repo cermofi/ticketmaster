@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Alert } from 'reactstrap';
-import { Spinner } from 'asab_webui_components';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+let loadingStateMounts = 0;
 
 export function ErrorBanner({ error }) {
   if (!error) return null;
@@ -14,9 +15,20 @@ export function ErrorBanner({ error }) {
 }
 
 export function Loading() {
+  useEffect(() => {
+    loadingStateMounts += 1;
+    document.body.classList.add('tm-route-loading');
+    return () => {
+      loadingStateMounts = Math.max(loadingStateMounts - 1, 0);
+      if (loadingStateMounts === 0) {
+        document.body.classList.remove('tm-route-loading');
+      }
+    };
+  }, []);
+
   return (
     <div className="tm-screen tm-loading-state" aria-live="polite">
-      <Spinner className="tm-loading-spinner" />
+      <span className="tm-loading-ring" aria-hidden="true" />
     </div>
   );
 }

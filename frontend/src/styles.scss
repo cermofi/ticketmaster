@@ -149,6 +149,10 @@ body.tm-login-session #app-brandimage,
 body.tm-login-session #app-sidebar,
 body.tm-login-session #app-header,
 body.tm-login-session #app-sidepanel,
+body.tm-route-loading #app-brandimage,
+body.tm-route-loading #app-sidebar,
+body.tm-route-loading #app-header,
+body.tm-route-loading #app-sidepanel,
 body.tm-app-booting #app-brandimage,
 body.tm-app-booting #app-sidebar,
 body.tm-app-booting #app-header,
@@ -165,6 +169,7 @@ body.tm-app-booting #app-sidepanel,
 }
 
 body.tm-login-session #app-main,
+body.tm-route-loading #app-main,
 body.tm-app-booting #app-main,
 #app:has(.tm-login) #app-main,
 #app:has(.tm-loading-state) #app-main {
@@ -474,16 +479,20 @@ body[data-tm-density="compact"] .tm-login-form {
   background: var(--tm-surface);
 }
 
-.tm-loading-state .tm-loading-spinner,
-.tm-loading-state .spinner-border,
-.tm-loading-state .spinner-grow {
+.tm-loading-ring {
   width: 2.2rem;
   height: 2.2rem;
+  border-radius: 9999px;
+  border: .18rem solid var(--tm-line);
+  border-top-color: var(--tm-accent);
+  border-width: .18rem;
+  animation: tm-spinner-rotate .8s linear infinite;
 }
 
-.tm-loading-state .spinner-border {
-  border-width: .18rem;
-  color: var(--tm-accent);
+@keyframes tm-spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .tm-back-link {
