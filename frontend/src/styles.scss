@@ -763,19 +763,37 @@ body[data-tm-density="compact"] .tm-login-form {
 }
 
 .tm-ticket-filters-panel .form-control,
-.tm-ticket-filters-panel .form-select,
-.tm-ticket-filters-panel .btn {
-  min-height: 2.2rem;
+.tm-ticket-filters-panel .form-select {
+  height: calc(1.5em + .75rem + 2px);
+  min-height: calc(1.5em + .75rem + 2px);
 }
 
 .tm-ticket-filters-actions {
-  display: contents;
+  display: flex;
+  min-width: max-content;
+  flex-direction: column;
 }
 
-.tm-ticket-filters-actions .btn {
-  align-self: end;
-  justify-self: start;
+.tm-ticket-filters-reset-spacer {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.tm-ticket-filters-reset-btn {
+  align-self: flex-start;
+  height: calc(1.5em + .75rem + 2px);
+  min-height: calc(1.5em + .75rem + 2px);
   white-space: nowrap;
+  border-color: var(--tm-line);
+  background-color: #12161b;
+  color: var(--tm-ink);
+}
+
+.tm-ticket-filters-reset-btn:hover,
+.tm-ticket-filters-reset-btn:focus-visible {
+  border-color: var(--tm-line-strong);
+  background-color: #171d24;
+  color: var(--tm-ink);
 }
 
 .tm-code-cell {
@@ -2011,6 +2029,10 @@ body[data-tm-contrast="high"] {
   .tm-toolbar-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .tm-ticket-filters-reset-spacer {
+    display: none;
   }
 
   .tm-partner-overview-grid,

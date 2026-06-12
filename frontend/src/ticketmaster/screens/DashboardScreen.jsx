@@ -266,7 +266,8 @@ function TicketFilters({ filters, setFilters, meta, user, filtersOpen, setFilter
             </FormGroup>
           )}
           <div className="tm-ticket-filters-actions">
-            <Button color="secondary" outline type="button" onClick={onReset}>
+            <Label className="tm-ticket-filters-reset-spacer" aria-hidden="true">&nbsp;</Label>
+            <Button className="tm-ticket-filters-reset-btn" color="secondary" outline type="button" onClick={onReset}>
               Reset filters
             </Button>
           </div>
