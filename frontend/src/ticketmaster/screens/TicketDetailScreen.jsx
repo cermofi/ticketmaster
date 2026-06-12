@@ -32,6 +32,7 @@ function TicketDetail({ user }) {
   const [meta, setMeta] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [downloadingAttachmentId, setDownloadingAttachmentId] = useState('');
   const [commentBody, setCommentBody] = useState('');
   const [internalNoteBody, setInternalNoteBody] = useState('');
   const [assignment, setAssignment] = useState({ team: 'L1', assignee: '' });
@@ -77,6 +78,20 @@ function TicketDetail({ user }) {
       await load();
     } catch (err) {
       setError(apiError(err));
+    }
+  };
+
+  const downloadAttachment = async (attachment) => {
+    if (!attachment?.id || !attachment?.download_url) return;
+    setError('');
+    setDownloadingAttachmentId(attachment.id);
+    try {
+      const response = await api.get(attachment.download_url, { responseType: 'blob' });
+      saveDownloadResponse(response, attachment.filename || 'attachment');
+    } catch (err) {
+      setError(apiError(err));
+    } finally {
+      setDownloadingAttachmentId('');
     }
   };
 
@@ -298,6 +313,8 @@ function TicketDetail({ user }) {
                 uploadFile={uploadFile}
                 setUploadFile={setUploadFile}
                 canUpload={canAddCommunication}
+                downloadingAttachmentId={downloadingAttachmentId}
+                onDownload={downloadAttachment}
                 onUpload={() => action(async () => {
                   const formData = new FormData();
                   formData.append('file', uploadFile);
@@ -322,7 +339,7 @@ function InfoRow({ label, value }) {
   );
 }
 
-function AttachmentPanel({ attachments, uploadFile, setUploadFile, canUpload, onUpload }) {
+function AttachmentPanel({ attachments, uploadFile, setUploadFile, canUpload, onUpload, onDownload, downloadingAttachmentId }) {
   return (
     <div className="mb-3">
       <h3>Přílohy</h3>
@@ -339,7 +356,16 @@ function AttachmentPanel({ attachments, uploadFile, setUploadFile, canUpload, on
           <tbody>
             {attachments.map((attachment) => (
               <tr key={attachment.id}>
-                <td><a href={attachment.download_url}>{attachment.filename}</a></td>
+                <td>
+                  <Button
+                    color="link"
+                    className="p-0 align-baseline"
+                    onClick={() => onDownload(attachment)}
+                    disabled={downloadingAttachmentId === attachment.id}
+                  >
+                    {attachment.filename}
+                  </Button>
+                </td>
                 <td>{formatBytes(attachment.size_bytes)}</td>
                 <td>{attachment.uploaded_by_name || '-'}</td>
                 <td><TimeCell value={attachment.created_at} /></td>
@@ -395,6 +421,21 @@ function formatBytes(size) {
 function asArray(value) {
   if (Array.isArray(value)) return value;
   return [];
+}
+
+function saveDownloadResponse(response, fallbackName) {
+  const disposition = response.headers?.['content-disposition'] || '';
+  const match = disposition.match(/filename="?([^"]+)"?/i);
+  const filename = match?.[1] || fallbackName;
+  const blob = new Blob([response.data], { type: response.headers?.['content-type'] || 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function CommentForm({ title, value, setValue, onSubmit }) {
