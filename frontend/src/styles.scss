@@ -811,10 +811,98 @@ body[data-tm-density="compact"] .tm-login-form {
   margin-bottom: var(--tm-space-4);
 }
 
+.tm-field-help {
+  margin-top: .4rem;
+  font-size: .85rem;
+}
+
+.tm-markdown-preview {
+  margin-top: .65rem;
+  border: 1px dashed var(--tm-line);
+  border-radius: var(--tm-radius-sm);
+  background: var(--tm-panel-soft);
+  padding: .75rem;
+}
+
+.tm-markdown-preview-head {
+  margin-bottom: .5rem;
+  color: var(--tm-muted);
+  font-size: .8rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+
+.tm-markdown-preview-body {
+  min-height: 1.5rem;
+}
+
+.tm-markdown {
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.tm-markdown > :first-child {
+  margin-top: 0;
+}
+
+.tm-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.tm-markdown p {
+  margin-bottom: .8rem;
+}
+
+.tm-markdown ul,
+.tm-markdown ol {
+  margin-bottom: .8rem;
+  padding-left: 1.35rem;
+}
+
+.tm-markdown blockquote {
+  margin: 0 0 .8rem;
+  padding: .25rem .9rem;
+  border-left: 3px solid var(--tm-line-strong);
+  color: var(--tm-muted);
+}
+
+.tm-markdown code {
+  padding: .08rem .3rem;
+  border-radius: 4px;
+  background: var(--tm-panel-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .9em;
+}
+
+.tm-markdown pre {
+  margin-bottom: .8rem;
+  padding: .7rem .8rem;
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-radius-sm);
+  background: var(--tm-panel-soft);
+  overflow: auto;
+}
+
+.tm-markdown pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.tm-markdown table {
+  width: 100%;
+  margin-bottom: .8rem;
+  border-collapse: collapse;
+}
+
+.tm-markdown th,
+.tm-markdown td {
+  border: 1px solid var(--tm-line);
+  padding: .35rem .45rem;
+}
+
 .tm-ticket-description {
   margin: 0;
-  white-space: pre-wrap;
-  line-height: 1.55;
 }
 
 .tm-meta-table {

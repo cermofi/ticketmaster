@@ -1,6 +1,8 @@
 import React from 'react';
 import { Alert } from 'reactstrap';
 import { DateTime, Spinner } from 'asab_webui_components';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export function ErrorBanner({ error }) {
   if (!error) return null;
@@ -62,6 +64,27 @@ export function StatusPill({ value, priority, tone }) {
 export function TimeCell({ value }) {
   if (!value) return <span className="tm-muted">-</span>;
   return <DateTime value={value} />;
+}
+
+export function MarkdownText({ content, className = '', emptyMessage = '' }) {
+  const text = typeof content === 'string' ? content : '';
+  const normalizedClassName = className.trim();
+  if (!text.trim()) {
+    if (!emptyMessage) return null;
+    const emptyClassName = normalizedClassName ? `${normalizedClassName} tm-muted` : 'tm-muted';
+    return <p className={emptyClassName}>{emptyMessage}</p>;
+  }
+  return (
+    <ReactMarkdown
+      className={normalizedClassName}
+      remarkPlugins={[remarkGfm]}
+      components={{
+        a: ({ ...props }) => <a {...props} target="_blank" rel="noreferrer" />
+      }}
+    >
+      {text}
+    </ReactMarkdown>
+  );
 }
 
 export function roleLabel(role) {

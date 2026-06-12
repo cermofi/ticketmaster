@@ -45,7 +45,6 @@ Neaktivni uzivatel se nemuze prihlasit ani provadet aktivni akce.
 | `POST` | `/api/tickets/internal` | vytvoreni interniho ticketu |
 | `POST` | `/api/tickets/on-behalf` | vytvoreni partnerskeho ticketu za partnera |
 | `GET` | `/api/tickets/{ticket_id}` | detail ticketu |
-| `PATCH` | `/api/tickets/{ticket_id}/custom-owner` | uprava custom vlastnika ticketu |
 | `POST` | `/api/tickets/{ticket_id}/comments` | verejny komentar |
 | `POST` | `/api/tickets/{ticket_id}/internal-notes` | interni poznamka |
 | `POST` | `/api/tickets/{ticket_id}/assign` | prirazeni teamu/asignee |
@@ -107,18 +106,6 @@ POST /api/tickets/on-behalf
 ```
 
 Akci smi provest pouze `Admin` nebo `DeliveryManager`. Ticket je bezny partnersky ticket, autor je interni uzivatel a vlastnik je vybrana odpovedna osoba partnera.
-
-### Custom vlastnik ticketu
-
-```http
-PATCH /api/tickets/{ticket_id}/custom-owner
-```
-
-```json
-{"custom_owner":"Textova hodnota"}
-```
-
-Hodnota muze byt `null` nebo prazdny text. Upravit ji smi pouze `Admin` nebo `DeliveryManager`. Partner ji nevidi a neexportuje.
 
 ## Jednoduche partnerske API
 

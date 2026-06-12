@@ -15,7 +15,7 @@ import {
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
-import { EmptyRow, ErrorBanner, Loading, PageHeader, StatusPill, TimeCell, apiError, asArray, labelValue } from './helpers.jsx';
+import { EmptyRow, ErrorBanner, Loading, MarkdownText, PageHeader, StatusPill, TimeCell, apiError, asArray, labelValue } from './helpers.jsx';
 
 const EMPTY_FILTERS = { search: '', status: '', priority: '', type: '', resolver_team: '', internal: '' };
 
@@ -467,6 +467,15 @@ export function TicketFormFields({ form, update, meta, clients = [] }) {
       <FormGroup className="tm-field-wide">
         <Label>Popis</Label>
         <Input type="textarea" rows="8" value={form.description} onChange={(event) => update('description', event.target.value)} required />
+        <div className="tm-muted tm-field-help">Podporuje Markdown (nadpisy, seznamy, odkazy, tučné písmo, kód).</div>
+        <div className="tm-markdown-preview">
+          <div className="tm-markdown-preview-head">Náhled markdownu</div>
+          <MarkdownText
+            content={form.description}
+            className="tm-markdown tm-markdown-preview-body"
+            emptyMessage="Náhled se zobrazí po vyplnění popisu."
+          />
+        </div>
       </FormGroup>
     </div>
   );

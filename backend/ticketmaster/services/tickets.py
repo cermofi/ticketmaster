@@ -446,36 +446,6 @@ def _visible_ticket_stmt(
     return stmt
 
 
-def update_custom_owner(db: Session, *, ticket: Ticket, actor: User, custom_owner: str | None, source: str = "ui") -> Ticket:
-    if not actor.active:
-        raise PermissionDenied("Account is inactive")
-    if actor.kind != "internal" or actor.internal_role not in {"Admin", "DeliveryManager"}:
-        raise PermissionDenied("Only Admin or Delivery Manager can update custom ticket owner")
-    require_view(db, actor, ticket)
-    cleaned = custom_owner.strip() if custom_owner else None
-    if cleaned == "":
-        cleaned = None
-    if cleaned and len(cleaned) > 255:
-        raise ValidationError("Custom owner must be 255 characters or less")
-    old = {"custom_owner": ticket.custom_owner}
-    ticket.custom_owner = cleaned
-    ticket.updated_at = datetime.now(timezone.utc)
-    db.flush()
-    if old["custom_owner"] != cleaned:
-        audit(
-            db,
-            entity_type="Ticket",
-            entity_id=ticket.id,
-            action="ticket.custom_owner_update",
-            actor=actor,
-            source=source,
-            old_value=old,
-            new_value={"custom_owner": cleaned},
-        )
-        ticket_search.enqueue_ticket_index(ticket.id)
-    return ticket
-
-
 def add_comment(db: Session, *, ticket: Ticket, actor: User, body: str, source: str = "ui") -> Comment:
     if not can_comment(db, actor, ticket):
         raise PermissionDenied("Only ticket communication participants can comment")

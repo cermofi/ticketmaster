@@ -43,10 +43,6 @@ System ticket vidi partner, ke kteremu patri. Komentovat ho za partnera smi pouz
 
 Closed ticket je finalni. Nelze ho komentovat, doplnovat interni poznamkou, prirazovat ani znovu otevrit.
 
-## Custom vlastnik
-
-Custom vlastnik ticketu je volitelny interni text. Vidi ho interni uzivatele a meni ho pouze `Admin` nebo `DeliveryManager`. Nema vliv na vlastnika ticketu, assignee, participanty, watchery ani workflow.
-
 ## Export ticketu
 
-Export ticketu je dostupny ze seznamu ticketu ve formatu JSON, XLSX nebo CSV ZIP. Export respektuje aktualni filtry a prava uzivatele. Partner neexportuje interni poznamky, GitLab odkaz ani custom vlastnika.
+Export ticketu je dostupny ze seznamu ticketu ve formatu JSON, XLSX nebo CSV ZIP. Export respektuje aktualni filtry a prava uzivatele. Partner neexportuje interni poznamky ani GitLab odkaz.

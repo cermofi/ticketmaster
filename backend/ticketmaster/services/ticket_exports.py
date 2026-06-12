@@ -121,8 +121,6 @@ def _build_sheets(db: Session, *, actor: User, ticket_rows: list[Ticket]) -> lis
         "created_by_id",
         "created_by_name",
     ]
-    if internal_viewer:
-        ticket_columns.append("custom_owner")
     ticket_columns.extend(
         [
             "type",
@@ -174,7 +172,6 @@ def _build_sheets(db: Session, *, actor: User, ticket_rows: list[Ticket]) -> lis
             "updated_at": ticket.updated_at,
         }
         if internal_viewer:
-            row["custom_owner"] = ticket.custom_owner
             row["gitlab_issue_iid"] = link.issue_iid if link else None
             row["gitlab_link"] = link.web_url if link else None
         ticket_data.append(row)

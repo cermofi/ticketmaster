@@ -151,10 +151,6 @@ class TransferOwnerBody(BaseModel):
     new_owner: str
 
 
-class CustomOwnerBody(BaseModel):
-    custom_owner: str | None = Field(default=None, max_length=255)
-
-
 @router.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "ticketmaster-api"}
@@ -659,16 +655,6 @@ def partner_api_tickets_create(db: DbSession, user: CurrentUser, partner_id: str
 def tickets_detail(db: DbSession, user: CurrentUser, ticket_id: str) -> dict:
     ticket = tickets.get_ticket(db, ticket_id)
     tickets.require_view(db, user, ticket)
-    data = ticket_to_dict(db, ticket, viewer=user, include_detail=True)
-    data["available_transitions"] = tickets.available_transitions(db, ticket=ticket, actor=user)
-    return data
-
-
-@router.patch("/tickets/{ticket_id}/custom-owner")
-def tickets_update_custom_owner(db: DbSession, user: CurrentUser, ticket_id: str, body: CustomOwnerBody) -> dict:
-    ticket = tickets.get_ticket(db, ticket_id)
-    tickets.update_custom_owner(db, ticket=ticket, actor=user, custom_owner=body.custom_owner)
-    db.commit()
     data = ticket_to_dict(db, ticket, viewer=user, include_detail=True)
     data["available_transitions"] = tickets.available_transitions(db, ticket=ticket, actor=user)
     return data

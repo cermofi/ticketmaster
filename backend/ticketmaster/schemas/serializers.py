@@ -73,7 +73,6 @@ def ticket_to_dict(db: Session, ticket: Ticket, *, viewer: User | None = None, i
         "updated_at": ticket.updated_at,
     }
     if internal_viewer:
-        data["custom_owner"] = ticket.custom_owner
         data["gitlab_link"] = gitlab_link.web_url if gitlab_link else None
         data["gitlab_issue_iid"] = gitlab_link.issue_iid if gitlab_link else None
     if include_detail:

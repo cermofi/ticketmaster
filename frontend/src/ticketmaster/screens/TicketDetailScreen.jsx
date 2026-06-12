@@ -11,7 +11,7 @@ import {
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
-import { EmptyRow, EmptyState, ErrorBanner, Loading, PageHeader, StatusPill, TimeCell, apiError, labelValue } from './helpers.jsx';
+import { EmptyRow, EmptyState, ErrorBanner, Loading, MarkdownText, PageHeader, StatusPill, TimeCell, apiError, labelValue } from './helpers.jsx';
 
 export default function TicketDetailScreen() {
   return (
@@ -32,7 +32,6 @@ function TicketDetail({ user }) {
   const [commentBody, setCommentBody] = useState('');
   const [internalNoteBody, setInternalNoteBody] = useState('');
   const [assignment, setAssignment] = useState({ team: 'L1', assignee: '' });
-  const [customOwner, setCustomOwner] = useState('');
   const [transferOwner, setTransferOwner] = useState('');
   const [participantId, setParticipantId] = useState('');
   const [uploadFile, setUploadFile] = useState(null);
@@ -53,7 +52,6 @@ function TicketDetail({ user }) {
       setMeta(metaResponse.data);
       setUsers(usersResponse.data);
       setAssignment({ team: ticketResponse.data.resolver_team || 'L1', assignee: ticketResponse.data.assignee_id || '' });
-      setCustomOwner(ticketResponse.data.custom_owner || '');
     } catch (err) {
       setError(apiError(err));
     }
@@ -84,7 +82,6 @@ function TicketDetail({ user }) {
   const resolverTeams = asArray(meta?.resolver_teams);
   const assignmentTeam = ticket?.resolver_team || assignment.team;
   const canTransferOwner = !ticket?.internal && !ticket?.system && responsibleUsers.length > 0;
-  const canEditCustomOwner = user.kind === 'internal' && ['Admin', 'DeliveryManager'].includes(user.internal_role);
   const canManageParticipants = ticket?.system
     ? user.kind === 'partner' && user.partner_role === 'responsible'
     : !ticket?.internal && (user.kind === 'internal' || ticket?.owner_id === user.id);
@@ -125,7 +122,7 @@ function TicketDetail({ user }) {
                 <StatusPill value={ticket.priority} priority={ticket.priority} />
               </div>
               <h2>Popis</h2>
-              <p className="tm-ticket-description">{ticket.description}</p>
+              <MarkdownText content={ticket.description} className="tm-markdown tm-ticket-description" />
             </section>
             <section className="tm-panel">
               <h2>Komunikace</h2>
@@ -165,7 +162,6 @@ function TicketDetail({ user }) {
                   <InfoRow label="Partner" value={ticket.partner_name || '-'} />
                   <InfoRow label="Klient" value={ticket.client_name || '-'} />
                   <InfoRow label="Vlastník" value={ticket.owner_name || '-'} />
-                  {user.kind === 'internal' && <InfoRow label="Custom vlastník" value={ticket.custom_owner || '-'} />}
                   {user.kind === 'internal' && <InfoRow label="Řešitelský tým" value={ticket.resolver_team || '-'} />}
                   {user.kind === 'internal' && <InfoRow label="Assignee" value={ticket.assignee_name || '-'} />}
                   {user.kind === 'internal' && <InfoRow label="GitLab" value={ticket.gitlab_link ? <a href={ticket.gitlab_link}>{labelValue(ticket.gitlab_status || 'Open')}</a> : (ticket.gitlab_status || '-')} />}
@@ -179,29 +175,6 @@ function TicketDetail({ user }) {
                 <h2>Akce</h2>
                 {user.kind === 'internal' && (
                   <>
-                    {canEditCustomOwner && (
-                      <div className="tm-action-group">
-                        <h3>Custom vlastník</h3>
-                        <Form onSubmit={(event) => {
-                          event.preventDefault();
-                          action(() => api.patch(`/tickets/${ticket.id}/custom-owner`, { custom_owner: customOwner.trim() || null }));
-                        }}>
-                          <FormGroup>
-                            <Label>Textová hodnota</Label>
-                            <Input
-                              maxLength="255"
-                              value={customOwner}
-                              onChange={(event) => setCustomOwner(event.target.value)}
-                              placeholder="Např. interní kontaktní osoba"
-                            />
-                          </FormGroup>
-                          <Button color="secondary" outline type="submit" className="w-100">
-                            <i className="bi bi-save me-1" />
-                            Uložit
-                          </Button>
-                        </Form>
-                      </div>
-                    )}
                     <div className="tm-action-group">
                       <div className="tm-action-group-head">
                         <h3>Stav</h3>

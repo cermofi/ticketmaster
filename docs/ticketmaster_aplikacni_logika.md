@@ -44,7 +44,6 @@ Tento dokument popisuje funkcni pravidla aplikace TicketMaster.
 | Technicka osoba | Partner uzivatel s roli `technical`. Muze komentovat partnersky ticket, pokud je participantem. Ticket nezaklada. |
 | Vlastnik ticketu | Hlavni odpovedna osoba za partnersky ticket. U interniho ticketu je vlastnik zakladajici interni uzivatel. System ticket vlastnika nema. |
 | Autor ticketu | Uzivatel, ktery ticket zalozil. System ticket autora nema. |
-| Custom vlastnik ticketu | Volitelne textove pole pro interni koordinaci. Nenahrazuje vlastnika, assignee, participanty ani watchery. |
 | Participant | Partner uzivatel zapojeny do komunikace partnerskeho nebo system ticketu daneho partnera. |
 | Watcher | Uzivatel, kteremu aplikace posila informace o udalostech ticketu. |
 | Resolver team | Interni resitelske oddeleni `L1`, `L2` nebo `L3`. |
@@ -298,7 +297,6 @@ Zakladni informace spolecne pro ticket jsou:
 - stav,
 - resolver team,
 - assignee,
-- custom vlastnik ticketu,
 - nazev,
 - popis,
 - datum vytvoreni,
@@ -683,8 +681,7 @@ Export muze obsahovat:
 - GitLab status,
 - interni poznamky pouze pro interni uzivatele,
 - audit ticketu pouze pro `Admin` a `DeliveryManager`,
-- GitLab odkaz pouze pro interni uzivatele,
-- custom vlastnika pouze pro interni uzivatele.
+- GitLab odkaz pouze pro interni uzivatele.
 
 Partner exportuje pouze tickety sveho partnera.
 
@@ -693,8 +690,7 @@ Partner nikdy neexportuje:
 - tickety jineho partnera,
 - interni tickety,
 - interni poznamky,
-- GitLab odkaz,
-- custom vlastnika ticketu.
+- GitLab odkaz.
 
 Export se audituje. Audit exportu obsahuje pouze metadata exportu, zejmena uzivatele, format, pocet ticketu a pouzite filtry.
 
@@ -899,32 +895,6 @@ Novy vlastnik musi splnovat vsechny podminky:
 Pokud ma ticket klienta, novy vlastnik musi byt odpovednou osobou tohoto klienta.
 
 Novy vlastnik se automaticky stava participantem a watcherem.
-
-### 12.5 Custom vlastnik ticketu
-
-Custom vlastnik ticketu je volitelne textove pole pro interni koordinaci.
-
-Custom vlastnik:
-
-- je pouze volny text,
-- nema vazbu na uzivatele,
-- nenahrazuje systemoveho vlastnika,
-- nenahrazuje assignee,
-- nemeni resolver team,
-- nemeni participanty,
-- nemeni watchery,
-- nemeni workflow ani viditelnost ticketu.
-
-Custom vlastnika smi nastavit, upravit nebo vymazat pouze:
-
-- `Admin`,
-- `DeliveryManager`.
-
-Custom vlastnika vidi pouze interni uzivatele, kteri ticket vidi.
-
-Partner uzivatel custom vlastnika nevidi a neexportuje.
-
-Zmena custom vlastnika se audituje vcetne puvodni a nove hodnoty.
 
 ## 13. Participanti a watcheri
 
@@ -1286,7 +1256,6 @@ Auditni udalosti vznikaji zejmena pri:
 - assignu,
 - unassignu,
 - prevodu vlastnictvi,
-- uprave custom vlastnika ticketu,
 - vytvoreni ticketu za partnera,
 - exportu ticketu,
 - sprave participantu,
@@ -1359,7 +1328,6 @@ MVP nemusi resit opakovane odesilani neuspesnych notifikaci.
 - Partnersky ticket zaklada pouze odpovedna osoba partnera.
 - `Admin` nebo `DeliveryManager` muze zalozit partnersky ticket za partnera, ale vlastnikem musi byt odpovedna osoba partnera.
 - Technicka osoba partnera ticket nezaklada.
-- Custom vlastnik ticketu je pouze interni textova poznamka a nemeni vlastnictvi, assignee, participanty ani watchery.
 - Export ticketu respektuje stejnou viditelnost jako seznam ticketu a partnerovi nikdy nedava interni poznamky ani GitLab odkaz.
 - Partner vidi partnerske tickety sveho partnera a system tickety prirazene svemu partnerovi.
 - Partner nevidi interni tickety ani tickety jinych partneru.
@@ -1445,8 +1413,6 @@ MVP nemusi resit opakovane odesilani neuspesnych notifikaci.
 | Prevest vlastnictvi partnerskeho ticketu | Ano | Ano | Ne | Omezene | Ne | Ne |
 | Prevest vlastnictvi interniho ticketu | Ne | Ne | Ne | Ne | Ne | Ne |
 | Prevest vlastnictvi system ticketu | Ne | Ne | Ne | Ne | Ne | Ne |
-| Upravit custom vlastnika ticketu | Ano | Ano | Ne | Ne | Ne | Ne |
-| Videt custom vlastnika ticketu | Omezene | Omezene | Omezene | Ne | Ne | Ne |
 | Spravovat participanty partnerskeho ticketu | Ano | Ano | Ne | Omezene | Ne | Ne |
 | Spravovat osoby system ticketu | Ne | Ne | Ne | Omezene | Ne | Ne |
 | Odebrat vlastnika z participantu | Ne | Ne | Ne | Ne | Ne | Ne |
