@@ -336,7 +336,8 @@ body.tm-login-session #app-main,
   overflow: visible;
 }
 
-#app-header nav {
+#app-header > ul.nav,
+#app-header ul.nav {
   overflow: visible;
 }
 
@@ -472,9 +473,13 @@ body[data-tm-density="compact"] .tm-login-form {
 .tm-header-session {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: .5rem;
   flex-shrink: 0;
-  margin-left: .45rem;
+  list-style: none;
+  margin-left: 0;
+  margin-bottom: 0;
+  padding: 0;
   position: relative;
   z-index: 2;
 }

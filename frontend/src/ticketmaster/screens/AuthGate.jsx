@@ -75,7 +75,7 @@ export default function AuthGate({ children }) {
 }
 
 function HeaderSession({ user, onLogout }) {
-  const [headerNav, setHeaderNav] = useState(null);
+  const [headerNavList, setHeaderNavList] = useState(null);
   const displayName = (user?.name || user?.email || 'User').trim();
   const role = roleLabel(user?.internal_role || user?.partner_role);
   const email = (user?.email || '').trim();
@@ -85,11 +85,10 @@ function HeaderSession({ user, onLogout }) {
     let observer = null;
 
     const resolveHeaderNav = () => {
-      const node = document.querySelector('#app-header nav')
-        || document.querySelector('#app-header .navbar-nav:last-of-type')
-        || document.querySelector('#app-header');
+      const node = document.querySelector('#app-header > ul.nav')
+        || document.querySelector('#app-header ul.nav');
       if (!node) return false;
-      setHeaderNav(node);
+      setHeaderNavList(node);
       return true;
     };
 
@@ -118,9 +117,9 @@ function HeaderSession({ user, onLogout }) {
     window.location.hash = '#/account/password';
   };
 
-  if (!headerNav) return null;
+  if (!headerNavList) return null;
   return createPortal(
-    <div className="tm-header-session mx-1">
+    <li className="tm-header-session nav-item mx-1">
       <UncontrolledDropdown className="tm-header-user-menu">
         <DropdownToggle
           tag="button"
@@ -145,8 +144,8 @@ function HeaderSession({ user, onLogout }) {
           </DropdownItem>
         </DropdownMenu>
       </UncontrolledDropdown>
-    </div>,
-    headerNav
+    </li>,
+    headerNavList
   );
 }
 
