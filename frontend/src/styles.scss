@@ -742,7 +742,7 @@ body[data-tm-density="compact"] .tm-login-form {
 
 .tm-ticket-filters-panel {
   display: grid;
-  grid-template-columns: repeat(3, minmax(140px, 1fr)) max-content max-content;
+  grid-template-columns: repeat(3, minmax(140px, 1fr)) max-content;
   gap: .6rem;
   align-items: end;
   margin-bottom: .85rem;
@@ -753,7 +753,7 @@ body[data-tm-density="compact"] .tm-login-form {
 }
 
 .tm-ticket-filters-panel-with-queue {
-  grid-template-columns: repeat(4, minmax(140px, 1fr)) max-content max-content;
+  grid-template-columns: repeat(4, minmax(140px, 1fr)) max-content;
 }
 
 .tm-ticket-filters-panel .form-group,
@@ -774,6 +774,7 @@ body[data-tm-density="compact"] .tm-login-form {
 
 .tm-ticket-filters-actions .btn {
   align-self: end;
+  justify-self: start;
   white-space: nowrap;
 }
 

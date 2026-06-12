@@ -116,7 +116,7 @@ function Dashboard({ user }) {
             user={user}
             filtersOpen={filtersOpen}
             setFiltersOpen={setFiltersOpen}
-            onApply={() => load()}
+            onApply={load}
             onReset={() => {
               setFilters(EMPTY_FILTERS);
               load(EMPTY_FILTERS);
@@ -207,6 +207,11 @@ function formatAttachmentSize(size) {
 
 function TicketFilters({ filters, setFilters, meta, user, filtersOpen, setFiltersOpen, onApply, onReset }) {
   const update = (key, value) => setFilters({ ...filters, [key]: value });
+  const updateAndApply = (key, value) => {
+    const nextFilters = { ...filters, [key]: value };
+    setFilters(nextFilters);
+    onApply(nextFilters);
+  };
   const statuses = asArray(meta?.statuses);
   const priorities = asArray(meta?.priorities);
   const ticketTypes = asArray(meta?.ticket_types);
@@ -229,27 +234,24 @@ function TicketFilters({ filters, setFilters, meta, user, filtersOpen, setFilter
         </Button>
       </Form>
       <Collapse isOpen={filtersOpen}>
-        <Form
-          className={`tm-ticket-filters-panel${hasQueueFilter ? ' tm-ticket-filters-panel-with-queue' : ''}`}
-          onSubmit={(event) => { event.preventDefault(); onApply(); }}
-        >
+        <Form className={`tm-ticket-filters-panel${hasQueueFilter ? ' tm-ticket-filters-panel-with-queue' : ''}`}>
           <FormGroup>
             <Label>Status</Label>
-            <Input type="select" value={filters.status} onChange={(event) => update('status', event.target.value)}>
+            <Input type="select" value={filters.status} onChange={(event) => updateAndApply('status', event.target.value)}>
               <option value="">All</option>
               {statuses.map((status) => <option key={status} value={status}>{labelValue(status)}</option>)}
             </Input>
           </FormGroup>
           <FormGroup>
             <Label>Priority</Label>
-            <Input type="select" value={filters.priority} onChange={(event) => update('priority', event.target.value)}>
+            <Input type="select" value={filters.priority} onChange={(event) => updateAndApply('priority', event.target.value)}>
               <option value="">All</option>
               {priorities.map((priority) => <option key={priority} value={priority}>{labelValue(priority)}</option>)}
             </Input>
           </FormGroup>
           <FormGroup>
             <Label>Type</Label>
-            <Input type="select" value={filters.type} onChange={(event) => update('type', event.target.value)}>
+            <Input type="select" value={filters.type} onChange={(event) => updateAndApply('type', event.target.value)}>
               <option value="">All</option>
               {ticketTypes.map((ticketType) => <option key={ticketType} value={ticketType}>{labelValue(ticketType)}</option>)}
             </Input>
@@ -257,7 +259,7 @@ function TicketFilters({ filters, setFilters, meta, user, filtersOpen, setFilter
           {hasQueueFilter && (
             <FormGroup>
               <Label>Queue</Label>
-              <Input type="select" value={filters.resolver_team} onChange={(event) => update('resolver_team', event.target.value)}>
+              <Input type="select" value={filters.resolver_team} onChange={(event) => updateAndApply('resolver_team', event.target.value)}>
                 <option value="">All</option>
                 {resolverTeams.map((team) => <option key={team}>{team}</option>)}
               </Input>
@@ -266,9 +268,6 @@ function TicketFilters({ filters, setFilters, meta, user, filtersOpen, setFilter
           <div className="tm-ticket-filters-actions">
             <Button color="secondary" outline type="button" onClick={onReset}>
               Reset filters
-            </Button>
-            <Button color="primary" type="submit">
-              Apply
             </Button>
           </div>
         </Form>
