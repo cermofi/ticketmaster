@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router';
+import { useLocation, useParams } from 'react-router';
 import {
+  Alert,
   Button,
   Form,
   FormGroup,
@@ -23,12 +24,14 @@ export default function TicketDetailScreen() {
 
 function TicketDetail({ user }) {
   const { ticketId } = useParams();
+  const location = useLocation();
   const [ticket, setTicket] = useState(null);
   const [comments, setComments] = useState([]);
   const [attachments, setAttachments] = useState([]);
   const [users, setUsers] = useState([]);
   const [meta, setMeta] = useState(null);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [commentBody, setCommentBody] = useState('');
   const [internalNoteBody, setInternalNoteBody] = useState('');
   const [assignment, setAssignment] = useState({ team: 'L1', assignee: '' });
@@ -60,6 +63,12 @@ function TicketDetail({ user }) {
   useEffect(() => {
     load();
   }, [ticketId]);
+
+  useEffect(() => {
+    if (location.state?.notice) {
+      setNotice(location.state.notice);
+    }
+  }, [location.state]);
 
   const action = async (fn) => {
     setError('');
@@ -110,6 +119,11 @@ function TicketDetail({ user }) {
         )}
       />
       <ErrorBanner error={error} />
+      {notice && (
+        <Alert color="warning" className="tm-alert" toggle={() => setNotice('')}>
+          {notice}
+        </Alert>
+      )}
       {ticket && (
         <div className="tm-ticket-layout">
           <main className="tm-ticket-main">

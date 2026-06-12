@@ -643,6 +643,100 @@ body[data-tm-density="compact"] .tm-login-form {
   resize: vertical;
 }
 
+.tm-md-editor {
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-radius-sm);
+  background: var(--tm-panel-soft);
+  overflow: hidden;
+}
+
+.tm-md-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  align-items: center;
+  padding: .45rem;
+  border-bottom: 1px solid var(--tm-line);
+}
+
+.tm-md-editor-toolbar .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  padding: .2rem .45rem;
+}
+
+.tm-md-editor-separator {
+  display: inline-block;
+  width: 1px;
+  height: 1.35rem;
+  margin-inline: .15rem;
+  background: var(--tm-line);
+}
+
+.tm-md-editor textarea.form-control {
+  min-height: 16rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.tm-md-editor textarea.form-control:focus {
+  box-shadow: none;
+}
+
+.tm-draft-attachments {
+  margin-top: .6rem;
+}
+
+.tm-draft-attachments-head {
+  margin-bottom: .35rem;
+  color: var(--tm-muted);
+  font-size: .85rem;
+  font-weight: 600;
+}
+
+.tm-draft-attachments-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+}
+
+.tm-draft-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  max-width: 100%;
+  padding: .2rem .45rem;
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-radius-sm);
+  background: var(--tm-panel);
+  font-size: .85rem;
+}
+
+.tm-draft-attachment-name {
+  overflow: hidden;
+  max-width: 18rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-draft-attachment-remove {
+  border: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--tm-muted);
+  background: transparent;
+}
+
+.tm-draft-attachment-remove:hover:not(:disabled) {
+  color: var(--tm-danger);
+}
+
 .tm-ticket-form-grid .tm-multi-select {
   min-height: 6rem;
 }
