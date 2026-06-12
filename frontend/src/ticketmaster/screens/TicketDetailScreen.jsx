@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useLocation, useParams } from 'react-router';
 import {
   Alert,
@@ -12,7 +12,10 @@ import {
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
+import { usePolling, useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
 import { EmptyRow, EmptyState, ErrorBanner, Loading, MarkdownText, PageHeader, StatusPill, TimeCell, apiError, labelValue } from './helpers.jsx';
+
+const TICKET_DETAIL_POLL_MS = 30000;
 
 export default function TicketDetailScreen() {
   return (
@@ -41,7 +44,7 @@ function TicketDetail({ user }) {
   const [participantId, setParticipantId] = useState('');
   const [uploadFile, setUploadFile] = useState(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError('');
     try {
       const [ticketResponse, commentsResponse, attachmentsResponse, metaResponse, usersResponse] = await Promise.all([
@@ -61,11 +64,14 @@ function TicketDetail({ user }) {
     } catch (err) {
       setError(apiError(err));
     }
-  };
+  }, [ticketId]);
 
   useEffect(() => {
     load();
-  }, [ticketId]);
+  }, [load]);
+
+  useRefetchOnFocus(load);
+  usePolling(load, TICKET_DETAIL_POLL_MS);
 
   useEffect(() => {
     if (location.state?.notice) {
@@ -132,14 +138,7 @@ function TicketDetail({ user }) {
 
   return (
     <div className="tm-screen">
-      <PageHeader
-        title={ticket?.title || 'Ticket detail'}
-        actions={(
-          <Button outline color="secondary" onClick={load} title="Refresh ticket">
-            Refresh
-          </Button>
-        )}
-      />
+      <PageHeader title={ticket?.title || 'Ticket detail'} />
       <ErrorBanner error={error} />
       {notice && (
         <Alert color="warning" className="tm-alert" toggle={() => setNotice('')}>

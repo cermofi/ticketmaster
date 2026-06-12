@@ -1,8 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
+import { usePolling, useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
 import { EmptyState, ErrorBanner, Loading, PageHeader, apiError, asArray } from './helpers.jsx';
+
+const PARTNER_OVERVIEW_POLL_MS = 60000;
 
 export default function PartnerOverviewScreen() {
   return (
@@ -17,18 +20,18 @@ function PartnerOverview({ user }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
-  const load = async () => {
+  const load = useCallback(async ({ silent = false } = {}) => {
     setError('');
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const response = await api.get('/partner-dashboard');
       setOverview(response.data);
     } catch (err) {
       setError(apiError(err));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (user.kind === 'partner') {
@@ -36,7 +39,11 @@ function PartnerOverview({ user }) {
     } else {
       setLoading(false);
     }
-  }, []);
+  }, [load, user.kind]);
+
+  const refresh = useCallback(() => load({ silent: true }), [load]);
+  useRefetchOnFocus(refresh, user.kind === 'partner');
+  usePolling(refresh, PARTNER_OVERVIEW_POLL_MS, user.kind === 'partner');
 
   if (user.kind !== 'partner') {
     return (

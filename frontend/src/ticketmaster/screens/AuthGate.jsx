@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Alert,
@@ -15,6 +15,7 @@ import {
 } from 'reactstrap';
 
 import api, { clearSession, currentUser, saveSession } from '../../api/client.js';
+import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
 import { roleLabel } from './helpers.jsx';
 
 export function useSession() {
@@ -37,7 +38,7 @@ export function useSession() {
     };
   }, [user]);
 
-  useEffect(() => {
+  const refreshUser = useCallback(() => {
     const token = localStorage.getItem('ticketmaster.token');
     if (!token) return;
     api.get('/auth/me')
@@ -49,6 +50,12 @@ export function useSession() {
         setUserState(null);
       });
   }, []);
+
+  useEffect(() => {
+    refreshUser();
+  }, [refreshUser]);
+
+  useRefetchOnFocus(refreshUser);
 
   return {
     user,

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import {
   Button,
@@ -16,9 +16,11 @@ import {
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
+import { usePolling, useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
 import { EmptyRow, ErrorBanner, Loading, MarkdownText, PageHeader, StatusPill, TimeCell, apiError, asArray, labelValue } from './helpers.jsx';
 
 const EMPTY_FILTERS = { search: '', status: '', priority: '', type: '', resolver_team: '', internal: '' };
+const TICKETS_POLL_MS = 30000;
 const ATTACHMENT_ACCEPT = '.png,.jpg,.jpeg,.pdf,.txt,.log,.zip';
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const ALLOWED_ATTACHMENT_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.pdf', '.txt', '.log', '.zip']);
@@ -40,12 +42,15 @@ function Dashboard({ user }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [exportLoading, setExportLoading] = useState('');
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
 
-  const load = async (nextFilters = filters) => {
+  const load = useCallback(async (nextFilters) => {
+    const activeFilters = nextFilters ?? filtersRef.current;
     setError('');
     setLoading(true);
     try {
-      const params = Object.fromEntries(Object.entries(nextFilters).filter(([, value]) => value !== ''));
+      const params = Object.fromEntries(Object.entries(activeFilters).filter(([, value]) => value !== ''));
       const [metaResponse, ticketsResponse] = await Promise.all([
         api.get('/meta'),
         api.get('/tickets', { params })
@@ -57,7 +62,7 @@ function Dashboard({ user }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const exportTickets = async (format) => {
     setError('');
@@ -75,7 +80,10 @@ function Dashboard({ user }) {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
+
+  useRefetchOnFocus(load);
+  usePolling(load, TICKETS_POLL_MS);
 
   const canCreateOnBehalf = user.kind === 'internal' && ['Admin', 'DeliveryManager'].includes(user.internal_role);
 
@@ -94,7 +102,6 @@ function Dashboard({ user }) {
               canCreateOnBehalf={canCreateOnBehalf}
               loading={exportLoading}
               onExport={exportTickets}
-              onRefresh={load}
             />
           </>
         )}
@@ -122,7 +129,7 @@ function Dashboard({ user }) {
   );
 }
 
-function MoreActionsMenu({ isOpen, setOpen, canCreateOnBehalf, loading, onExport, onRefresh }) {
+function MoreActionsMenu({ isOpen, setOpen, canCreateOnBehalf, loading, onExport }) {
   return (
     <ButtonDropdown isOpen={isOpen} toggle={() => setOpen(!isOpen)}>
       <DropdownToggle color="secondary" outline caret>
@@ -142,10 +149,6 @@ function MoreActionsMenu({ isOpen, setOpen, canCreateOnBehalf, loading, onExport
         </DropdownItem>
         <DropdownItem disabled={Boolean(loading)} onClick={() => onExport('csv')}>
           {loading === 'csv' ? 'Exporting CSV ZIP...' : 'Export tickets (CSV ZIP)'}
-        </DropdownItem>
-        <DropdownItem divider />
-        <DropdownItem onClick={onRefresh}>
-          Refresh
         </DropdownItem>
       </DropdownMenu>
     </ButtonDropdown>

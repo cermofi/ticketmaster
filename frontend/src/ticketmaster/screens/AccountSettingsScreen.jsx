@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Form, FormGroup, Input, Label } from 'reactstrap';
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
+import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
 import { ErrorBanner, Loading, PageHeader, apiError, roleLabel } from './helpers.jsx';
 
 export default function AccountSettingsScreen() {
@@ -21,8 +22,8 @@ function AccountSettings({ user, session }) {
   const [profile, setProfile] = useState(null);
   const [form, setForm] = useState({ name: '', email: '' });
 
-  const loadProfile = async () => {
-    setLoading(true);
+  const loadProfile = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     setError('');
     try {
       const response = await api.get('/account/me');
@@ -31,13 +32,16 @@ function AccountSettings({ user, session }) {
     } catch (err) {
       setError(apiError(err));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadProfile();
-  }, []);
+  }, [loadProfile]);
+
+  const refreshProfile = useCallback(() => loadProfile({ silent: true }), [loadProfile]);
+  useRefetchOnFocus(refreshProfile);
 
   const emailEditable = profile?.email_editable === true;
   const role = useMemo(

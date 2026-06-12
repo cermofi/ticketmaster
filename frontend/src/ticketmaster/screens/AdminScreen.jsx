@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Form,
@@ -14,6 +14,7 @@ import {
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
+import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
 import { EmptyRow, ErrorBanner, PageHeader, apiError, roleLabel } from './helpers.jsx';
 
 export default function AdminScreen() {
@@ -47,7 +48,7 @@ function Admin({ user }) {
     role: ''
   });
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError('');
     try {
       const [partnersResponse, clientsResponse, usersResponse] = await Promise.all([
@@ -61,11 +62,13 @@ function Admin({ user }) {
     } catch (err) {
       setError(apiError(err));
     }
-  };
+  }, []);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
+
+  useRefetchOnFocus(load);
 
   const partnerNames = useMemo(() => new Map(partners.map((partner) => [partner.id, partner.name])), [partners]);
   const filteredPartners = useMemo(() => filterPartners(partners, directoryFilters), [partners, directoryFilters]);
@@ -144,14 +147,9 @@ function Admin({ user }) {
       <PageHeader
         title="Admin"
         actions={(
-          <>
-            <Button outline color="secondary" onClick={load} title="Refresh data">
-              Refresh
-            </Button>
-            <Button color="primary" onClick={() => setActionModalOpen(true)}>
-              Create
-            </Button>
-          </>
+          <Button color="primary" onClick={() => setActionModalOpen(true)}>
+            Create
+          </Button>
         )}
       />
       <ErrorBanner error={error} />

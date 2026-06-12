@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { Button, Form, Input, Table } from 'reactstrap';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Form, Input, Table } from 'reactstrap';
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
+import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
 import { EmptyRow, ErrorBanner, PageHeader, TimeCell, apiError } from './helpers.jsx';
 
 export default function AuditScreen() {
@@ -17,20 +18,35 @@ function Audit({ user }) {
   const [rows, setRows] = useState([]);
   const [entityId, setEntityId] = useState('');
   const [error, setError] = useState('');
+  const skipFilterEffect = useRef(true);
+  const entityIdRef = useRef(entityId);
+  entityIdRef.current = entityId;
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError('');
     try {
-      const response = await api.get('/audit', { params: entityId ? { entity_id: entityId } : {} });
+      const filter = entityIdRef.current;
+      const response = await api.get('/audit', { params: filter ? { entity_id: filter } : {} });
       setRows(response.data);
     } catch (err) {
       setError(apiError(err));
     }
-  };
+  }, []);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
+
+  useEffect(() => {
+    if (skipFilterEffect.current) {
+      skipFilterEffect.current = false;
+      return undefined;
+    }
+    const handle = window.setTimeout(() => load(), 400);
+    return () => window.clearTimeout(handle);
+  }, [entityId, load]);
+
+  useRefetchOnFocus(load);
 
   if (user.kind !== 'internal' || !['Admin', 'DeliveryManager'].includes(user.internal_role)) {
     return <div className="tm-screen"><ErrorBanner error="Audit log is available only to Admin and Delivery Manager." /></div>;
@@ -38,22 +54,9 @@ function Audit({ user }) {
 
   return (
     <div className="tm-screen">
-      <PageHeader
-        title="Audit"
-        actions={(
-          <Button outline color="secondary" onClick={load} title="Refresh audit log">
-            Refresh
-          </Button>
-        )}
-      />
+      <PageHeader title="Audit" />
       <ErrorBanner error={error} />
-      <Form
-        className="tm-audit-search"
-        onSubmit={(event) => {
-          event.preventDefault();
-          load();
-        }}
-      >
+      <Form className="tm-audit-search">
         <Input
           value={entityId}
           onChange={(event) => setEntityId(event.target.value)}
