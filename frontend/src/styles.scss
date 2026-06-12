@@ -164,16 +164,37 @@ body.tm-login-session #app-main,
 }
 
 #app-brandimage {
-  min-height: 3.4rem;
+  min-height: 3rem;
+  display: flex;
+  align-items: center;
+  padding: 0 .75rem;
+  container-type: inline-size;
   overflow: hidden;
   border-bottom: 1px solid var(--tm-line);
   background: #121820;
 }
 
 #app-brandimage img {
-  max-width: 9rem;
-  max-height: 1.55rem;
-  object-fit: contain;
+  display: none !important;
+}
+
+#app-brandimage::before {
+  content: "TicketMaster";
+  color: #e4ecf7;
+  font-size: .95rem;
+  font-weight: 650;
+  letter-spacing: .01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@container (max-width: 84px) {
+  #app-brandimage::before {
+    content: "TM";
+    font-size: .88rem;
+    letter-spacing: .04em;
+  }
 }
 
 #app-sidebar,
@@ -187,6 +208,15 @@ body.tm-login-session #app-main,
   color: #d6e0ef !important;
   font-weight: 500;
   border-left: 2px solid transparent;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#app-sidebar a i {
+  width: 1rem;
+  min-width: 1rem;
+  text-align: center;
 }
 
 #app-sidebar a:hover {
@@ -203,10 +233,16 @@ body.tm-login-session #app-main,
 
 #app-header {
   position: relative;
-  min-height: 3.2rem;
+  min-height: 3rem;
   background: #121820 !important;
   border-bottom: 1px solid var(--tm-line) !important;
   color: var(--tm-ink) !important;
+}
+
+#app-sidepanel img,
+#app-sidepanel [class*="logo"],
+#app-sidepanel [class*="brand"] {
+  display: none !important;
 }
 
 .tm-screen {
@@ -285,12 +321,12 @@ body[data-tm-density="compact"] .tm-login-form {
 .tm-header-session {
   position: absolute;
   top: 50%;
-  right: 7.6rem;
+  right: 4.7rem;
   display: inline-flex;
-  align-items: center;
-  gap: .65rem;
+  align-items: stretch;
+  max-width: min(18rem, calc(100vw - 18rem));
   transform: translateY(-50%);
-  z-index: 3;
+  z-index: 4;
 }
 
 .tm-header-user {
@@ -301,12 +337,51 @@ body[data-tm-density="compact"] .tm-login-form {
 }
 
 .tm-header-user strong {
-  font-size: .82rem;
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: .81rem;
   font-weight: 600;
 }
 
 .tm-header-user .tm-muted {
-  font-size: .74rem;
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: .72rem;
+}
+
+.tm-header-user-menu .dropdown-toggle.tm-header-user-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  max-width: 100%;
+  min-height: 2rem;
+  padding: .2rem .45rem;
+  border: 1px solid transparent;
+  border-radius: var(--tm-radius-sm);
+  text-decoration: none;
+  color: var(--tm-ink);
+  background: transparent;
+}
+
+.tm-header-user-menu .dropdown-toggle.tm-header-user-toggle:hover {
+  border-color: var(--tm-line);
+  background: rgba(255, 255, 255, .04);
+  color: var(--tm-ink);
+}
+
+.tm-header-user-menu .dropdown-toggle.tm-header-user-toggle::after {
+  display: none;
+}
+
+.tm-header-user-menu .dropdown-toggle.tm-header-user-toggle i {
+  color: var(--tm-muted);
+  font-size: .78rem;
 }
 
 .tm-toolbar {
@@ -1280,11 +1355,15 @@ body[data-tm-contrast="high"] {
 
 @media (max-width: 640px) {
   .tm-header-session {
-    right: 3.8rem;
-    gap: .35rem;
+    right: 3.1rem;
+    max-width: calc(100vw - 8.5rem);
   }
 
   .tm-header-user {
+    max-width: 7rem;
+  }
+
+  .tm-header-user .tm-muted {
     display: none;
   }
 

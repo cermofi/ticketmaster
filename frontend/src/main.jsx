@@ -17,7 +17,6 @@ const ConfigDefaults = {
   },
   authorization: 'disabled',
   hasHeaderTitle: false,
-  help: 'https://github.com/TeskaLabs/asab-webui',
   defaultBrandImage: {
     full: 'media/logo/header-logo-full.svg',
     minimized: 'media/logo/header-logo-minimized.svg'

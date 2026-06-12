@@ -3,7 +3,11 @@ import { createPortal } from 'react-dom';
 import {
   Alert,
   Button,
+  ButtonDropdown,
   ButtonGroup,
+  DropdownItem,
+  DropdownMenu,
+  DropdownToggle,
   Form,
   FormGroup,
   Input,
@@ -65,17 +69,27 @@ export default function AuthGate({ children }) {
 }
 
 function HeaderSession({ user, onLogout }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const role = roleLabel(user.internal_role || user.partner_role);
   const header = document.getElementById('app-header');
   if (!header) return null;
   return createPortal(
     <div className="tm-header-session">
-      <div className="tm-header-user">
-        <strong>{user.name}</strong>
-        <span className="tm-muted">{roleLabel(user.internal_role || user.partner_role)}</span>
-      </div>
-      <Button size="sm" outline color="secondary" onClick={onLogout}>
-        Logout
-      </Button>
+      <ButtonDropdown isOpen={menuOpen} toggle={() => setMenuOpen(!menuOpen)} className="tm-header-user-menu">
+        <DropdownToggle color="link" className="tm-header-user-toggle">
+          <span className="tm-header-user">
+            <strong>{user.name}</strong>
+            <span className="tm-muted">{role}</span>
+          </span>
+          <i className={`bi bi-chevron-${menuOpen ? 'up' : 'down'}`} aria-hidden="true" />
+        </DropdownToggle>
+        <DropdownMenu end>
+          <DropdownItem header>{user.name}</DropdownItem>
+          <DropdownItem disabled>{role}</DropdownItem>
+          <DropdownItem divider />
+          <DropdownItem onClick={onLogout}>Logout</DropdownItem>
+        </DropdownMenu>
+      </ButtonDropdown>
     </div>,
     header
   );
