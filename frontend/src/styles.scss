@@ -285,8 +285,8 @@ body.tm-app-booting #app-sidepanel,
 }
 
 body.tm-login-session #app,
-#app:has(.tm-login) #app {
-  grid-template-columns: 1fr;
+#app:has(.tm-login) {
+  grid-template-columns: 1fr !important;
   min-height: 100vh;
   min-height: 100dvh;
 }
@@ -2197,13 +2197,14 @@ body[data-tm-density="compact"] .tm-login-form {
 }
 
 .tm-login {
-  flex: 1;
-  min-height: 100vh;
-  min-height: 100dvh;
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
   box-sizing: border-box;
   display: grid;
   place-items: center;
   padding: var(--tm-space-5);
+  background: var(--tm-surface);
 }
 
 .tm-login-form {
