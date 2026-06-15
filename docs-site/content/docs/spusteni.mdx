@@ -1,0 +1,83 @@
+---
+title: Spuštění
+description: Jak aplikaci spustit, zastavit a ověřit zdraví
+---
+
+## Požadavky
+
+- Docker a Docker Compose
+- Volitelně: Node.js 22+ pro lokální docs (`docs-site/`)
+
+## Aplikace (Docker Compose)
+
+V kořeni repozitáře:
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+```
+
+### Ověření
+
+| Co | URL / příkaz |
+| --- | --- |
+| Web UI | http://localhost:3006 |
+| API health | http://localhost:3006/api/health |
+| API ready (DB) | http://localhost:3006/api/ready |
+
+Frontend nginx proxuje `/api/` na kontejner `api:8000`.
+
+### Zastavení
+
+```bash
+docker compose down
+```
+
+Data v PostgreSQL zůstanou ve volume `postgres_data`. Pro smazání dat:
+
+```bash
+docker compose down -v
+```
+
+## Vývojový seed
+
+Po prvním startu API automaticky spustí migrace (`ticketmaster-cli db migrate` v Dockerfile CMD).
+
+Pro demo data uvnitř běžícího API kontejneru:
+
+```bash
+docker compose exec api ticketmaster-cli db seed-dev
+```
+
+Seed vytvoří interní uživatele, partnera Acme, klienta a ukázkové tickety. Heslo partnerů z dev prostředí odpovídá proměnné `TICKETMASTER_DEV_PASSWORD` (výchozí `ChangeMe123!`).
+
+## Lokální vývoj bez Dockeru (volitelné)
+
+**Backend** — vyžaduje běžící PostgreSQL a `.env`:
+
+```bash
+cd backend
+pip install -e ".[test]"
+ticketmaster-cli db migrate
+uvicorn ticketmaster.api.main:app --reload --port 8000
+```
+
+**Frontend** — proxy `/api` na `localhost:8000` (viz `frontend/vite.config.js`):
+
+```bash
+cd frontend
+npm install
+npm start
+```
+
+Vite běží na portu **3000** (ne 3006).
+
+## Dokumentace (Fumadocs)
+
+```bash
+cd docs-site
+npm install
+npm run dev
+```
+
+Docs: http://localhost:3007/docs

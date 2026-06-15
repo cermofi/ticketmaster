@@ -1,0 +1,52 @@
+---
+title: Testy
+description: Jak spouštět pytest a CI
+---
+
+## Backend (pytest)
+
+```bash
+cd backend
+pip install -e ".[test]"
+pytest
+```
+
+Nebo v běžícím API kontejneru:
+
+```bash
+docker compose exec api python -m pytest -q
+```
+
+### Co se testuje
+
+| Soubor | Zaměření |
+| --- | --- |
+| `test_business_rules.py` | RBAC, workflow, partner izolace, exporty |
+| `test_account_api.py` | Účet a API |
+| `test_cli.py` | Parsování CLI příkazů |
+| `test_slug.py` | Generování klíčů (diakritika) |
+
+Fixtures: `db` (SQLite), `fixture_data` (uživatelé, partneři, klienti).
+
+## CI
+
+GitHub Actions workflow `.github/workflows/ci.yml`:
+
+- trigger: `push`, `pull_request`
+- job `backend-tests`: Python 3.12, `pip install -e ".[test]"`, `pytest`
+
+Frontend nemá v CI samostatný build job — ověření frontendu lokálně:
+
+```bash
+cd frontend && npm install && npm run build
+```
+
+## Docs-site
+
+```bash
+cd docs-site
+npm install
+npm run build
+```
+
+Build ověřuje TypeScript a MDX obsah.

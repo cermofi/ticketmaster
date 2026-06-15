@@ -1,0 +1,28 @@
+---
+title: Úvod
+description: Co je TicketMaster a proč existuje samostatná dokumentace
+---
+
+TicketMaster je interní ticketovací systém pro partnery a interní týmy (L1–L3, Admin, Delivery Manager).
+
+## Co systém dělá
+
+- Partner vytváří a sleduje tickety svého partnera.
+- Interní tým řeší, přiřazuje, uzavírá a audituje tickety.
+- API + React UI běží v Docker Compose; backend je FastAPI, frontend Vite + ASAB WebUI.
+
+## Proč samostatná docs aplikace
+
+Dokumentace je v adresáři `docs-site/` jako **samostatná Next.js + Fumadocs** aplikace.
+
+- Produkční frontend (`frontend/`) je statický Vite build za nginx — integrace docs by zbytečně komplikovala produkční image.
+- Docs běží odděleně (vývojově na portu **3007**), nezasahuje do běžící aplikace na portu **3006**.
+
+## Rychlý přehled stacku
+
+| Vrstva | Technologie |
+| --- | --- |
+| API | FastAPI, SQLAlchemy, PostgreSQL |
+| UI | React 19, Vite, ASAB WebUI |
+| CLI | `ticketmaster-cli` (Python entrypoint) |
+| Infra | Docker Compose: `db`, `api`, `frontend`, `mailpit` |

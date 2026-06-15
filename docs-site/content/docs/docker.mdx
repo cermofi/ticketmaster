@@ -1,0 +1,71 @@
+---
+title: Docker
+description: Compose služby, proměnné a healthchecky
+---
+
+## Spuštění
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+## Služby
+
+### `db`
+
+- Image: `postgres:16-alpine`
+- Healthcheck: `pg_isready`
+- Volume: `postgres_data`
+
+### `api`
+
+- Build: `backend/Dockerfile`
+- Při startu: `ticketmaster-cli db migrate` + uvicorn s `${WEB_CONCURRENCY}` workery
+- Healthcheck: `GET http://127.0.0.1:8000/api/ready`
+- Volumes: `uploads`, `api_logs`
+
+### `frontend`
+
+- Multi-stage: Node 22 build → nginx 1.27
+- Port: **127.0.0.1:3006:80** (pouze localhost na hostu)
+- Proxy `/api/` → `api:8000` (`frontend/nginx.conf`)
+
+### `mailpit`
+
+- SMTP pro dev (`SMTP_HOST=mailpit`, port 1025)
+- Web UI není vystavený na host port (jen `expose` v compose)
+
+## Proměnné prostředí
+
+Vzor v `.env.example`. Společný blok `x-app-environment` v `docker-compose.yml` nastavuje:
+
+| Proměnná | Význam |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `APP_SECRET` | JWT / kryptografie |
+| `APP_BASE_URL` | Veřejná URL aplikace (odkazy v e-mailech) |
+| `TICKETMASTER_DEV_PASSWORD` | Dev heslo pro partner seed / invite |
+| `SMTP_*` | Odchozí mail |
+| `GITLAB_*` | GitLab integrace (`GITLAB_DRY_RUN=true` default) |
+| `CORS_ORIGINS`, `TRUSTED_HOSTS` | Default `*` |
+| `LOGIN_RATE_LIMIT_*` | Rate limit login endpointu |
+
+Nikdy necommitujte reálný `.env` — jen `.env.example`.
+
+## Logy a restart
+
+```bash
+docker compose logs -f api
+docker compose restart api
+docker compose exec api ticketmaster-cli health
+```
+
+## Rebuild po změně kódu
+
+```bash
+docker compose build api frontend
+docker compose up -d
+```
+
+Docs (`docs-site/`) nejsou součástí compose — rebuild produkce je kvůli nim zbytečný.

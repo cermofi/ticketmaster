@@ -1,0 +1,64 @@
+---
+title: Provoz
+description: Health endpointy, logy, integrace a běžné postupy
+---
+
+## Health endpointy
+
+| Endpoint | Účel |
+| --- | --- |
+| `GET /api/health` | Liveness — API běží |
+| `GET /api/ready` | Readiness — DB dostupná |
+
+Docker healthcheck API používá `/api/ready`. Frontend kontroluje nginx na `/`.
+
+## Logy
+
+- API loguje každý request (method, path, status, duration, `X-Request-ID`).
+- Logy v kontejneru: volume `api_logs` → `/app/logs` (pokud aplikace zapisuje do souboru).
+
+```bash
+docker compose logs -f api frontend
+```
+
+## E-mail
+
+- Dev: Mailpit (`SMTP_HOST=mailpit`, port 1025).
+- `MAIL_SUPPRESS_SEND=true` — fronta bez odeslání.
+- Retry fronty: `ticketmaster-cli notifications retry-failed`.
+
+## GitLab
+
+- Konfigurace přes `GITLAB_BASE_URL`, `GITLAB_PROJECT_ID`, `GITLAB_TOKEN`.
+- Default `GITLAB_DRY_RUN=true` — bez reálných volání API.
+- Kontrola: `ticketmaster-cli gitlab check`.
+
+## Bezpečnost (provozní minimum)
+
+- Změňte `APP_SECRET` a DB hesla mimo dev.
+- `CORS_ORIGINS` a `TRUSTED_HOSTS` nastavte na reálné domény (ne `*`).
+- Login rate limit: `LOGIN_RATE_LIMIT_ATTEMPTS`, `LOGIN_RATE_LIMIT_WINDOW_SECONDS`.
+- API přidává security hlavičky (`X-Content-Type-Options`, `X-Frame-Options`, …).
+
+## Nasazení na server
+
+Typický postup (VPS s klonem repozitáře):
+
+```bash
+cd /home/new-ticketmaster
+git pull origin main
+docker compose up -d --build   # jen pokud se změnil backend/frontend/docker
+curl -fsS http://127.0.0.1:3006/api/ready
+```
+
+Změny pouze v `docs-site/` nevyžadují rebuild produkčních kontejnerů.
+
+## Dokumentace na serveru
+
+Docs nejsou součástí produkčního nginx frontendu. Pro náhled na VPS:
+
+```bash
+cd docs-site && npm install && npm run build && npm run start
+```
+
+(Port 3007 — bind podle potřeby; nebo statický export / reverse proxy dle vaší infrastruktury.)

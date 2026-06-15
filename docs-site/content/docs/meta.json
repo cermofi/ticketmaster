@@ -1,0 +1,14 @@
+{
+  "title": "Dokumentace",
+  "pages": [
+    "index",
+    "spusteni",
+    "struktura",
+    "pravidla",
+    "docker",
+    "cli",
+    "databaze",
+    "testy",
+    "provoz"
+  ]
+}

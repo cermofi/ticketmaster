@@ -1,0 +1,50 @@
+---
+title: Databáze a migrace
+description: PostgreSQL, schéma a postup migrací
+---
+
+## Databáze
+
+- Produktivní stack: **PostgreSQL 16** (služba `db` v compose).
+- ORM: SQLAlchemy 2.x, modely v `backend/ticketmaster/models/`.
+- Connection string: `DATABASE_URL` (default v compose směřuje na `db:5432`).
+
+## Migrace
+
+Migrace jsou **čisté SQL soubory** v `backend/migrations/`, aplikované v pořadí podle názvu souboru.
+
+Sledování verzí: tabulka `schema_migrations` (vytvoří runner automaticky).
+
+```bash
+docker compose exec api ticketmaster-cli db migrate
+```
+
+Výstup JSON: `{"applied": ["007_....sql"], "status": "ok"}` — prázdné `applied` znamená, že vše je aktuální.
+
+### Aktuální soubory migrací
+
+- `001_initial.sql` — základní schéma
+- `002_production_indexes.sql`
+- `003_fulltext_search.sql`
+- `004_partner_client_hard_delete.sql`
+- `005_system_tickets.sql`
+- `006_ticket_custom_owner.sql`
+- `007_drop_ticket_custom_owner.sql`
+
+API kontejner spouští `db migrate` při každém startu (viz `backend/Dockerfile` CMD).
+
+## Seed pro vývoj
+
+```bash
+docker compose exec api ticketmaster-cli db seed-dev
+```
+
+Idempotentní — vytvoří chybějící demo entity, nepřepisuje existující.
+
+## Uploady
+
+Přílohy ticketů: adresář z `UPLOAD_DIR` (v Dockeru volume `uploads` → `/app/uploads`).
+
+## Testy a DB
+
+Pytest používá **SQLite in-memory** (`backend/tests/conftest.py`), ne produkční PostgreSQL schéma 1:1 — testy ověřují business pravidla a API chování.

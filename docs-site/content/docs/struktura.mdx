@@ -1,0 +1,49 @@
+---
+title: Struktura projektu
+description: Adresáře, služby a hlavní vstupní body
+---
+
+```
+new-ticketmaster/
+├── backend/
+│   ├── ticketmaster/          # Python balíček
+│   │   ├── api/               # FastAPI routes, main
+│   │   ├── cli/               # ticketmaster-cli
+│   │   ├── core/              # config, DB, security
+│   │   ├── models/            # SQLAlchemy entity
+│   │   ├── schemas/           # serializace
+│   │   └── services/          # business logika
+│   ├── migrations/            # SQL migrace (*.sql)
+│   └── tests/                 # pytest
+├── frontend/
+│   └── src/ticketmaster/      # React obrazovky a modul
+├── docs-site/                 # tato dokumentace (Fumadocs)
+└── docker-compose.yml
+```
+
+## Backend
+
+- **Vstup API:** `ticketmaster.api.main:app` (prefix `/api`)
+- **CLI:** `ticketmaster-cli` → `ticketmaster.cli.main`
+- **Migrace:** soubory v `backend/migrations/`, runner `ticketmaster.services.migrations`
+
+## Frontend
+
+- **Vstup:** `frontend/src/main.jsx` → ASAB `Application` + `TicketMasterModule`
+- **Routing (hash router):** `/`, `/tickets/new`, `/tickets/:id`, `/admin`, `/audit`, `/settings`, `/account`, …
+- **API klient:** `frontend/src/api/client.js` — volá `/api/*` (relativní URL)
+
+## Docker služby
+
+| Služba | Účel | Port (host) |
+| --- | --- | --- |
+| `db` | PostgreSQL 16 | interní |
+| `api` | FastAPI + migrace při startu | interní :8000 |
+| `frontend` | nginx + statický build | 127.0.0.1:3006 |
+| `mailpit` | SMTP test (dev) | interní |
+
+## Autentizace (stručně)
+
+- Partner: e-mail + heslo → JWT Bearer token.
+- Interní uživatel: dev SSO endpoint (`/api/auth/dev-sso`) — pouze pro vývoj.
+- Token se posílá v hlavičce `Authorization: Bearer …` (viz `backend/ticketmaster/api/deps.py`).

@@ -1,0 +1,64 @@
+---
+title: CLI
+description: Příkazy ticketmaster-cli pro operace a správu
+---
+
+CLI je nainstalované s backend balíčkem (`pip install -e .`). V Dockeru:
+
+```bash
+docker compose exec api ticketmaster-cli <příkaz>
+```
+
+## Základ
+
+| Příkaz | Popis |
+| --- | --- |
+| `health` | Ping DB (`SELECT 1`) |
+| `config check` | Výpis konfigurace (citlivé hodnoty redigované) |
+| `db migrate` | Aplikuje chybějící SQL z `backend/migrations/` |
+| `db seed-dev` | Migrace + demo data |
+
+## Uživatelé a struktura
+
+```bash
+ticketmaster-cli user create-internal --email u@example.test --name "Uživatel" --role Admin
+ticketmaster-cli user list
+ticketmaster-cli user deactivate --email u@example.test
+
+ticketmaster-cli partner create --name "Partner s.r.o."
+ticketmaster-cli partner list
+
+ticketmaster-cli client create --partner <partner-id-nebo-key> --name "Klient"
+ticketmaster-cli client list --partner <partner-id-nebo-key>
+ticketmaster-cli client assign-responsible --client <id> --user <email>
+
+ticketmaster-cli partner-user invite --partner <id> --email p@example.test --name "Partner" --role responsible
+```
+
+Role interní: `Admin`, `DeliveryManager`, `L1`, `L2`, `L3`.  
+Role partner: `responsible`, `technical`.
+
+## Tickety
+
+```bash
+ticketmaster-cli ticket create-internal --type Question --priority Normal --title "Titulek" --description "Text"
+ticketmaster-cli ticket show --id <uuid>
+ticketmaster-cli ticket assign --id <uuid> --team L2 --assignee l2@example.test
+ticketmaster-cli ticket transfer-owner --id <uuid> --new-owner responsible@acme.example
+ticketmaster-cli ticket close --id <uuid>
+```
+
+## GitLab, e-mail, search
+
+```bash
+ticketmaster-cli gitlab check
+ticketmaster-cli gitlab create-issue --ticket <uuid>
+ticketmaster-cli gitlab sync-status --ticket <uuid>
+
+ticketmaster-cli email test --to ops@example.test
+ticketmaster-cli notifications retry-failed
+
+ticketmaster-cli search reindex-tickets
+```
+
+Chyby business logiky končí exit code `1` a textem `error: …` na stderr.
