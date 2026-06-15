@@ -284,6 +284,13 @@ body.tm-app-booting #app-sidepanel,
   display: none !important;
 }
 
+body.tm-login-session #app,
+#app:has(.tm-login) #app {
+  grid-template-columns: 1fr;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
 body.tm-login-session #app-main,
 body.tm-route-loading #app-main,
 body.tm-app-booting #app-main,
@@ -292,6 +299,14 @@ body.tm-app-booting #app-main,
   left: 0 !important;
   margin-left: 0 !important;
   width: 100% !important;
+}
+
+body.tm-login-session #app-main,
+#app:has(.tm-login) #app-main {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
 }
 
 #app {
@@ -2182,7 +2197,10 @@ body[data-tm-density="compact"] .tm-login-form {
 }
 
 .tm-login {
-  min-height: calc(100vh - 5rem);
+  flex: 1;
+  min-height: 100vh;
+  min-height: 100dvh;
+  box-sizing: border-box;
   display: grid;
   place-items: center;
   padding: var(--tm-space-5);
