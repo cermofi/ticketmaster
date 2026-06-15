@@ -260,6 +260,7 @@ function TicketTable({ tickets, sortConfig, onSortChange }) {
     { key: 'priority', label: 'Priority' },
     { key: 'partner', label: 'Partner' },
     { key: 'client', label: 'Client' },
+    { key: 'assignee', label: 'Asignee' },
     { key: 'updated', label: 'Updated', align: 'end' }
   ];
 
@@ -314,11 +315,12 @@ function TicketTable({ tickets, sortConfig, onSortChange }) {
                   {ticket.client_name || '-'}
                 </span>
               </td>
+              <td className="tm-quiet-cell">{ticket.assignee_name || '-'}</td>
               <td className="text-end tm-quiet-cell"><TimeCell value={ticket.updated_at} /></td>
             </tr>
           ))}
           {tickets.length === 0 && (
-            <EmptyRow colSpan="6" title="No tickets found" message="Try updating filters or create a new ticket." />
+            <EmptyRow colSpan="7" title="No tickets found" message="Try updating filters or create a new ticket." />
           )}
         </tbody>
       </Table>
@@ -391,6 +393,8 @@ function compareTickets(left, right, sortConfig, statusRank) {
       return compareNullable(normalizeText(left.partner_name), normalizeText(right.partner_name), direction, compareText);
     case 'client':
       return compareNullable(normalizeText(left.client_name), normalizeText(right.client_name), direction, compareText);
+    case 'assignee':
+      return compareNullable(normalizeText(left.assignee_name), normalizeText(right.assignee_name), direction, compareText);
     case 'updated':
     default:
       return compareNullable(parseTimestamp(left.updated_at), parseTimestamp(right.updated_at), direction, (a, b) => a - b);
