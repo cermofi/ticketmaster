@@ -45,6 +45,14 @@ def validate_priority(priority: str) -> None:
         raise ValidationError(f"Unsupported priority: {priority}")
 
 
+def _status_for_resolver_state(*, resolver_team: str | None, assignee_id: str | None) -> str:
+    if not resolver_team:
+        return "New"
+    if assignee_id:
+        return "Assigned"
+    return "Queued"
+
+
 def get_ticket(db: Session, ticket_id: str) -> Ticket:
     ticket = db.get(Ticket, ticket_id)
     if not ticket:
@@ -277,7 +285,7 @@ def create_internal_ticket(
         system=False,
         type=ticket_type,
         priority=priority,
-        status="Assigned" if team else "New",
+        status=_status_for_resolver_state(resolver_team=team, assignee_id=None),
         resolver_team=team,
         title=title,
         description=description,
@@ -327,7 +335,7 @@ def create_system_ticket(
         system=True,
         type=ticket_type,
         priority=priority,
-        status="Assigned" if team else "New",
+        status=_status_for_resolver_state(resolver_team=team, assignee_id=assignee.id if assignee else None),
         resolver_team=team,
         assignee_id=assignee.id if assignee else None,
         title=title,
@@ -468,7 +476,7 @@ def add_comment(db: Session, *, ticket: Ticket, actor: User, body: str, source: 
     audit(db, entity_type="Comment", entity_id=comment.id, action="comment.create", actor=actor, source=source, new_value={"ticket_id": ticket.id})
     if ticket.status == "Need more info":
         old = {"status": ticket.status}
-        ticket.status = "Assigned" if ticket.resolver_team else "New"
+        ticket.status = _status_for_resolver_state(resolver_team=ticket.resolver_team, assignee_id=ticket.assignee_id)
         ticket.updated_at = datetime.now(timezone.utc)
         audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.status_auto_return", actor=actor, source=source, old_value=old, new_value={"status": ticket.status})
     if actor.kind == "partner":
@@ -543,9 +551,9 @@ def assign_ticket(
             raise ValidationError("Assignee must be an active internal user from the resolver team")
         _add_watcher_if_missing(db, ticket.id, assignee.id)
     old = {"status": ticket.status, "resolver_team": ticket.resolver_team, "assignee_id": ticket.assignee_id}
-    ticket.status = "Assigned"
     ticket.resolver_team = team
     ticket.assignee_id = assignee.id if assignee else None
+    ticket.status = _status_for_resolver_state(resolver_team=ticket.resolver_team, assignee_id=ticket.assignee_id)
     ticket.updated_at = datetime.now(timezone.utc)
     db.flush()
     if team == "L3":
@@ -570,11 +578,11 @@ def unassign_ticket(db: Session, *, ticket: Ticket, actor: User, source: str = "
         raise ValidationError("Closed tickets cannot be unassigned")
     if not ticket.resolver_team:
         raise ValidationError("Ticket is not assigned to a resolver queue")
-    if not ticket.assignee_id and ticket.status == "Assigned":
+    if not ticket.assignee_id and ticket.status in {"Assigned", "Queued"}:
         return ticket
     old = {"status": ticket.status, "resolver_team": ticket.resolver_team, "assignee_id": ticket.assignee_id}
-    ticket.status = "Assigned"
     ticket.assignee_id = None
+    ticket.status = _status_for_resolver_state(resolver_team=ticket.resolver_team, assignee_id=None)
     ticket.updated_at = datetime.now(timezone.utc)
     db.flush()
     audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.unassign", actor=actor, source=source, old_value=old, new_value={"status": ticket.status, "resolver_team": ticket.resolver_team, "assignee_id": None})
@@ -656,6 +664,8 @@ def validate_transition(db: Session, *, ticket: Ticket, actor: User, new_status:
     _require_transition_permission(actor, ticket, new_status)
     if new_status == "Assigned" and not ticket.resolver_team:
         raise ValidationError("Assigned tickets must have resolver_team")
+    if new_status == "Assigned" and not ticket.assignee_id:
+        raise ValidationError("Assigned status requires an assignee")
     if new_status == "In progress" and ticket.resolver_team == "L3":
         link = db.scalar(select(GitLabLink).where(GitLabLink.ticket_id == ticket.id, GitLabLink.is_main.is_(True)))
         if not link and not ticket.gitlab_error_overridden:
@@ -777,7 +787,7 @@ def _require_transition_permission(actor: User, ticket: Ticket, new_status: str)
         raise PermissionDenied("Only internal users can transition ticket status in MVP")
     if user_has_any_internal_role(actor, ADMIN_DM_ROLES):
         return
-    if ticket.resolver_team and user_has_internal_role(actor, ticket.resolver_team) and new_status in {"In progress", "Resolved", "Need more info", "Assigned"}:
+    if ticket.resolver_team and user_has_internal_role(actor, ticket.resolver_team) and new_status in {"In progress", "Resolved", "Need more info", "Assigned", "Queued"}:
         return
     raise PermissionDenied("Status transition is not allowed for this role")
 

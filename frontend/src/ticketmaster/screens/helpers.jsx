@@ -191,7 +191,7 @@ export function labelValue(value) {
 function statusTone(value) {
   if (value === 'Resolved') return 'success';
   if (['Rejected', 'Failed'].includes(value)) return 'danger';
-  if (['In progress', 'Need more info', 'Assigned'].includes(value)) return 'warning';
+  if (['In progress', 'Need more info', 'Assigned', 'Queued'].includes(value)) return 'warning';
   if (['Closed', 'Cancelled', 'Duplicate'].includes(value)) return 'muted';
   if (value === 'New') return 'neutral';
   if (!value) return 'muted';

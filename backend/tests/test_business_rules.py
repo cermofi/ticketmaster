@@ -165,9 +165,62 @@ def test_partner_and_client_deletion_is_disabled(db, fixture_data):
         admin.delete_client(db, client_id=fixture_data["client_a"].id, actor=fixture_data["admin"], source="test")
 
 
+def test_new_ticket_queue_assignment_sets_status_queued(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+    assert ticket.status == "New"
+
+    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", source="test")
+
+    assert ticket.status == "Queued"
+    assert ticket.resolver_team == "L1"
+    assert ticket.assignee_id is None
+
+
+def test_queued_ticket_assignee_assignment_sets_status_assigned(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L2", source="test")
+    assert ticket.status == "Queued"
+
+    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L2", assignee_ref=fixture_data["l2"].email, source="test")
+
+    assert ticket.status == "Assigned"
+    assert ticket.assignee_id == fixture_data["l2"].id
+
+
+def test_new_ticket_queue_and_assignee_together_ends_assigned(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+    assert ticket.status == "New"
+
+    tickets.assign_ticket(
+        db,
+        ticket=ticket,
+        actor=fixture_data["dm"],
+        team="L3",
+        assignee_ref=fixture_data["l3"].email,
+        source="test",
+    )
+
+    assert ticket.status == "Assigned"
+    assert ticket.resolver_team == "L3"
+    assert ticket.assignee_id == fixture_data["l3"].id
+
+
+def test_unrelated_status_transitions_remain_valid(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+    tickets.transition_ticket(db, ticket=ticket, actor=fixture_data["dm"], new_status="Rejected", source="test")
+    assert ticket.status == "Rejected"
+
+    ticket2 = create_partner_ticket(db, fixture_data)
+    tickets.transition_ticket(db, ticket=ticket2, actor=fixture_data["dm"], new_status="Need more info", source="test")
+    assert ticket2.status == "Need more info"
+
+
 def test_workflow_transition_matrix(db, fixture_data):
     ticket = create_partner_ticket(db, fixture_data)
     tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", source="test")
+    assert ticket.status == "Queued"
+    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", assignee_ref=fixture_data["l1"].email, source="test")
+    assert ticket.status == "Assigned"
     tickets.transition_ticket(db, ticket=ticket, actor=fixture_data["l1"], new_status="In progress", source="test")
     tickets.transition_ticket(db, ticket=ticket, actor=fixture_data["l1"], new_status="Resolved", source="test")
 
@@ -177,7 +230,7 @@ def test_workflow_transition_matrix(db, fixture_data):
 
 def test_closed_ticket_cannot_be_assigned(db, fixture_data):
     ticket = create_partner_ticket(db, fixture_data)
-    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", source="test")
+    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", assignee_ref=fixture_data["l1"].email, source="test")
     tickets.transition_ticket(db, ticket=ticket, actor=fixture_data["l1"], new_status="In progress", source="test")
     tickets.transition_ticket(db, ticket=ticket, actor=fixture_data["l1"], new_status="Resolved", source="test")
     tickets.transition_ticket(db, ticket=ticket, actor=fixture_data["dm"], new_status="Closed", source="test")
@@ -193,7 +246,7 @@ def test_delivery_manager_can_return_assigned_ticket_to_queue(db, fixture_data):
 
     tickets.unassign_ticket(db, ticket=ticket, actor=fixture_data["dm"], source="test")
 
-    assert ticket.status == "Assigned"
+    assert ticket.status == "Queued"
     assert ticket.resolver_team == "L1"
     assert ticket.assignee_id is None
 
@@ -209,6 +262,7 @@ def test_resolver_cannot_return_ticket_to_queue(db, fixture_data):
 def test_assigned_ticket_cannot_change_resolver_team(db, fixture_data):
     ticket = create_partner_ticket(db, fixture_data)
     tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", source="test")
+    assert ticket.status == "Queued"
 
     with pytest.raises(ValidationError):
         tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L2", source="test")
@@ -219,9 +273,11 @@ def test_assigned_ticket_cannot_change_resolver_team(db, fixture_data):
 def test_assigned_ticket_can_change_assignee_within_resolver_team(db, fixture_data):
     ticket = create_partner_ticket(db, fixture_data)
     tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", source="test")
+    assert ticket.status == "Queued"
 
     tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", assignee_ref=fixture_data["l1"].email, source="test")
 
+    assert ticket.status == "Assigned"
     assert ticket.resolver_team == "L1"
     assert ticket.assignee_id == fixture_data["l1"].id
 
@@ -311,7 +367,7 @@ def test_priority_change_endpoint(db, fixture_data):
 
 def test_l3_in_progress_requires_gitlab_issue(db, fixture_data):
     ticket = create_partner_ticket(db, fixture_data)
-    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L3", source="test")
+    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L3", assignee_ref=fixture_data["l3"].email, source="test")
     link = db.scalar(select(GitLabLink).where(GitLabLink.ticket_id == ticket.id))
     if link:
         db.delete(link)
@@ -323,7 +379,7 @@ def test_l3_in_progress_requires_gitlab_issue(db, fixture_data):
 
 def test_only_admin_or_delivery_manager_can_close(db, fixture_data):
     ticket = create_partner_ticket(db, fixture_data)
-    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", source="test")
+    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", assignee_ref=fixture_data["l1"].email, source="test")
     tickets.transition_ticket(db, ticket=ticket, actor=fixture_data["l1"], new_status="In progress", source="test")
     tickets.transition_ticket(db, ticket=ticket, actor=fixture_data["l1"], new_status="Resolved", source="test")
 
@@ -434,11 +490,12 @@ def test_system_ticket_participants_are_managed_by_responsible_partner_user(db, 
 def test_need_more_info_returns_after_public_comment(db, fixture_data):
     ticket = create_partner_ticket(db, fixture_data)
     tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", source="test")
+    assert ticket.status == "Queued"
     tickets.transition_ticket(db, ticket=ticket, actor=fixture_data["l1"], new_status="Need more info", source="test")
 
     tickets.add_comment(db, ticket=ticket, actor=fixture_data["responsible_a"], body="Here is the missing info", source="test")
 
-    assert ticket.status == "Assigned"
+    assert ticket.status == "Queued"
 
 
 def test_need_more_info_without_resolver_team_returns_to_new(db, fixture_data):
