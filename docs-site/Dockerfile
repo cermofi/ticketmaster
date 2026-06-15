@@ -32,6 +32,6 @@ USER nextjs
 EXPOSE 3000
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=12 \
-  CMD wget -q -O /dev/null http://127.0.0.1:3000/docs/ || exit 1
+  CMD wget -q -O /dev/null http://127.0.0.1:3000/docs || exit 1
 
 CMD ["node", "server.js"]

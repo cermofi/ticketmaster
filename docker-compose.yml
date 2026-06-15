@@ -74,7 +74,7 @@ services:
     expose:
       - "3000"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/docs/"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/docs"]
       interval: 10s
       timeout: 5s
       retries: 12
