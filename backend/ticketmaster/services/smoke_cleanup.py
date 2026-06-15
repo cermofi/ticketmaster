@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.orm import Session
 
 from ticketmaster.models import (
@@ -36,7 +36,6 @@ SEED_CLIENT_KEYS = frozenset({"acme-partner-acme-bank", "acme-bank"})
 
 SEED_USER_EMAILS = frozenset(
     {
-        "admin@example.test",
         "dm@example.test",
         "l1@example.test",
         "l2@example.test",
@@ -46,6 +45,9 @@ SEED_USER_EMAILS = frozenset(
         "cli-system@ticketmaster.local",
     }
 )
+
+# Never auto-delete; may be repurposed as production admin after seed-dev.
+PROTECTED_SEED_EMAILS = frozenset({"admin@example.test"})
 
 
 def _ticket_smoke_filter(marker_only: bool):
@@ -75,8 +77,18 @@ def find_seed_client_ids(db: Session) -> list[str]:
     return list(db.scalars(select(Client.id).where(Client.key.in_(SEED_CLIENT_KEYS))).all())
 
 
+def _user_has_ticket_references(db: Session, user_id: str) -> bool:
+    ticket_ref = db.scalar(
+        select(Ticket.id).where(
+            or_(Ticket.created_by_id == user_id, Ticket.owner_id == user_id, Ticket.assignee_id == user_id)
+        ).limit(1)
+    )
+    return ticket_ref is not None
+
+
 def find_seed_user_ids(db: Session) -> list[str]:
-    return list(db.scalars(select(User.id).where(User.email.in_(SEED_USER_EMAILS))).all())
+    users = db.scalars(select(User).where(User.email.in_(SEED_USER_EMAILS))).all()
+    return [user.id for user in users if not _user_has_ticket_references(db, user.id)]
 
 
 def discover_smoke_artifacts(db: Session, *, marker_only: bool = True) -> dict[str, Any]:
@@ -84,14 +96,52 @@ def discover_smoke_artifacts(db: Session, *, marker_only: bool = True) -> dict[s
     tickets = db.scalars(select(Ticket).where(Ticket.id.in_(ticket_ids)).order_by(Ticket.created_at)).all() if ticket_ids else []
     seed_partners = db.scalars(select(Partner).where(Partner.key.in_(SEED_PARTNER_KEYS))).all() if not marker_only else []
     seed_clients = db.scalars(select(Client).where(Client.key.in_(SEED_CLIENT_KEYS))).all() if not marker_only else []
-    seed_users = db.scalars(select(User).where(User.email.in_(SEED_USER_EMAILS))).all() if not marker_only else []
+    seed_users = (
+        db.scalars(select(User).where(or_(User.email.in_(SEED_USER_EMAILS), User.email.in_(PROTECTED_SEED_EMAILS)))).all()
+        if not marker_only
+        else []
+    )
+    removable_user_ids = set(find_seed_user_ids(db)) if not marker_only else set()
     return {
         "marker_only": marker_only,
         "tickets": [{"id": row.id, "title": row.title} for row in tickets],
         "seed_partners": [{"id": row.id, "key": row.key, "name": row.name} for row in seed_partners],
         "seed_clients": [{"id": row.id, "key": row.key, "name": row.name} for row in seed_clients],
-        "seed_users": [{"id": row.id, "email": row.email, "name": row.name} for row in seed_users],
+        "seed_users": [
+            {
+                "id": row.id,
+                "email": row.email,
+                "name": row.name,
+                "removable": row.id in removable_user_ids,
+            }
+            for row in seed_users
+        ],
     }
+
+
+def _clear_user_references(db: Session, user_ids: list[str]) -> None:
+    if not user_ids:
+        return
+    db.execute(delete(TicketParticipant).where(TicketParticipant.user_id.in_(user_ids)))
+    db.execute(delete(TicketWatcher).where(TicketWatcher.user_id.in_(user_ids)))
+    db.execute(delete(ClientAssignment).where(ClientAssignment.user_id.in_(user_ids)))
+    for model, attr_name in [
+        (Comment, "author_id"),
+        (Comment, "changed_by_user_id"),
+        (CommentRevision, "changed_by_user_id"),
+        (Attachment, "uploaded_by_id"),
+        (AuditLog, "changed_by_user_id"),
+    ]:
+        db.execute(update(model).where(getattr(model, attr_name).in_(user_ids)).values({attr_name: None}))
+    db.flush()
+
+
+def _partner_has_tickets(db: Session, partner_id: str) -> bool:
+    return db.scalar(select(Ticket.id).where(Ticket.partner_id == partner_id).limit(1)) is not None
+
+
+def _client_has_tickets(db: Session, client_id: str) -> bool:
+    return db.scalar(select(Ticket.id).where(Ticket.client_id == client_id).limit(1)) is not None
 
 
 def delete_tickets_cascade(db: Session, ticket_ids: list[str]) -> dict[str, int]:
@@ -139,8 +189,8 @@ def delete_tickets_cascade(db: Session, ticket_ids: list[str]) -> dict[str, int]
 def delete_seed_entities(db: Session) -> dict[str, int]:
     deleted: dict[str, int] = {}
 
-    partner_ids = find_seed_partner_ids(db)
-    client_ids = find_seed_client_ids(db)
+    partner_ids = [partner_id for partner_id in find_seed_partner_ids(db) if not _partner_has_tickets(db, partner_id)]
+    client_ids = [client_id for client_id in find_seed_client_ids(db) if not _client_has_tickets(db, client_id)]
     user_ids = find_seed_user_ids(db)
 
     if client_ids or user_ids:
@@ -152,6 +202,8 @@ def delete_seed_entities(db: Session) -> dict[str, int]:
         deleted["client_assignments"] = db.execute(
             delete(ClientAssignment).where(or_(*assignment_filters))
         ).rowcount or 0
+
+    _clear_user_references(db, user_ids)
 
     if user_ids:
         seed_emails = list(db.scalars(select(User.email).where(User.id.in_(user_ids))).all())
@@ -214,7 +266,8 @@ def sql_discovery_queries(marker_only: bool = True) -> str:
         + "SELECT id, key, name FROM partners WHERE key IN ('acme-partner', 'acme');\n"
         + "SELECT id, key, name FROM clients WHERE key IN ('acme-partner-acme-bank', 'acme-bank');\n"
         + "SELECT id, email FROM users WHERE email IN (\n"
-        + "  'admin@example.test', 'dm@example.test', 'l1@example.test', 'l2@example.test', 'l3@example.test',\n"
+        + "  'dm@example.test', 'l1@example.test', 'l2@example.test', 'l3@example.test',\n"
         + "  'responsible@acme.example', 'technical@acme.example', 'cli-system@ticketmaster.local'\n"
         + ");\n"
+        + "-- admin@example.test is reported but never auto-deleted (may be production admin).\n"
     )
