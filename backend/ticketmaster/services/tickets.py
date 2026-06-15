@@ -666,6 +666,8 @@ def validate_transition(db: Session, *, ticket: Ticket, actor: User, new_status:
         raise ValidationError("Assigned tickets must have resolver_team")
     if new_status == "Assigned" and not ticket.assignee_id:
         raise ValidationError("Assigned status requires an assignee")
+    if new_status == "In progress" and not ticket.assignee_id:
+        raise ValidationError("In progress status requires an assignee")
     if new_status == "In progress" and ticket.resolver_team == "L3":
         link = db.scalar(select(GitLabLink).where(GitLabLink.ticket_id == ticket.id, GitLabLink.is_main.is_(True)))
         if not link and not ticket.gitlab_error_overridden:

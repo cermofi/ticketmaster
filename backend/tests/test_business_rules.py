@@ -367,6 +367,28 @@ def test_priority_change_endpoint(db, fixture_data):
     assert response.json()["priority"] == "High"
 
 
+def test_in_progress_without_assignee_is_rejected(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", assignee_ref=fixture_data["l1"].email, source="test")
+    assert ticket.status == "Assigned"
+    ticket.assignee_id = None
+    db.flush()
+
+    with pytest.raises(ValidationError, match="In progress status requires an assignee"):
+        tickets.transition_ticket(db, ticket=ticket, actor=fixture_data["l1"], new_status="In progress", source="test")
+
+
+def test_in_progress_with_assignee_is_allowed(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+    tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L1", assignee_ref=fixture_data["l1"].email, source="test")
+    assert ticket.status == "Assigned"
+
+    tickets.transition_ticket(db, ticket=ticket, actor=fixture_data["l1"], new_status="In progress", source="test")
+
+    assert ticket.status == "In progress"
+    assert ticket.assignee_id == fixture_data["l1"].id
+
+
 def test_l3_in_progress_requires_gitlab_issue(db, fixture_data):
     ticket = create_partner_ticket(db, fixture_data)
     tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L3", assignee_ref=fixture_data["l3"].email, source="test")
