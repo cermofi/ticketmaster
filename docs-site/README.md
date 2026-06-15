@@ -9,8 +9,14 @@ Samostatná dokumentační aplikace. Neovlivňuje produkční frontend ani Docke
 
 ## Požadavky
 
-- Node.js 22+
+- Node.js **20.9+** (doporučeno 22+)
 - npm
+
+Na serveru s Node 18 lze build spustit přes Docker:
+
+```bash
+docker run --rm -v "$PWD":/app -w /app node:22-alpine sh -c "npm install && npm run build"
+```
 
 ## Příkazy
 
