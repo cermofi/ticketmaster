@@ -61,6 +61,7 @@ class Settings:
     ticket_page_default_limit: int = int(os.getenv("TICKET_PAGE_DEFAULT_LIMIT", "50"))
     ticket_page_max_limit: int = int(os.getenv("TICKET_PAGE_MAX_LIMIT", "200"))
     export_ticket_max_count: int = int(os.getenv("EXPORT_TICKET_MAX_COUNT", "2000"))
+    allow_seed_dev: bool = _bool("ALLOW_SEED_DEV", "localhost" in os.getenv("APP_BASE_URL", "http://localhost:3006"))
 
 
 settings = Settings()

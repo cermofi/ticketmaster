@@ -19,6 +19,8 @@ def test_cli_required_commands_parse():
         ["gitlab", "check"],
         ["email", "test", "--to", "ops@example.test"],
         ["notifications", "retry-failed"],
+        ["smoke", "check"],
+        ["smoke", "cleanup", "--dry-run"],
     ]
 
     for argv in cases:

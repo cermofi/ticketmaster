@@ -14,7 +14,7 @@ from ticketmaster.core.database import SessionLocal, engine
 from ticketmaster.models import Client, GitLabLink, Partner, Ticket, User
 from ticketmaster.models.entities import new_id
 from ticketmaster.schemas.serializers import client_to_dict, partner_to_dict, ticket_to_dict, user_to_dict
-from ticketmaster.services import admin, gitlab, migrations, notifications, search, seed, tickets
+from ticketmaster.services import admin, gitlab, migrations, notifications, search, seed, smoke_check, smoke_cleanup, tickets
 from ticketmaster.services.errors import TicketMasterError
 from ticketmaster.services.internal_roles import set_internal_roles
 
@@ -86,6 +86,9 @@ def cmd_db_migrate(_: argparse.Namespace) -> int:
 
 
 def cmd_db_seed_dev(_: argparse.Namespace) -> int:
+    if not settings.allow_seed_dev:
+        print("error: db seed-dev is disabled in this environment (set ALLOW_SEED_DEV=true for local dev)", file=sys.stderr)
+        return 1
     migrations.run_migrations(engine)
     with session_scope() as db:
         print_json(seed.seed_dev(db))
@@ -271,6 +274,27 @@ def cmd_search_reindex_tickets(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_smoke_check(args: argparse.Namespace) -> int:
+    result = smoke_check.run_smoke_check(base_url=args.base_url, email=args.email, password=args.password)
+    print_json(result)
+    return 0 if result["status"] == "ok" else 1
+
+
+def cmd_smoke_cleanup(args: argparse.Namespace) -> int:
+    if not args.dry_run and not args.confirm:
+        print("error: pass --confirm to delete smoke artifacts (or use --dry-run to preview)", file=sys.stderr)
+        return 1
+    with session_scope() as db:
+        result = smoke_cleanup.cleanup_smoke_artifacts(
+            db,
+            marker_only=not args.include_seed_artifacts,
+            dry_run=args.dry_run,
+        )
+        result["discovery_sql"] = smoke_cleanup.sql_discovery_queries(marker_only=not args.include_seed_artifacts)
+        print_json(result)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ticketmaster-cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -364,6 +388,21 @@ def build_parser() -> argparse.ArgumentParser:
     search_parser = sub.add_parser("search")
     search_sub = search_parser.add_subparsers(dest="subcommand", required=True)
     _command(search_sub, "reindex-tickets", cmd_search_reindex_tickets)
+
+    smoke = sub.add_parser("smoke")
+    smoke_sub = smoke.add_subparsers(dest="subcommand", required=True)
+    p = _command(smoke_sub, "check", cmd_smoke_check)
+    p.add_argument("--base-url")
+    p.add_argument("--email")
+    p.add_argument("--password")
+    p = _command(smoke_sub, "cleanup", cmd_smoke_cleanup)
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--confirm", action="store_true")
+    p.add_argument(
+        "--include-seed-artifacts",
+        action="store_true",
+        help="Also remove known seed-dev demo entities (acme partner/client, @example.test users)",
+    )
     return parser
 
 
