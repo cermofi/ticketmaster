@@ -85,7 +85,8 @@ function Admin({ user }) {
   const assignmentResponsibleUsers = useMemo(
     () => selectedAssignmentClient
       ? users.filter((row) => (
-        row.active
+        row
+        && row.active
         && row.kind === 'partner'
         && row.partner_role === 'responsible'
         && row.partner_id === selectedAssignmentClient.partner_id
@@ -108,7 +109,7 @@ function Admin({ user }) {
     }
   }, [assignment.user_id, assignmentResponsibleUsers]);
 
-  if (user.kind !== 'internal' || !hasAnyInternalRole(user, ['Admin', 'DeliveryManager'])) {
+  if (!user?.kind || user.kind !== 'internal' || !hasAnyInternalRole(user, ['Admin', 'DeliveryManager'])) {
     return <div className="tm-screen"><ErrorBanner error="Admin section is available only to Admin and Delivery Manager users." /></div>;
   }
 
@@ -585,6 +586,7 @@ function UsersTable({ rows, partners, currentUser, onEdit, onDelete }) {
         </thead>
         <tbody>
           {rows.map((row) => {
+            if (!row?.kind) return null;
             const canManage = hasInternalRole(currentUser, 'Admin') || row.kind === 'partner';
             return (
               <tr key={row.id}>
@@ -639,7 +641,8 @@ function ClientEditModal({ client, users, isOpen, onClose, onSave, submit: runAd
   }, [client]);
 
   const eligibleUsers = users.filter((row) => (
-    row.active
+    row
+    && row.active
     && row.kind === 'partner'
     && row.partner_role === 'responsible'
     && row.partner_id === client?.partner_id
@@ -728,11 +731,15 @@ function UserEditModal({ userRow, currentUser, isOpen, onClose, onSave, onPasswo
 
   useEffect(() => {
     clearActionMessage();
+    if (!userRow?.kind) {
+      setForm({ email: '', name: '', roles: [], active: true });
+      return;
+    }
     setForm({
-      email: userRow?.email || '',
-      name: userRow?.name || '',
-      roles: userRow?.kind === 'internal' ? getInternalRoles(userRow) : [userRole(userRow)].filter(Boolean),
-      active: userRow?.active ?? true
+      email: userRow.email || '',
+      name: userRow.name || '',
+      roles: userRow.kind === 'internal' ? getInternalRoles(userRow) : [userRole(userRow)].filter(Boolean),
+      active: userRow.active ?? true
     });
   }, [userRow]);
 
@@ -846,13 +853,15 @@ function ActiveBadge({ active }) {
 }
 
 function userRole(row) {
+  if (!row?.kind) return '';
   if (row.kind === 'internal') {
     return formatInternalRoles(row);
   }
-  return row.partner_role;
+  return row.partner_role || '';
 }
 
 function userRoleValues(row) {
+  if (!row?.kind) return [];
   if (row.kind === 'internal') {
     return getInternalRoles(row);
   }
@@ -872,6 +881,7 @@ function filterClients(rows, partnerNames, filters) {
 
 function filterUsers(rows, partnerNames, filters) {
   return rows.filter((row) => {
+    if (!row?.kind) return false;
     const roles = userRoleValues(row);
     return (
       (!filters.partner_id || row.partner_id === filters.partner_id)
