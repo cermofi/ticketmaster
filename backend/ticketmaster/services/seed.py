@@ -20,6 +20,18 @@ def seed_dev(db: Session) -> dict:
             ("l3@example.test", "L3 Development", "L3"),
         ]:
             user = admin.create_internal_user(db, email=email, name=name, role=role, source="cli")
+            admin.ensure_dev_login_password(user)
+            created["users"].append(user.email)
+
+    for email in [
+        "admin@example.test",
+        "dm@example.test",
+        "l1@example.test",
+        "l2@example.test",
+        "l3@example.test",
+    ]:
+        user = db.scalar(select(User).where(User.email == email))
+        if user and admin.ensure_dev_login_password(user):
             created["users"].append(user.email)
 
     partner = db.scalar(select(Partner).where(Partner.key.in_(["acme-partner", "acme"])).order_by(Partner.created_at.asc()))

@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import {
   Alert,
   Button,
-  ButtonGroup,
   DropdownItem,
   DropdownMenu,
   DropdownToggle,
@@ -200,8 +199,7 @@ function userInitials(name, email = '') {
 function LoginScreen({ onLogin }) {
   document.body.classList.add('tm-login-session');
   const initialToken = new URLSearchParams((window.location.hash.split('?')[1] || '')).get('token') || '';
-  const [mode, setMode] = useState('internal');
-  const [email, setEmail] = useState('admin@example.test');
+  const [identifier, setIdentifier] = useState('admin@example.test');
   const [password, setPassword] = useState('ChangeMe123!');
   const [activationToken, setActivationToken] = useState(initialToken);
   const [error, setError] = useState('');
@@ -212,9 +210,7 @@ function LoginScreen({ onLogin }) {
     try {
       const response = activationToken
         ? await api.post('/auth/activate', { token: activationToken, password })
-        : mode === 'internal'
-        ? await api.post('/auth/dev-sso', { email })
-        : await api.post('/auth/login', { email, password });
+        : await api.post('/auth/login', { email: identifier, password });
       saveSession(response.data);
       document.body.classList.remove('tm-login-session');
       onLogin(response.data.user);
@@ -227,16 +223,6 @@ function LoginScreen({ onLogin }) {
     <div className="tm-screen tm-login">
       <Form className="tm-login-form" onSubmit={submit}>
         <h1 className="tm-login-title">TicketMaster</h1>
-        {!activationToken && (
-          <ButtonGroup className="mb-3 w-100">
-            <Button color={mode === 'internal' ? 'primary' : 'secondary'} outline={mode !== 'internal'} onClick={() => setMode('internal')} type="button">
-              Internal SSO
-            </Button>
-            <Button color={mode === 'partner' ? 'primary' : 'secondary'} outline={mode !== 'partner'} onClick={() => setMode('partner')} type="button">
-              Partner
-            </Button>
-          </ButtonGroup>
-        )}
         {error && <Alert color="danger">{error}</Alert>}
         {activationToken ? (
           <>
@@ -250,16 +236,16 @@ function LoginScreen({ onLogin }) {
             </FormGroup>
           </>
         ) : (
-          <FormGroup>
-            <Label>Email</Label>
-            <Input value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
-          </FormGroup>
-        )}
-        {!activationToken && mode === 'partner' && (
-          <FormGroup>
-            <Label>Password</Label>
-            <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
-          </FormGroup>
+          <>
+            <FormGroup>
+              <Label>E-mail / přihlašovací jméno</Label>
+              <Input value={identifier} onChange={(event) => setIdentifier(event.target.value)} autoComplete="username" />
+            </FormGroup>
+            <FormGroup>
+              <Label>Heslo</Label>
+              <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
+            </FormGroup>
+          </>
         )}
         <Button color="primary" type="submit" className="w-100">
           {activationToken ? 'Set password' : 'Sign in'}

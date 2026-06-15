@@ -86,6 +86,13 @@ def resolve_user(db: Session, email_or_id: str) -> User:
     return user
 
 
+def ensure_dev_login_password(user: User) -> bool:
+    if user.password_hash:
+        return False
+    user.password_hash = hash_password(settings.dev_password)
+    return True
+
+
 def create_internal_user(
     db: Session,
     *,
