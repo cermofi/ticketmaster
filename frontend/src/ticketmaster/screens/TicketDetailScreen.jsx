@@ -40,6 +40,7 @@ function TicketDetail({ user }) {
   const [internalNoteBody, setInternalNoteBody] = useState('');
   const [assignment, setAssignment] = useState({ team: 'L1', assignee: '' });
   const [ticketType, setTicketType] = useState('');
+  const [ticketPriority, setTicketPriority] = useState('');
   const [transferOwner, setTransferOwner] = useState('');
   const [participantId, setParticipantId] = useState('');
   const [uploadFile, setUploadFile] = useState(null);
@@ -61,6 +62,7 @@ function TicketDetail({ user }) {
       setUsers(usersResponse.data);
       setAssignment({ team: ticketResponse.data.resolver_team || 'L1', assignee: ticketResponse.data.assignee_id || '' });
       setTicketType(ticketResponse.data.type || '');
+      setTicketPriority(ticketResponse.data.priority || '');
     } catch (err) {
       setError(apiError(err));
     }
@@ -113,6 +115,7 @@ function TicketDetail({ user }) {
   const participantIds = participants.map((participant) => participant.id);
   const resolverTeams = asArray(meta?.resolver_teams);
   const ticketTypes = asArray(meta?.ticket_types);
+  const priorities = asArray(meta?.priorities);
   const assignmentTeam = ticket?.resolver_team || assignment.team;
   const canTransferOwner = !ticket?.internal && !ticket?.system && responsibleUsers.length > 0;
   const canManageParticipants = ticket?.system
@@ -121,6 +124,9 @@ function TicketDetail({ user }) {
   const canEditTicketType = user.kind === 'internal'
     && hasAnyInternalRole(user, ['Admin', 'DeliveryManager'])
     && ticketTypes.length > 0;
+  const canEditTicketPriority = user.kind === 'internal'
+    && hasAnyInternalRole(user, ['Admin', 'DeliveryManager'])
+    && priorities.length > 0;
   const showActions = user.kind === 'internal' || canTransferOwner;
   const canAddCommunication = ticket?.status !== 'Closed' && (
     user.kind === 'internal'
@@ -134,7 +140,7 @@ function TicketDetail({ user }) {
     && Boolean(ticket?.resolver_team)
     && Boolean(ticket?.assignee_id);
   const showPrimaryStatusActions = user.kind === 'internal';
-  const showManagementActions = canEditTicketType || canAssignTicket || canTransferOwner;
+  const showManagementActions = canEditTicketType || canEditTicketPriority || canAssignTicket || canTransferOwner;
 
   return (
     <div className="tm-screen">
@@ -244,6 +250,25 @@ function TicketDetail({ user }) {
                               </Input>
                             </FormGroup>
                             <Button color="secondary" outline type="submit" size="sm" disabled={!ticketType || ticketType === ticket.type} className="w-100">
+                              Save
+                            </Button>
+                          </Form>
+                        </div>
+                      )}
+                      {canEditTicketPriority && (
+                        <div className="tm-action-subgroup">
+                          <h3>Priority</h3>
+                          <Form className="tm-action-form" onSubmit={(event) => {
+                            event.preventDefault();
+                            action(() => api.post(`/tickets/${ticket.id}/priority`, { priority: ticketPriority }));
+                          }}>
+                            <FormGroup>
+                              <Label>Priority</Label>
+                              <Input type="select" value={ticketPriority || ticket.priority || ''} onChange={(event) => setTicketPriority(event.target.value)}>
+                                {priorities.map((priority) => <option key={priority} value={priority}>{labelValue(priority)}</option>)}
+                              </Input>
+                            </FormGroup>
+                            <Button color="secondary" outline type="submit" size="sm" disabled={!ticketPriority || ticketPriority === ticket.priority} className="w-100">
                               Save
                             </Button>
                           </Form>

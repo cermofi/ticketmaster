@@ -255,6 +255,60 @@ def test_change_ticket_type_rejects_unknown_type(db, fixture_data):
         tickets.change_ticket_type(db, ticket=ticket, actor=fixture_data["dm"], ticket_type="Unsupported Type", source="test")
 
 
+def test_admin_and_delivery_manager_can_change_ticket_priority(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+
+    tickets.change_ticket_priority(db, ticket=ticket, actor=fixture_data["dm"], priority="High", source="test")
+    assert ticket.priority == "High"
+
+    tickets.change_ticket_priority(db, ticket=ticket, actor=fixture_data["admin"], priority="Low", source="test")
+    assert ticket.priority == "Low"
+    assert db.scalar(select(AuditLog).where(AuditLog.action == "ticket.priority_change", AuditLog.entity_id == ticket.id))
+
+
+def test_non_admin_roles_cannot_change_ticket_priority(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+
+    with pytest.raises(PermissionDenied):
+        tickets.change_ticket_priority(db, ticket=ticket, actor=fixture_data["l1"], priority="High", source="test")
+
+    with pytest.raises(PermissionDenied):
+        tickets.change_ticket_priority(db, ticket=ticket, actor=fixture_data["responsible_a"], priority="High", source="test")
+
+
+def test_change_ticket_priority_rejects_unknown_priority(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+
+    with pytest.raises(ValidationError):
+        tickets.change_ticket_priority(db, ticket=ticket, actor=fixture_data["dm"], priority="Urgent", source="test")
+
+
+def test_change_ticket_priority_upgrades_security_issue_normal_to_critical(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+    tickets.change_ticket_type(db, ticket=ticket, actor=fixture_data["dm"], ticket_type="Security Issue", source="test")
+    assert ticket.priority == "Critical"
+
+    tickets.change_ticket_priority(db, ticket=ticket, actor=fixture_data["dm"], priority="Normal", source="test")
+    assert ticket.priority == "Critical"
+
+
+def test_priority_change_endpoint(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+
+    def override_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[current_user] = lambda: fixture_data["dm"]
+    try:
+        response = TestClient(app).post(f"/api/tickets/{ticket.id}/priority", json={"priority": "High"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["priority"] == "High"
+
+
 def test_l3_in_progress_requires_gitlab_issue(db, fixture_data):
     ticket = create_partner_ticket(db, fixture_data)
     tickets.assign_ticket(db, ticket=ticket, actor=fixture_data["dm"], team="L3", source="test")

@@ -165,6 +165,10 @@ class TicketTypeBody(BaseModel):
     type: str
 
 
+class TicketPriorityBody(BaseModel):
+    priority: str
+
+
 class TransferOwnerBody(BaseModel):
     new_owner: str
 
@@ -801,6 +805,14 @@ def tickets_transition(db: DbSession, user: CurrentUser, ticket_id: str, body: T
 def tickets_change_type(db: DbSession, user: CurrentUser, ticket_id: str, body: TicketTypeBody) -> dict:
     ticket = tickets.get_ticket(db, ticket_id)
     tickets.change_ticket_type(db, ticket=ticket, actor=user, ticket_type=body.type)
+    db.commit()
+    return _ticket_detail(db, user, ticket)
+
+
+@router.post("/tickets/{ticket_id}/priority")
+def tickets_change_priority(db: DbSession, user: CurrentUser, ticket_id: str, body: TicketPriorityBody) -> dict:
+    ticket = tickets.get_ticket(db, ticket_id)
+    tickets.change_ticket_priority(db, ticket=ticket, actor=user, priority=body.priority)
     db.commit()
     return _ticket_detail(db, user, ticket)
 
