@@ -3,7 +3,9 @@
   "pages": [
     "index",
     "spusteni",
+    "konfiguracni-minimum",
     "struktura",
+    "api",
     "pravidla",
     "docker",
     "cli",

@@ -1,0 +1,68 @@
+---
+title: Konfigurační minimum
+description: Povinné proměnné pro dev a produkci, bezpečné výchozí hodnoty
+---
+
+Vzor je v `.env.example`. V Docker Compose se proměnné předávají službě `api` přes blok `x-app-environment` v `docker-compose.yml`.
+
+Nikdy necommitujte reálný `.env` — jen `.env.example`.
+
+## Dev (Docker Compose)
+
+Minimum pro lokální start:
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+```
+
+| Proměnná | Výchozí | Poznámka |
+| --- | --- | --- |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | `ticketmaster` | Pouze pro službu `db`; API používá `DATABASE_URL` |
+| `DATABASE_URL` | `postgresql+psycopg2://ticketmaster:ticketmaster@db:5432/ticketmaster` | Musí odpovídat DB v Compose |
+| `APP_SECRET` | `dev-ticketmaster-secret-change-me` | Pro JWT — v dev stačí, v prod změnit |
+| `APP_BASE_URL` | `http://localhost:3006` | Odkazy v e-mailech a invite |
+| `TICKETMASTER_DEV_PASSWORD` | `ChangeMe123!` | Heslo partnerů po `db seed-dev` |
+
+Volitelné integrace (mají bezpečné defaulty):
+
+| Proměnná | Výchozí | Účel |
+| --- | --- | --- |
+| `SMTP_HOST` | `mailpit` | Dev SMTP (Mailpit) |
+| `SMTP_PORT` | `1025` | |
+| `SMTP_FROM` | `ticketmaster@example.test` | |
+| `SMTP_TLS` | `false` | |
+| `MAIL_SUPPRESS_SEND` | `false` | `true` = fronta bez odeslání |
+| `GITLAB_BASE_URL` | `https://gitlab.example.test` | |
+| `GITLAB_PROJECT_ID` | `ticketmaster-dev-placeholder` | |
+| `GITLAB_TOKEN` | prázdné | Bez tokenu + `GITLAB_DRY_RUN=true` nic nevolá API |
+| `GITLAB_DRY_RUN` | `true` | |
+| `UPLOAD_DIR` | `/app/uploads` | V Compose je volume `uploads` |
+| `CORS_ORIGINS` | `*` | |
+| `TRUSTED_HOSTS` | `*` | |
+| `WEB_CONCURRENCY` | `2` | Počet uvicorn workerů |
+
+## Produkc (minimum navíc)
+
+| Proměnná | Proč |
+| --- | --- |
+| `APP_SECRET` | **Povinně změnit** — náhodný dlouhý řetězec |
+| `POSTGRES_PASSWORD` + `DATABASE_URL` | Silné heslo DB, ne výchozí `ticketmaster` |
+| `APP_BASE_URL` | Veřejná URL aplikace (např. `https://ticketmaster.example.com`) |
+| `CORS_ORIGINS` | Konkrétní domény UI (ne `*`) |
+| `TRUSTED_HOSTS` | Host hlavičky, které API akceptuje (ne `*`) |
+
+Pro reálný mail a GitLab doplňte `SMTP_*` / `GITLAB_TOKEN` a nastavte `GITLAB_DRY_RUN=false`.
+
+## Ověření konfigurace
+
+```bash
+curl -fsS http://127.0.0.1:3006/api/health
+curl -fsS http://127.0.0.1:3006/api/ready
+docker compose exec api ticketmaster-cli health
+```
+
+## Co nepatří do repozitáře
+
+- Reálné hesla DB, `APP_SECRET`, `GITLAB_TOKEN`, `SMTP_PASSWORD`
+- Produkční `.env` — držte jen na serveru nebo v secret store

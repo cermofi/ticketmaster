@@ -1,0 +1,131 @@
+---
+title: API
+description: Endpointy FastAPI backendu, autentizace a skupiny operací
+---
+
+Backend je **FastAPI** s prefixem **`/api`**. V produkci nginx na frontendu proxuje `/api/` na službu `api:8000`.
+
+OpenAPI (Swagger) běží na API kontejneru na `/docs` — není vystavené přes veřejný nginx (port 3006). Pro náhled: `docker compose exec api curl -fsS http://127.0.0.1:8000/openapi.json | head`.
+
+## Autentizace
+
+Většina endpointů vyžaduje hlavičku:
+
+```
+Authorization: Bearer <JWT>
+```
+
+| Metoda | Endpoint | Kdo | Výsledek |
+| --- | --- | --- | --- |
+| `POST` | `/api/auth/login` | Partner | `{ token, user }` — e-mail + heslo |
+| `POST` | `/api/auth/dev-sso` | Interní | `{ token, user }` — pouze dev, e-mail interního uživatele |
+| `POST` | `/api/auth/activate` | Pozvaný uživatel | `{ token, user }` — token z invite + nové heslo |
+| `GET` | `/api/auth/me` | Přihlášený | Profil aktuálního uživatele |
+
+Login je rate-limited (`LOGIN_RATE_LIMIT_*`). Neúspěšné pokusy vrací `403`, překročení limitu `429`.
+
+Partner se přihlašuje heslem. Interní uživatel v dev prostředí přes `dev-sso` (uživatel musí existovat v DB, `kind=internal`).
+
+## Veřejné / bez tokenu
+
+| Metoda | Endpoint | Popis |
+| --- | --- | --- |
+| `GET` | `/api/health` | Liveness — `{ status: "ok" }` |
+| `GET` | `/api/ready` | Readiness — kontrola DB |
+| `GET` | `/api/meta` | Číselníky: typy ticketů, priority, stavy, týmy |
+
+## Účet (`/api/account/*`)
+
+| Metoda | Endpoint | Popis |
+| --- | --- | --- |
+| `GET` | `/api/account/me` | Vlastní profil |
+| `PATCH` | `/api/account/me` | Úprava jména / e-mailu |
+| `POST` | `/api/account/change-password` | Změna hesla |
+
+## Admin — partneři, klienti, uživatelé
+
+Vyžaduje interní roli **Admin** nebo **DeliveryManager** (u mazání partnera jen Admin).
+
+| Skupina | Endpointy |
+| --- | --- |
+| Partneři | `GET/POST /api/partners`, `DELETE /api/partners/{id}` |
+| Klienti | `GET/POST /api/clients`, `PATCH/DELETE /api/clients/{id}` |
+| Přiřazení klientů | `GET/POST /api/client-assignments`, `DELETE /api/client-assignments/{id}` |
+| Uživatelé | `GET /api/users`, `POST /api/users/internal`, `POST /api/users/partner`, `PATCH/DELETE /api/users/{id}`, `POST .../password-reset`, `POST .../deactivate` |
+
+Partner vidí jen své klienty a uživatele (`GET /api/users`, `GET /api/clients` filtrované podle `partner_id`).
+
+## Partner dashboard
+
+| Metoda | Endpoint | Popis |
+| --- | --- | --- |
+| `GET` | `/api/partner-dashboard` | Klienti, responsible/technical uživatelé — jen partner |
+
+## Tickety
+
+| Metoda | Endpoint | Popis |
+| --- | --- | --- |
+| `GET` | `/api/tickets` | Seznam (filtry: `search`, `status`, `priority`, `type`, `resolver_team`, `partner_id`, `internal`, `limit`, `offset`) |
+| `POST` | `/api/tickets` | Nový partner ticket |
+| `POST` | `/api/tickets/internal` | Interní ticket |
+| `POST` | `/api/tickets/on-behalf` | Ticket za partnera (Admin/DM) |
+| `GET` | `/api/tickets/export` | Export (`format=json` nebo `csv`) |
+| `GET` | `/api/tickets/{id}` | Detail + `available_transitions` |
+| `POST` | `/api/tickets/{id}/comments` | Veřejný komentář |
+| `POST` | `/api/tickets/{id}/internal-notes` | Interní poznámka |
+| `GET` | `/api/tickets/{id}/comments` | Seznam komentářů |
+| `POST` | `/api/tickets/{id}/participants` | Přidat účastníka |
+| `DELETE` | `/api/tickets/{id}/participants/{user_id}` | Odebrat účastníka |
+| `POST` | `/api/tickets/{id}/assign` | Přiřadit tým / řešitele |
+| `POST` | `/api/tickets/{id}/unassign` | Zrušit přiřazení |
+| `POST` | `/api/tickets/{id}/transition` | Změna stavu |
+| `POST` | `/api/tickets/{id}/type` | Změna typu |
+| `POST` | `/api/tickets/{id}/transfer-owner` | Převod vlastníka |
+| `POST` | `/api/tickets/{id}/close` | Uzavření |
+
+Úprava a mazání komentářů přes API je zakázáno (`403`).
+
+## Partner API (system tickety)
+
+Pro integrace partnerů / interní správu:
+
+| Metoda | Endpoint | Popis |
+| --- | --- | --- |
+| `GET` | `/api/partner-api/partners/{partner_id}/tickets` | Seznam ticketů partnera |
+| `POST` | `/api/partner-api/partners/{partner_id}/tickets` | Vytvoření system ticketu |
+
+Přístup: interní Admin/DM, nebo partner uživatel stejného `partner_id` (POST jen role `responsible`).
+
+## Přílohy
+
+| Metoda | Endpoint | Popis |
+| --- | --- | --- |
+| `GET` | `/api/tickets/{id}/attachments` | Seznam |
+| `POST` | `/api/tickets/{id}/attachments` | Upload (`multipart/form-data`, max 25 MB) |
+| `GET` | `/api/attachments/{id}/download` | Stažení souboru |
+
+Povolené přípony: `.png`, `.jpg`, `.jpeg`, `.pdf`, `.txt`, `.log`, `.zip`.
+
+## Audit, GitLab, notifikace
+
+| Metoda | Endpoint | Kdo |
+| --- | --- | --- |
+| `GET` | `/api/audit` | Admin, DeliveryManager |
+| `GET` | `/api/gitlab/check` | Interní |
+| `POST` | `/api/tickets/{id}/gitlab/create-issue` | Interní |
+| `POST` | `/api/tickets/{id}/gitlab/sync-status` | Interní |
+| `POST` | `/api/email/test` | Admin, DeliveryManager |
+| `POST` | `/api/notifications/retry-failed` | Admin, DeliveryManager (MVP: vždy `403`) |
+
+## Chybové odpovědi
+
+Aplikační chyby vrací JSON `{ "detail": "..." }`:
+
+| HTTP | Význam |
+| --- | --- |
+| `403` | Chybí token, špatná oprávnění, neplatný login |
+| `404` | Entita neexistuje |
+| `422` | Validační chyba (tělo požadavku) |
+| `429` | Příliš mnoho pokusů o login |
+
+Každá odpověď obsahuje hlavičku `X-Request-ID` pro korelaci s logy API.
