@@ -17,7 +17,13 @@ from ticketmaster.services.errors import TicketMasterError
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("ticketmaster.api")
 
-app = FastAPI(title="TicketMaster API", version="0.1.0")
+app = FastAPI(
+    title="TicketMaster API",
+    version="0.1.0",
+    openapi_url="/api/openapi.json",
+    docs_url=None,
+    redoc_url=None,
+)
 
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.trusted_hosts))
 app.add_middleware(

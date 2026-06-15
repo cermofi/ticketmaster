@@ -55,3 +55,7 @@ curl -fsS http://127.0.0.1:3006/docs/ | head
 ## Dokumentace na serveru
 
 Docs jsou součástí produkčního stacku — nginx na portu **3006** proxyuje **`/docs/`** na službu `docs` (Next.js + Fumadocs).
+
+- Interaktivní API reference: **`/docs/api`** (Scalar + OpenAPI z FastAPI).
+- OpenAPI JSON: **`/api/openapi.json`** (generováno z kódu backendu).
+- V produkci jsou **`/docs/*`** a **`/api/openapi.json`** dostupné jen z interní sítě (loopback + RFC1918). Veřejné zůstávají `/`, `/api/health`, `/api/ready` a ostatní API endpointy pro aplikaci.
