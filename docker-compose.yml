@@ -67,12 +67,26 @@ services:
       timeout: 5s
       retries: 12
 
+  docs:
+    build:
+      context: ./docs-site
+    restart: unless-stopped
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/docs/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   frontend:
     build:
       context: .
       dockerfile: frontend/Dockerfile
     depends_on:
       api:
+        condition: service_healthy
+      docs:
         condition: service_healthy
     restart: unless-stopped
     ports:

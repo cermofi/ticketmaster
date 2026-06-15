@@ -25,11 +25,17 @@ docker compose ps
 - Healthcheck: `GET http://127.0.0.1:8000/api/ready`
 - Volumes: `uploads`, `api_logs`
 
+### `docs`
+
+- Build: `docs-site/Dockerfile` (Next.js standalone, `basePath=/docs`)
+- Port: interně `3000`, přes frontend nginx na **`/docs/`**
+- Healthcheck: `GET http://127.0.0.1:3000/docs/`
+
 ### `frontend`
 
 - Multi-stage: Node 22 build → nginx 1.27
 - Port: **127.0.0.1:3006:80** (pouze localhost na hostu)
-- Proxy `/api/` → `api:8000` (`frontend/nginx.conf`)
+- Proxy `/api/` → `api:8000`, `/docs/` → `docs:3000` (`frontend/nginx.conf`)
 
 ### `mailpit`
 
@@ -68,4 +74,4 @@ docker compose build api frontend
 docker compose up -d
 ```
 
-Docs (`docs-site/`) nejsou součástí compose — rebuild produkce je kvůli nim zbytečný.
+Docs (`docs-site/`) běží jako samostatná služba `docs` v Compose a nginx je servíruje na `/docs/`.

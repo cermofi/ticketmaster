@@ -1,11 +1,11 @@
 # TicketMaster — dokumentace (Fumadocs)
 
-Samostatná dokumentační aplikace. Neovlivňuje produkční frontend ani Docker Compose stack.
+Samostatná dokumentační aplikace servírovaná v produkci na **`/docs/`** přes nginx → služba `docs` v Docker Compose.
 
 ## Proč samostatně
 
 - Produkční UI je Vite + nginx na portu 3006.
-- Docs potřebují Next.js a Fumadocs — oddělený adresář `docs-site/` drží build izolovaný.
+- Docs potřebují Next.js a Fumadocs — běží jako vlastní kontejner, nginx proxyuje `/docs/`.
 
 ## Požadavky
 
