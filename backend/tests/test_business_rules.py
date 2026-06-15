@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import zipfile
+from dataclasses import replace
 from io import BytesIO, StringIO
 
 import pytest
@@ -778,10 +779,11 @@ def test_ticket_export_respects_filters_and_rejects_unknown_format(db, fixture_d
 
 
 def test_ticket_export_ticket_url_uses_app_base_url(db, fixture_data, monkeypatch):
-    monkeypatch.setenv("APP_BASE_URL", "https://tickets.example.test")
-    from ticketmaster.core.config import Settings
-
-    monkeypatch.setattr(ticket_exports, "settings", Settings())
+    monkeypatch.setattr(
+        ticket_exports,
+        "settings",
+        replace(ticket_exports.settings, base_url="https://tickets.example.test"),
+    )
     ticket = create_partner_ticket(db, fixture_data)
 
     result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="json", filters={})
