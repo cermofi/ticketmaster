@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import secrets
 from datetime import datetime, timezone
 
@@ -8,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ticketmaster.core.config import settings
+from ticketmaster.core.slug import slugify
 from ticketmaster.core.security import hash_password
 from ticketmaster.models import Attachment, AuditLog, Client, ClientAssignment, Comment, CommentRevision, Partner, Ticket, TicketParticipant, TicketWatcher, User
 from ticketmaster.models.constants import INTERNAL_ROLES, PARTNER_ROLES
@@ -15,11 +15,6 @@ from ticketmaster.models.entities import new_id
 from ticketmaster.services.audit import audit
 from ticketmaster.services.errors import ConflictError, NotFoundError, PermissionDenied, ValidationError
 from ticketmaster.services.notifications import queue_email
-
-
-def slugify(value: str) -> str:
-    text = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
-    return text or secrets.token_hex(4)
 
 
 def require_admin_or_dm(actor: User | None) -> None:
