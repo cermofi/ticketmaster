@@ -1888,7 +1888,7 @@ body[data-tm-density="compact"] .tm-login-form {
 }
 
 .tm-ticket-side {
-  gap: .55rem;
+  gap: .875rem;
 }
 
 .tm-ticket-side .tm-panel {
@@ -2439,12 +2439,63 @@ body[data-tm-contrast="high"] {
 
 /* Ticket detail right panel — compact workflow layout */
 .tm-ticket-layout {
-  grid-template-columns: minmax(0, 2.55fr) minmax(320px, 380px);
+  grid-template-columns: minmax(0, 2.55fr) minmax(340px, 360px);
 }
 
-.tm-side-card {
-  border-color: rgba(255, 255, 255, .06);
-  background: var(--tm-panel);
+.tm-ticket-side {
+  gap: 14px;
+}
+
+.tm-ticket-side .tm-side-card {
+  padding: 1.05rem 1.1rem;
+  border-radius: 13px;
+  border-color: rgba(255, 255, 255, .1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .035) 0%, rgba(255, 255, 255, .008) 100%),
+    var(--tm-panel);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
+}
+
+.tm-ticket-side .tm-side-card > h2 {
+  display: none;
+}
+
+.tm-side-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  margin-bottom: .85rem;
+}
+
+.tm-side-card-header-main {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  min-width: 0;
+}
+
+.tm-side-card-header-main .bi {
+  flex-shrink: 0;
+  font-size: .92rem;
+  color: var(--tm-accent);
+  opacity: .92;
+}
+
+.tm-side-card-header-main h2 {
+  margin: 0;
+  font-size: .8125rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--tm-muted);
+}
+
+.tm-side-card-header-trail {
+  flex-shrink: 0;
+  font-size: .72rem;
+  color: var(--tm-muted);
+  opacity: .55;
 }
 
 .tm-side-info-list {
@@ -2456,9 +2507,10 @@ body[data-tm-contrast="high"] {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
-  gap: .45rem;
-  padding: .38rem 0;
-  border-bottom: 1px solid rgba(255, 255, 255, .045);
+  gap: .65rem;
+  min-height: 2.25rem;
+  padding: .28rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
 }
 
 .tm-side-info-row:last-child {
@@ -2468,23 +2520,27 @@ body[data-tm-contrast="high"] {
 .tm-side-info-label {
   display: inline-flex;
   align-items: center;
-  gap: .35rem;
+  gap: .42rem;
   min-width: 0;
   color: var(--tm-muted);
-  font-size: .74rem;
-  letter-spacing: .015em;
+  font-size: .8125rem;
+  font-weight: 600;
+  letter-spacing: .04em;
   text-transform: uppercase;
 }
 
 .tm-side-info-label .bi {
-  font-size: .82rem;
-  opacity: .85;
+  flex-shrink: 0;
+  font-size: .88rem;
+  opacity: .78;
 }
 
 .tm-side-info-value {
   min-width: 0;
   text-align: right;
-  font-size: .84rem;
+  font-size: .875rem;
+  font-weight: 500;
+  line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
@@ -2496,87 +2552,158 @@ body[data-tm-contrast="high"] {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: .5rem;
-  margin-bottom: .55rem;
-  padding: .42rem .5rem;
-  border: 1px solid rgba(255, 255, 255, .05);
-  border-radius: var(--tm-radius-sm);
-  background: rgba(255, 255, 255, .015);
+  gap: .55rem;
+  margin-bottom: .75rem;
+  padding: .55rem .65rem;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .02);
 }
 
 .tm-workflow-stage-label {
   color: var(--tm-muted);
-  font-size: .74rem;
+  font-size: .75rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: .015em;
+  letter-spacing: .04em;
 }
 
 .tm-workflow-actions {
   display: grid;
-  gap: .35rem;
+  gap: .5rem;
 }
 
-.tm-workflow-actions .btn {
+.tm-workflow-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: .55rem;
   width: 100%;
-  min-height: 1.95rem;
-  font-size: .82rem;
+  min-height: 2.5rem;
+  padding: 0 .85rem;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .03);
+  color: var(--tm-ink);
+  font-size: .875rem;
+  font-weight: 550;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, transform .12s ease;
 }
 
-.tm-workflow-btn-primary {
+.tm-workflow-action-btn .bi {
+  flex-shrink: 0;
+  font-size: .95rem;
+  opacity: .88;
+}
+
+.tm-workflow-action-btn:hover,
+.tm-workflow-action-btn:focus-visible {
+  border-color: rgba(255, 255, 255, .16);
+  background: rgba(255, 255, 255, .06);
+  color: var(--tm-ink);
+  outline: none;
+}
+
+.tm-workflow-action-btn:active {
+  transform: translateY(1px);
+}
+
+.tm-workflow-action-btn-primary {
+  border-color: rgba(96, 165, 250, .45);
+  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+  color: #f8fbff;
   font-weight: 650;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .28), inset 0 1px 0 rgba(255, 255, 255, .14);
 }
 
-.tm-activity-list {
+.tm-workflow-action-btn-primary .bi {
+  opacity: 1;
+}
+
+.tm-workflow-action-btn-primary:hover,
+.tm-workflow-action-btn-primary:focus-visible {
+  border-color: rgba(147, 197, 253, .55);
+  background: linear-gradient(180deg, #4f8ff7 0%, #2f74ef 100%);
+  color: #ffffff;
+}
+
+.tm-activity-timeline {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: .45rem;
+  gap: 0;
 }
 
-.tm-activity-item {
-  padding: .42rem 0;
-  border-bottom: 1px solid rgba(255, 255, 255, .04);
+.tm-activity-timeline-item {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr);
+  gap: .65rem;
+  padding-bottom: .85rem;
 }
 
-.tm-activity-item:last-child {
-  border-bottom: 0;
+.tm-activity-timeline-item:last-child {
   padding-bottom: 0;
 }
 
-.tm-activity-item-head {
+.tm-activity-timeline-marker {
+  position: relative;
   display: flex;
-  align-items: flex-start;
-  gap: .35rem;
-  font-size: .82rem;
+  justify-content: center;
+  padding-top: .28rem;
+}
+
+.tm-activity-timeline-dot {
+  width: .5rem;
+  height: .5rem;
+  border-radius: 50%;
+  border: 2px solid rgba(96, 165, 250, .55);
+  background: rgba(96, 165, 250, .22);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, .08);
+}
+
+.tm-activity-timeline-line {
+  position: absolute;
+  top: .95rem;
+  bottom: -.55rem;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, .1);
+}
+
+.tm-activity-timeline-body {
+  min-width: 0;
+  padding-top: .05rem;
+}
+
+.tm-activity-timeline-title {
+  font-size: .84rem;
   font-weight: 600;
-  line-height: 1.35;
+  line-height: 1.4;
+  color: var(--tm-ink);
 }
 
-.tm-activity-item-head .bi {
-  margin-top: .12rem;
-  color: var(--tm-muted);
-  font-size: .78rem;
-}
-
-.tm-activity-item-meta {
-  margin-top: .12rem;
-  font-size: .74rem;
-}
-
-.tm-activity-item-preview {
+.tm-activity-timeline-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35rem;
   margin-top: .18rem;
-  font-size: .78rem;
+  font-size: .74rem;
   line-height: 1.35;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+}
+
+.tm-activity-timeline-sep {
+  opacity: .65;
 }
 
 .tm-activity-empty {
   margin: 0;
-  font-size: .82rem;
+  font-size: .84rem;
 }
 
 .tm-modal-lead {
@@ -2611,6 +2738,45 @@ body[data-tm-contrast="high"] {
 
 .tm-modal-back:hover {
   color: var(--tm-ink);
+}
+
+html[data-bs-theme="light"] .tm-ticket-side .tm-side-card,
+body[data-bs-theme="light"] .tm-ticket-side .tm-side-card {
+  border-color: rgba(148, 163, 184, .28);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .98) 0%, rgba(248, 250, 252, .95) 100%),
+    var(--tm-panel);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .85);
+}
+
+html[data-bs-theme="light"] .tm-side-info-row,
+body[data-bs-theme="light"] .tm-side-info-row {
+  border-bottom-color: rgba(148, 163, 184, .2);
+}
+
+html[data-bs-theme="light"] .tm-workflow-stage,
+body[data-bs-theme="light"] .tm-workflow-stage {
+  border-color: rgba(148, 163, 184, .24);
+  background: rgba(248, 250, 252, .85);
+}
+
+html[data-bs-theme="light"] .tm-workflow-action-btn,
+body[data-bs-theme="light"] .tm-workflow-action-btn {
+  border-color: rgba(148, 163, 184, .32);
+  background: rgba(248, 250, 252, .9);
+}
+
+html[data-bs-theme="light"] .tm-workflow-action-btn:hover,
+html[data-bs-theme="light"] .tm-workflow-action-btn:focus-visible,
+body[data-bs-theme="light"] .tm-workflow-action-btn:hover,
+body[data-bs-theme="light"] .tm-workflow-action-btn:focus-visible {
+  border-color: rgba(100, 116, 139, .45);
+  background: #ffffff;
+}
+
+html[data-bs-theme="light"] .tm-activity-timeline-line,
+body[data-bs-theme="light"] .tm-activity-timeline-line {
+  background: rgba(148, 163, 184, .35);
 }
 
 @media (max-width: 960px) {

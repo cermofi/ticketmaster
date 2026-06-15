@@ -342,16 +342,34 @@ function TicketDetail({ user }) {
   );
 }
 
+function SideCardHeader({ id, icon, title, trailingIcon }) {
+  return (
+    <header className="tm-side-card-header">
+      <div className="tm-side-card-header-main">
+        <i className={`bi ${icon}`} aria-hidden="true" />
+        <h2 id={id}>{title}</h2>
+      </div>
+      {trailingIcon && (
+        <i className={`bi ${trailingIcon} tm-side-card-header-trail`} aria-hidden="true" />
+      )}
+    </header>
+  );
+}
+
 function TicketInfoCard({ ticket }) {
   return (
     <section className="tm-panel tm-side-card tm-ticket-info-card" aria-labelledby="tm-ticket-info-heading">
-      <h2 id="tm-ticket-info-heading">Ticket info</h2>
+      <SideCardHeader id="tm-ticket-info-heading" icon="bi-info-circle" title="Ticket info" trailingIcon="bi-three-dots" />
       <div className="tm-side-info-list">
         <TicketInfoRow icon="bi-flag" label="Status" value={<StatusPill value={ticket?.status} />} />
         <TicketInfoRow icon="bi-exclamation-triangle" label="Priority" value={<StatusPill value={ticket?.priority} priority={ticket?.priority} />} />
         <TicketInfoRow icon="bi-person" label="Assignee" value={ticket?.assignee_name || 'Unassigned'} />
-        <TicketInfoRow icon="bi-people" label="Team" value={ticket?.resolver_team || '-'} />
-        <TicketInfoRow icon="bi-clock" label="Updated" value={<TimeCell value={ticket?.updated_at} />} />
+        <TicketInfoRow icon="bi-people" label="Team" value={ticket?.resolver_team || 'No team'} />
+        <TicketInfoRow
+          icon="bi-clock"
+          label="Updated"
+          value={ticket?.updated_at ? <TimeCell value={ticket.updated_at} /> : '—'}
+        />
       </div>
     </section>
   );
@@ -381,30 +399,34 @@ function WorkflowCard({
 }) {
   return (
     <section className="tm-panel tm-side-card tm-workflow-card" aria-labelledby="tm-workflow-heading">
-      <h2 id="tm-workflow-heading">Workflow</h2>
+      <SideCardHeader id="tm-workflow-heading" icon="bi-diagram-3" title="Workflow" trailingIcon="bi-chevron-right" />
       <div className="tm-workflow-stage">
         <span className="tm-workflow-stage-label">Current stage</span>
         <StatusPill value={ticket?.status} />
       </div>
       <div className="tm-workflow-actions">
         {showChangeStatus && (
-          <Button color="primary" size="sm" className="tm-workflow-btn-primary" onClick={onChangeStatus}>
-            Change status
-          </Button>
+          <button type="button" className="tm-workflow-action-btn tm-workflow-action-btn-primary" onClick={onChangeStatus}>
+            <i className="bi bi-arrow-repeat" aria-hidden="true" />
+            <span>Change status</span>
+          </button>
         )}
         {showReassign && (
-          <Button color="secondary" outline size="sm" onClick={onReassign}>
-            Reassign
-          </Button>
+          <button type="button" className="tm-workflow-action-btn" onClick={onReassign}>
+            <i className="bi bi-person-check" aria-hidden="true" />
+            <span>Reassign</span>
+          </button>
         )}
         {showSetPriority && (
-          <Button color="secondary" outline size="sm" onClick={onSetPriority}>
-            Set priority
-          </Button>
+          <button type="button" className="tm-workflow-action-btn" onClick={onSetPriority}>
+            <i className="bi bi-exclamation-triangle" aria-hidden="true" />
+            <span>Set priority</span>
+          </button>
         )}
-        <Button color="secondary" outline size="sm" onClick={onMoreActions}>
-          More actions
-        </Button>
+        <button type="button" className="tm-workflow-action-btn" onClick={onMoreActions}>
+          <i className="bi bi-three-dots" aria-hidden="true" />
+          <span>More actions</span>
+        </button>
       </div>
     </section>
   );
@@ -415,21 +437,25 @@ function RecentActivityCard({ ticket }) {
 
   return (
     <section className="tm-panel tm-side-card tm-activity-card" aria-labelledby="tm-activity-heading">
-      <h2 id="tm-activity-heading">Recent activity</h2>
+      <SideCardHeader id="tm-activity-heading" icon="bi-clock-history" title="Recent activity" trailingIcon="bi-chevron-right" />
       {items.length === 0 ? (
-        <p className="tm-muted tm-activity-empty">No activity yet</p>
+        <p className="tm-muted tm-activity-empty">No recent activity</p>
       ) : (
-        <ul className="tm-activity-list">
-          {items.map((item) => (
-            <li key={item.key} className="tm-activity-item">
-              <div className="tm-activity-item-head">
-                <i className={`bi ${item.icon}`} aria-hidden="true" />
-                <span className="tm-activity-item-title">{item.title}</span>
+        <ul className="tm-activity-timeline">
+          {items.map((item, index) => (
+            <li key={item.key} className="tm-activity-timeline-item">
+              <div className="tm-activity-timeline-marker" aria-hidden="true">
+                <span className="tm-activity-timeline-dot" />
+                {index < items.length - 1 && <span className="tm-activity-timeline-line" />}
               </div>
-              <div className="tm-activity-item-meta tm-muted">
-                <TimeCell value={item.time} />
+              <div className="tm-activity-timeline-body">
+                <div className="tm-activity-timeline-title">{item.title}</div>
+                <div className="tm-activity-timeline-meta tm-muted">
+                  <span>{item.author}</span>
+                  <span className="tm-activity-timeline-sep" aria-hidden="true">·</span>
+                  {item.time ? <TimeCell value={item.time} /> : <span>—</span>}
+                </div>
               </div>
-              {item.preview && <div className="tm-activity-item-preview tm-muted">{item.preview}</div>}
             </li>
           ))}
         </ul>
@@ -456,20 +482,20 @@ function buildRecentActivity(ticket) {
     candidates.push({
       key: 'status',
       icon: 'bi-flag',
-      title: `Status: ${labelValue(ticket.status) || ticket.status}`,
+      title: `Status set to ${labelValue(ticket.status) || ticket.status}`,
+      author: ticket.assignee_name || 'System',
       time: snapshotTime,
-      tieBreak: 40,
-      preview: ''
+      tieBreak: 40
     });
   }
 
   candidates.push({
     key: 'assignment',
     icon: 'bi-person-check',
-    title: `Assignment: ${assigneeLabel}${teamLabel}`,
+    title: `Assigned to ${assigneeLabel}${teamLabel}`,
+    author: ticket.assignee_name || 'Unassigned',
     time: snapshotTime,
-    tieBreak: 30,
-    preview: ''
+    tieBreak: 30
   });
 
   if (ticket.created_at || ticket.id) {
@@ -477,9 +503,9 @@ function buildRecentActivity(ticket) {
       key: 'created',
       icon: 'bi-plus-circle',
       title: 'Ticket created',
+      author: ticket.owner_name || 'Unknown',
       time: ticket.created_at || null,
-      tieBreak: 10,
-      preview: ''
+      tieBreak: 10
     });
   }
 
@@ -487,10 +513,10 @@ function buildRecentActivity(ticket) {
     candidates.push({
       key: 'priority',
       icon: 'bi-exclamation-triangle',
-      title: `Priority: ${labelValue(ticket.priority) || ticket.priority}`,
+      title: `Priority set to ${labelValue(ticket.priority) || ticket.priority}`,
+      author: ticket.assignee_name || 'System',
       time: snapshotTime,
-      tieBreak: 20,
-      preview: ''
+      tieBreak: 20
     });
   }
 
