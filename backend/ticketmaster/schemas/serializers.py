@@ -19,7 +19,9 @@ from ticketmaster.models import (
 from ticketmaster.services.internal_roles import get_internal_roles
 
 
-def user_to_dict(user: User) -> dict:
+def user_to_dict(user: User | None) -> dict | None:
+    if user is None:
+        return None
     internal_roles = get_internal_roles(user) if user.kind == "internal" else []
     return {
         "id": user.id,

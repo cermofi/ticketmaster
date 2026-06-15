@@ -378,16 +378,18 @@ def client_assign(db: DbSession, user: CurrentUser, body: ClientAssignmentBody) 
 def client_assignments_list(db: DbSession, user: CurrentUser, client_id: str) -> list[dict]:
     admin.require_admin_or_dm(user)
     rows = admin.list_client_assignments(db, client_id=client_id)
-    return [
-        {
-            "id": row.id,
-            "client_id": row.client_id,
-            "user_id": row.user_id,
-            "user": user_to_dict(db.get(User, row.user_id)),
-            "created_at": row.created_at,
-        }
-        for row in rows
-    ]
+    payload: list[dict] = []
+    for row in rows:
+        payload.append(
+            {
+                "id": row.id,
+                "client_id": row.client_id,
+                "user_id": row.user_id,
+                "user": user_to_dict(db.get(User, row.user_id)),
+                "created_at": row.created_at,
+            }
+        )
+    return payload
 
 
 @router.delete("/client-assignments/{assignment_id}")

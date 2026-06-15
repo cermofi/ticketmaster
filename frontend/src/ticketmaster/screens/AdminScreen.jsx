@@ -15,12 +15,25 @@ import {
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
 import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
-import { EmptyRow, ErrorBanner, PageHeader, apiError, formatInternalRoles, getInternalRoles, hasAnyInternalRole, hasInternalRole, roleLabel } from './helpers.jsx';
+import { asArray, EmptyRow, ErrorBanner, PageHeader, apiError, formatInternalRoles, getInternalRoles, hasAnyInternalRole, hasInternalRole, roleLabel } from './helpers.jsx';
+
+function sanitizeUserRows(rows) {
+  return asArray(rows).filter((row) => row?.kind);
+}
 
 export default function AdminScreen() {
   return (
     <AuthGate>
-      {(user) => <Admin user={user} />}
+      {(user) => {
+        if (!user?.kind) {
+          return (
+            <div className="tm-screen">
+              <ErrorBanner error="Admin section is unavailable until your session is loaded." />
+            </div>
+          );
+        }
+        return <Admin user={user} />;
+      }}
     </AuthGate>
   );
 }
@@ -56,9 +69,9 @@ function Admin({ user }) {
         api.get('/clients'),
         api.get('/users')
       ]);
-      setPartners(partnersResponse.data);
-      setClients(clientsResponse.data);
-      setUsers(usersResponse.data);
+      setPartners(asArray(partnersResponse.data));
+      setClients(asArray(clientsResponse.data));
+      setUsers(sanitizeUserRows(usersResponse.data));
     } catch (err) {
       setError(apiError(err));
     }
