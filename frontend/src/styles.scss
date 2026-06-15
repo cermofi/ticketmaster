@@ -2129,6 +2129,28 @@ body[data-tm-density="compact"] .tm-login-form {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.tm-participant-list-managed {
+  display: grid;
+  gap: .35rem;
+}
+
+.tm-participant-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+}
+
+.tm-participant-row .tm-participant-pill {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tm-participant-remove-btn {
+  flex: 0 0 auto;
+  min-height: 1.45rem;
+}
+
 
 .tm-ticket-side .tm-table-wrap {
   border-color: var(--tm-ticket-side-table-border);
@@ -2412,5 +2434,187 @@ body[data-tm-contrast="high"] {
   .tm-login-form,
   .tm-panel {
     padding: var(--tm-space-3);
+  }
+}
+
+/* Ticket detail right panel — compact workflow layout */
+.tm-ticket-layout {
+  grid-template-columns: minmax(0, 2.55fr) minmax(320px, 380px);
+}
+
+.tm-side-card {
+  border-color: rgba(255, 255, 255, .06);
+  background: var(--tm-panel);
+}
+
+.tm-side-info-list {
+  display: grid;
+  gap: 0;
+}
+
+.tm-side-info-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: .45rem;
+  padding: .38rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, .045);
+}
+
+.tm-side-info-row:last-child {
+  border-bottom: 0;
+}
+
+.tm-side-info-label {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  min-width: 0;
+  color: var(--tm-muted);
+  font-size: .74rem;
+  letter-spacing: .015em;
+  text-transform: uppercase;
+}
+
+.tm-side-info-label .bi {
+  font-size: .82rem;
+  opacity: .85;
+}
+
+.tm-side-info-value {
+  min-width: 0;
+  text-align: right;
+  font-size: .84rem;
+  overflow-wrap: anywhere;
+}
+
+.tm-side-info-value .tm-status {
+  justify-content: flex-end;
+}
+
+.tm-workflow-stage {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  margin-bottom: .55rem;
+  padding: .42rem .5rem;
+  border: 1px solid rgba(255, 255, 255, .05);
+  border-radius: var(--tm-radius-sm);
+  background: rgba(255, 255, 255, .015);
+}
+
+.tm-workflow-stage-label {
+  color: var(--tm-muted);
+  font-size: .74rem;
+  text-transform: uppercase;
+  letter-spacing: .015em;
+}
+
+.tm-workflow-actions {
+  display: grid;
+  gap: .35rem;
+}
+
+.tm-workflow-actions .btn {
+  width: 100%;
+  min-height: 1.95rem;
+  font-size: .82rem;
+}
+
+.tm-workflow-btn-primary {
+  font-weight: 650;
+}
+
+.tm-activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: .45rem;
+}
+
+.tm-activity-item {
+  padding: .42rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, .04);
+}
+
+.tm-activity-item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.tm-activity-item-head {
+  display: flex;
+  align-items: flex-start;
+  gap: .35rem;
+  font-size: .82rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.tm-activity-item-head .bi {
+  margin-top: .12rem;
+  color: var(--tm-muted);
+  font-size: .78rem;
+}
+
+.tm-activity-item-meta {
+  margin-top: .12rem;
+  font-size: .74rem;
+}
+
+.tm-activity-item-preview {
+  margin-top: .18rem;
+  font-size: .78rem;
+  line-height: 1.35;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.tm-activity-empty {
+  margin: 0;
+  font-size: .82rem;
+}
+
+.tm-modal-lead {
+  margin-bottom: .75rem;
+  font-size: .86rem;
+}
+
+.tm-more-actions-menu {
+  display: grid;
+  gap: .4rem;
+}
+
+.tm-more-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: .45rem;
+  width: 100%;
+  min-height: 2.1rem;
+  text-align: left;
+}
+
+.tm-more-action-btn .bi {
+  font-size: .95rem;
+  opacity: .85;
+}
+
+.tm-modal-back {
+  color: var(--tm-muted);
+  text-decoration: none;
+}
+
+.tm-modal-back:hover {
+  color: var(--tm-ink);
+}
+
+@media (max-width: 960px) {
+  .tm-ticket-layout {
+    grid-template-columns: 1fr;
   }
 }

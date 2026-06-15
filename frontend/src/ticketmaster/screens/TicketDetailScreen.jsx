@@ -7,6 +7,10 @@ import {
   FormGroup,
   Input,
   Label,
+  Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
   Table
 } from 'reactstrap';
 
@@ -44,6 +48,10 @@ function TicketDetail({ user }) {
   const [transferOwner, setTransferOwner] = useState('');
   const [participantId, setParticipantId] = useState('');
   const [uploadFile, setUploadFile] = useState(null);
+  const [changeStatusOpen, setChangeStatusOpen] = useState(false);
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const [setPriorityOpen, setSetPriorityOpen] = useState(false);
+  const [moreActionsOpen, setMoreActionsOpen] = useState(false);
 
   const load = useCallback(async () => {
     setError('');
@@ -105,6 +113,16 @@ function TicketDetail({ user }) {
     }
   };
 
+  const copyTicketId = async () => {
+    if (!ticket?.id) return;
+    try {
+      await navigator.clipboard.writeText(ticket.id);
+      setNotice('Ticket ID copied to clipboard.');
+    } catch {
+      setNotice('Could not copy ticket ID.');
+    }
+  };
+
   if (!ticket && !error) return <Loading />;
 
   const internalUsers = users.filter((row) => row.kind === 'internal');
@@ -127,7 +145,6 @@ function TicketDetail({ user }) {
   const canEditTicketPriority = user.kind === 'internal'
     && hasAnyInternalRole(user, ['Admin', 'DeliveryManager'])
     && priorities.length > 0;
-  const showActions = user.kind === 'internal' || canTransferOwner;
   const canAddCommunication = ticket?.status !== 'Closed' && (
     user.kind === 'internal'
     || (ticket?.system && user.partner_role === 'responsible')
@@ -140,7 +157,9 @@ function TicketDetail({ user }) {
     && Boolean(ticket?.resolver_team)
     && Boolean(ticket?.assignee_id);
   const showPrimaryStatusActions = user.kind === 'internal';
-  const showManagementActions = canEditTicketType || canEditTicketPriority || canAssignTicket || canTransferOwner;
+  const showChangeStatus = showPrimaryStatusActions;
+  const showReassign = canAssignTicket;
+  const showSetPriority = canEditTicketPriority;
 
   return (
     <div className="tm-screen">
@@ -198,216 +217,692 @@ function TicketDetail({ user }) {
             </section>
           </main>
           <aside className="tm-ticket-side">
-            <section className="tm-panel tm-ticket-meta-panel">
-              <h2>Overview</h2>
-              <div className="tm-meta-list">
-                <InfoRow label="ID" value={ticket.id} />
-                <InfoRow label="Type" value={labelValue(ticket.type)} />
-                <InfoRow label="Status" value={<StatusPill value={ticket.status} />} />
-                <InfoRow label="Priority" value={<StatusPill value={ticket.priority} priority={ticket.priority} />} />
-                <InfoRow label="Partner" value={ticket.partner_name || '-'} />
-                <InfoRow label="Owner" value={ticket.owner_name || '-'} />
-                {user.kind === 'internal' && <InfoRow label="Assignee" value={ticket.assignee_name || '-'} />}
-                {user.kind === 'internal' && <InfoRow label="Team" value={ticket.resolver_team || '-'} />}
-                <InfoRow label="Created" value={<TimeCell value={ticket.created_at} />} />
-                <InfoRow label="Updated" value={<TimeCell value={ticket.updated_at} />} />
-              </div>
-            </section>
-            {showActions && (
-              <section className="tm-panel tm-ticket-actions-panel">
-                <h2>Actions</h2>
-                {showPrimaryStatusActions && (
-                  <div className="tm-action-group tm-action-group-primary">
-                    <div className="tm-action-group-head">
-                      <h3>Status</h3>
-                      <StatusPill value={ticket.status} />
-                    </div>
-                    <div className="tm-actions">
-                      {availableTransitions.map((status) => (
-                        <Button key={status} size="sm" outline color="primary" onClick={() => action(() => api.post(`/tickets/${ticket.id}/transition`, { status }))}>
-                          {labelValue(status)}
-                        </Button>
-                      ))}
-                      {availableTransitions.length === 0 && <span className="tm-muted">No status changes are available.</span>}
-                    </div>
-                  </div>
-                )}
-                {showManagementActions && (
-                  <details className="tm-side-collapsible tm-side-collapsible-management">
-                    <summary>Management</summary>
-                    <div className="tm-side-collapsible-body">
-                      {canEditTicketType && (
-                        <div className="tm-action-subgroup">
-                          <h3>Ticket type</h3>
-                          <Form className="tm-action-form" onSubmit={(event) => {
-                            event.preventDefault();
-                            action(() => api.post(`/tickets/${ticket.id}/type`, { type: ticketType }));
-                          }}>
-                            <FormGroup>
-                              <Label>Type</Label>
-                              <Input type="select" value={ticketType || ticket.type || ''} onChange={(event) => setTicketType(event.target.value)}>
-                                {ticketTypes.map((type) => <option key={type} value={type}>{labelValue(type)}</option>)}
-                              </Input>
-                            </FormGroup>
-                            <Button color="secondary" outline type="submit" size="sm" disabled={!ticketType || ticketType === ticket.type} className="w-100">
-                              Save
-                            </Button>
-                          </Form>
-                        </div>
-                      )}
-                      {canEditTicketPriority && (
-                        <div className="tm-action-subgroup">
-                          <h3>Priority</h3>
-                          <Form className="tm-action-form" onSubmit={(event) => {
-                            event.preventDefault();
-                            action(() => api.post(`/tickets/${ticket.id}/priority`, { priority: ticketPriority }));
-                          }}>
-                            <FormGroup>
-                              <Label>Priority</Label>
-                              <Input type="select" value={ticketPriority || ticket.priority || ''} onChange={(event) => setTicketPriority(event.target.value)}>
-                                {priorities.map((priority) => <option key={priority} value={priority}>{labelValue(priority)}</option>)}
-                              </Input>
-                            </FormGroup>
-                            <Button color="secondary" outline type="submit" size="sm" disabled={!ticketPriority || ticketPriority === ticket.priority} className="w-100">
-                              Save
-                            </Button>
-                          </Form>
-                        </div>
-                      )}
-                      {canAssignTicket && (
-                        <div className="tm-action-subgroup">
-                          <h3>Assignment</h3>
-                          <Form className="tm-action-form" onSubmit={(event) => {
-                            event.preventDefault();
-                            action(() => api.post(`/tickets/${ticket.id}/assign`, { ...assignment, team: assignmentTeam }));
-                          }}>
-                            <FormGroup>
-                              <Label>Team</Label>
-                              {ticket.resolver_team ? (
-                                <div className="tm-readonly-field">{ticket.resolver_team}</div>
-                              ) : (
-                                <Input type="select" value={assignment.team} onChange={(event) => setAssignment({ ...assignment, team: event.target.value })}>
-                                  {resolverTeams.map((team) => <option key={team}>{team}</option>)}
-                                </Input>
-                              )}
-                            </FormGroup>
-                            <FormGroup>
-                              <Label>Assignee</Label>
-                              <Input type="select" value={assignment.assignee || ''} onChange={(event) => setAssignment({ ...assignment, assignee: event.target.value })}>
-                                <option value="">Unassigned</option>
-                                {internalUsers.filter((row) => hasInternalRole(row, assignmentTeam)).map((row) => <option key={row.id} value={row.email}>{row.name}</option>)}
-                              </Input>
-                            </FormGroup>
-                            <Button color="primary" size="sm" className="w-100" type="submit">
-                              Save assignment
-                            </Button>
-                          </Form>
-                          {canReturnToQueue && (
-                            <Button
-                              color="secondary"
-                              outline
-                              className="w-100 mt-2"
-                              size="sm"
-                              type="button"
-                              onClick={() => action(() => api.post(`/tickets/${ticket.id}/unassign`))}
-                            >
-                              Return to queue
-                            </Button>
-                          )}
-                        </div>
-                      )}
-                      {canTransferOwner && (
-                        <div className="tm-action-subgroup">
-                          <h3>Transfer owner</h3>
-                          <Form className="tm-action-form" onSubmit={(event) => {
-                            event.preventDefault();
-                            action(() => api.post(`/tickets/${ticket.id}/transfer-owner`, { new_owner: transferOwner }));
-                          }}>
-                            <FormGroup>
-                              <Label>New owner</Label>
-                              <Input type="select" value={transferOwner} onChange={(event) => setTransferOwner(event.target.value)}>
-                                <option value="">Select owner</option>
-                                {responsibleUsers.map((row) => <option key={row.id} value={row.email}>{row.name}</option>)}
-                              </Input>
-                            </FormGroup>
-                            <Button color="secondary" outline type="submit" size="sm" disabled={!transferOwner} className="w-100">
-                              Transfer
-                            </Button>
-                          </Form>
-                        </div>
-                      )}
-                    </div>
-                  </details>
-                )}
-              </section>
-            )}
-            <section className="tm-panel tm-ticket-collab-panel">
-              <h2>Participants & attachments</h2>
-              <details className="tm-side-collapsible tm-side-collapsible-participants">
-                <summary>
-                  <span>Participants</span>
-                  <span className="tm-side-count">{participants.length}</span>
-                </summary>
-                <div className="tm-side-collapsible-body">
-                  <div className="tm-participant-list">
-                    {participants.map((participant) => (
-                      <span className="tm-participant-pill" key={participant.id}>{participant.name}</span>
-                    ))}
-                    {participants.length === 0 && <span className="tm-muted">No participants.</span>}
-                  </div>
-                  {canManageParticipants && partnerUsers.length > 0 && (
-                    <Form className="tm-inline-form tm-inline-form-compact" onSubmit={(event) => {
-                      event.preventDefault();
-                      action(() => api.post(`/tickets/${ticket.id}/participants`, { user_id: participantId }));
-                    }}>
-                      <Input type="select" value={participantId} onChange={(event) => setParticipantId(event.target.value)}>
-                        <option value="">Add participant</option>
-                        {partnerUsers.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
-                      </Input>
-                      <Button color="secondary" outline size="sm" type="submit" disabled={!participantId}>
-                        Add
-                      </Button>
-                    </Form>
-                  )}
-                </div>
-              </details>
-              <details className="tm-side-collapsible tm-side-collapsible-attachments">
-                <summary>
-                  <span>Attachments</span>
-                  <span className="tm-side-count">{attachments.length}</span>
-                </summary>
-                <div className="tm-side-collapsible-body">
-                  <AttachmentPanel
-                    compact
-                    attachments={attachments}
-                    uploadFile={uploadFile}
-                    setUploadFile={setUploadFile}
-                    canUpload={canAddCommunication}
-                    downloadingAttachmentId={downloadingAttachmentId}
-                    onDownload={downloadAttachment}
-                    onUpload={() => action(async () => {
-                      const formData = new FormData();
-                      formData.append('file', uploadFile);
-                      await api.post(`/tickets/${ticket.id}/attachments`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-                      setUploadFile(null);
-                    })}
-                  />
-                </div>
-              </details>
-            </section>
+            <TicketInfoCard ticket={ticket} />
+            <WorkflowCard
+              ticket={ticket}
+              showChangeStatus={showChangeStatus}
+              showReassign={showReassign}
+              showSetPriority={showSetPriority}
+              onChangeStatus={() => setChangeStatusOpen(true)}
+              onReassign={() => setReassignOpen(true)}
+              onSetPriority={() => setSetPriorityOpen(true)}
+              onMoreActions={() => setMoreActionsOpen(true)}
+            />
+            <RecentActivityCard ticket={ticket} />
           </aside>
         </div>
+      )}
+      {ticket && (
+        <>
+          <ChangeStatusModal
+            isOpen={changeStatusOpen}
+            onClose={() => setChangeStatusOpen(false)}
+            ticket={ticket}
+            availableTransitions={availableTransitions}
+            onConfirm={async (status, note) => {
+              setError('');
+              try {
+                await api.post(`/tickets/${ticket.id}/transition`, { status });
+                if (note?.trim()) {
+                  try {
+                    await api.post(`/tickets/${ticket.id}/internal-notes`, { body: note.trim() });
+                  } catch {
+                    setNotice('Status updated, but the note could not be saved.');
+                  }
+                }
+                await load();
+                setChangeStatusOpen(false);
+              } catch (err) {
+                setError(apiError(err));
+              }
+            }}
+          />
+          <ReassignModal
+            isOpen={reassignOpen}
+            onClose={() => setReassignOpen(false)}
+            ticket={ticket}
+            assignment={assignment}
+            setAssignment={setAssignment}
+            assignmentTeam={assignmentTeam}
+            resolverTeams={resolverTeams}
+            internalUsers={internalUsers}
+            canReturnToQueue={canReturnToQueue}
+            onSubmit={() => action(async () => {
+              await api.post(`/tickets/${ticket.id}/assign`, { ...assignment, team: assignmentTeam });
+              setReassignOpen(false);
+            })}
+            onReturnToQueue={() => action(async () => {
+              await api.post(`/tickets/${ticket.id}/unassign`);
+              setReassignOpen(false);
+            })}
+          />
+          <SetPriorityModal
+            isOpen={setPriorityOpen}
+            onClose={() => setSetPriorityOpen(false)}
+            ticket={ticket}
+            ticketPriority={ticketPriority}
+            setTicketPriority={setTicketPriority}
+            priorities={priorities}
+            onSubmit={() => action(async () => {
+              await api.post(`/tickets/${ticket.id}/priority`, { priority: ticketPriority });
+              setSetPriorityOpen(false);
+            })}
+          />
+          <MoreActionsModal
+            isOpen={moreActionsOpen}
+            onClose={() => setMoreActionsOpen(false)}
+            ticket={ticket}
+            participants={participants}
+            attachments={attachments}
+            partnerUsers={partnerUsers}
+            responsibleUsers={responsibleUsers}
+            ticketTypes={ticketTypes}
+            canManageParticipants={canManageParticipants}
+            canAddCommunication={canAddCommunication}
+            canEditTicketType={canEditTicketType}
+            canTransferOwner={canTransferOwner}
+            canReturnToQueue={canReturnToQueue}
+            participantId={participantId}
+            setParticipantId={setParticipantId}
+            uploadFile={uploadFile}
+            setUploadFile={setUploadFile}
+            ticketType={ticketType}
+            setTicketType={setTicketType}
+            transferOwner={transferOwner}
+            setTransferOwner={setTransferOwner}
+            downloadingAttachmentId={downloadingAttachmentId}
+            onDownload={downloadAttachment}
+            onCopyTicketId={copyTicketId}
+            onAddParticipant={(userId) => action(async () => {
+              await api.post(`/tickets/${ticket.id}/participants`, { user_id: userId });
+            })}
+            onRemoveParticipant={(userId) => action(async () => {
+              await api.delete(`/tickets/${ticket.id}/participants/${userId}`);
+            })}
+            onUploadAttachment={() => action(async () => {
+              const formData = new FormData();
+              formData.append('file', uploadFile);
+              await api.post(`/tickets/${ticket.id}/attachments`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+              setUploadFile(null);
+            })}
+            onSaveTicketType={() => action(async () => {
+              await api.post(`/tickets/${ticket.id}/type`, { type: ticketType });
+            })}
+            onTransferOwner={() => action(async () => {
+              await api.post(`/tickets/${ticket.id}/transfer-owner`, { new_owner: transferOwner });
+            })}
+            onReturnToQueue={() => action(async () => {
+              await api.post(`/tickets/${ticket.id}/unassign`);
+              setMoreActionsOpen(false);
+            })}
+          />
+        </>
       )}
     </div>
   );
 }
 
-function InfoRow({ label, value }) {
+function TicketInfoCard({ ticket }) {
   return (
-    <div className="tm-meta-item">
-      <div className="tm-meta-item-label">{label}</div>
-      <div className="tm-meta-item-value">{value}</div>
+    <section className="tm-panel tm-side-card tm-ticket-info-card" aria-labelledby="tm-ticket-info-heading">
+      <h2 id="tm-ticket-info-heading">Ticket info</h2>
+      <div className="tm-side-info-list">
+        <TicketInfoRow icon="bi-flag" label="Status" value={<StatusPill value={ticket?.status} />} />
+        <TicketInfoRow icon="bi-exclamation-triangle" label="Priority" value={<StatusPill value={ticket?.priority} priority={ticket?.priority} />} />
+        <TicketInfoRow icon="bi-person" label="Assignee" value={ticket?.assignee_name || 'Unassigned'} />
+        <TicketInfoRow icon="bi-people" label="Team" value={ticket?.resolver_team || '-'} />
+        <TicketInfoRow icon="bi-clock" label="Updated" value={<TimeCell value={ticket?.updated_at} />} />
+      </div>
+    </section>
+  );
+}
+
+function TicketInfoRow({ icon, label, value }) {
+  return (
+    <div className="tm-side-info-row">
+      <div className="tm-side-info-label">
+        <i className={`bi ${icon}`} aria-hidden="true" />
+        <span>{label}</span>
+      </div>
+      <div className="tm-side-info-value">{value ?? '-'}</div>
     </div>
+  );
+}
+
+function WorkflowCard({
+  ticket,
+  showChangeStatus,
+  showReassign,
+  showSetPriority,
+  onChangeStatus,
+  onReassign,
+  onSetPriority,
+  onMoreActions
+}) {
+  return (
+    <section className="tm-panel tm-side-card tm-workflow-card" aria-labelledby="tm-workflow-heading">
+      <h2 id="tm-workflow-heading">Workflow</h2>
+      <div className="tm-workflow-stage">
+        <span className="tm-workflow-stage-label">Current stage</span>
+        <StatusPill value={ticket?.status} />
+      </div>
+      <div className="tm-workflow-actions">
+        {showChangeStatus && (
+          <Button color="primary" size="sm" className="tm-workflow-btn-primary" onClick={onChangeStatus}>
+            Change status
+          </Button>
+        )}
+        {showReassign && (
+          <Button color="secondary" outline size="sm" onClick={onReassign}>
+            Reassign
+          </Button>
+        )}
+        {showSetPriority && (
+          <Button color="secondary" outline size="sm" onClick={onSetPriority}>
+            Set priority
+          </Button>
+        )}
+        <Button color="secondary" outline size="sm" onClick={onMoreActions}>
+          More actions
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function RecentActivityCard({ ticket }) {
+  const items = buildRecentActivity(ticket);
+
+  return (
+    <section className="tm-panel tm-side-card tm-activity-card" aria-labelledby="tm-activity-heading">
+      <h2 id="tm-activity-heading">Recent activity</h2>
+      {items.length === 0 ? (
+        <p className="tm-muted tm-activity-empty">No activity yet</p>
+      ) : (
+        <ul className="tm-activity-list">
+          {items.map((item) => (
+            <li key={item.key} className="tm-activity-item">
+              <div className="tm-activity-item-head">
+                <i className={`bi ${item.icon}`} aria-hidden="true" />
+                <span className="tm-activity-item-title">{item.title}</span>
+              </div>
+              <div className="tm-activity-item-meta tm-muted">
+                <TimeCell value={item.time} />
+              </div>
+              {item.preview && <div className="tm-activity-item-preview tm-muted">{item.preview}</div>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function parseActivityTime(value) {
+  if (!value) return null;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildRecentActivity(ticket) {
+  if (!ticket) return [];
+
+  const candidates = [];
+  const snapshotTime = ticket.updated_at || ticket.created_at || null;
+  const assigneeLabel = ticket.assignee_name || 'Unassigned';
+  const teamLabel = ticket.resolver_team ? ` · ${ticket.resolver_team}` : '';
+
+  if (ticket.status) {
+    candidates.push({
+      key: 'status',
+      icon: 'bi-flag',
+      title: `Status: ${labelValue(ticket.status) || ticket.status}`,
+      time: snapshotTime,
+      tieBreak: 40,
+      preview: ''
+    });
+  }
+
+  candidates.push({
+    key: 'assignment',
+    icon: 'bi-person-check',
+    title: `Assignment: ${assigneeLabel}${teamLabel}`,
+    time: snapshotTime,
+    tieBreak: 30,
+    preview: ''
+  });
+
+  if (ticket.created_at || ticket.id) {
+    candidates.push({
+      key: 'created',
+      icon: 'bi-plus-circle',
+      title: 'Ticket created',
+      time: ticket.created_at || null,
+      tieBreak: 10,
+      preview: ''
+    });
+  }
+
+  if (ticket.priority) {
+    candidates.push({
+      key: 'priority',
+      icon: 'bi-exclamation-triangle',
+      title: `Priority: ${labelValue(ticket.priority) || ticket.priority}`,
+      time: snapshotTime,
+      tieBreak: 20,
+      preview: ''
+    });
+  }
+
+  if (candidates.length === 0) return [];
+
+  candidates.sort((a, b) => {
+    const aTime = parseActivityTime(a.time);
+    const bTime = parseActivityTime(b.time);
+    if (aTime !== bTime) {
+      if (aTime === null) return 1;
+      if (bTime === null) return -1;
+      return bTime - aTime;
+    }
+    return b.tieBreak - a.tieBreak;
+  });
+
+  return candidates.slice(0, 3);
+}
+
+function ChangeStatusModal({ isOpen, onClose, ticket, availableTransitions, onConfirm }) {
+  const [selectedStatus, setSelectedStatus] = useState('');
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectedStatus('');
+      setNote('');
+      setSubmitting(false);
+    }
+  }, [isOpen]);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (!selectedStatus || submitting) return;
+    setSubmitting(true);
+    try {
+      await onConfirm(selectedStatus, note);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} toggle={onClose} backdrop>
+      <Form onSubmit={handleSubmit}>
+        <ModalHeader toggle={onClose}>Change status</ModalHeader>
+        <ModalBody>
+          <p className="tm-muted tm-modal-lead">
+            Current status: <StatusPill value={ticket?.status} />
+          </p>
+          {availableTransitions.length === 0 ? (
+            <p className="tm-muted">No status changes are available.</p>
+          ) : (
+            <FormGroup>
+              <Label for="tm-change-status-select">New status</Label>
+              <Input
+                id="tm-change-status-select"
+                type="select"
+                value={selectedStatus}
+                onChange={(event) => setSelectedStatus(event.target.value)}
+                required
+              >
+                <option value="">Select status</option>
+                {availableTransitions.map((status) => (
+                  <option key={status} value={status}>{labelValue(status)}</option>
+                ))}
+              </Input>
+            </FormGroup>
+          )}
+          <FormGroup>
+            <Label for="tm-change-status-note">Note (optional)</Label>
+            <Input
+              id="tm-change-status-note"
+              type="textarea"
+              rows="3"
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder="Add a short internal note about this change"
+            />
+          </FormGroup>
+        </ModalBody>
+        <ModalFooter>
+          <Button color="secondary" outline type="button" onClick={onClose}>Cancel</Button>
+          <Button
+            color="primary"
+            type="submit"
+            disabled={!selectedStatus || submitting || availableTransitions.length === 0}
+          >
+            Confirm
+          </Button>
+        </ModalFooter>
+      </Form>
+    </Modal>
+  );
+}
+
+function ReassignModal({
+  isOpen,
+  onClose,
+  ticket,
+  assignment,
+  setAssignment,
+  assignmentTeam,
+  resolverTeams,
+  internalUsers,
+  canReturnToQueue,
+  onSubmit,
+  onReturnToQueue
+}) {
+  return (
+    <Modal isOpen={isOpen} toggle={onClose} backdrop>
+      <Form onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}>
+        <ModalHeader toggle={onClose}>Reassign ticket</ModalHeader>
+        <ModalBody>
+          <FormGroup>
+            <Label for="tm-reassign-team">Team</Label>
+            {ticket?.resolver_team ? (
+              <div className="tm-readonly-field" id="tm-reassign-team">{ticket.resolver_team}</div>
+            ) : (
+              <Input
+                id="tm-reassign-team"
+                type="select"
+                value={assignment.team}
+                onChange={(event) => setAssignment({ ...assignment, team: event.target.value })}
+              >
+                {resolverTeams.map((team) => <option key={team}>{team}</option>)}
+              </Input>
+            )}
+          </FormGroup>
+          <FormGroup>
+            <Label for="tm-reassign-assignee">Assignee</Label>
+            <Input
+              id="tm-reassign-assignee"
+              type="select"
+              value={assignment.assignee || ''}
+              onChange={(event) => setAssignment({ ...assignment, assignee: event.target.value })}
+            >
+              <option value="">Unassigned</option>
+              {internalUsers.filter((row) => hasInternalRole(row, assignmentTeam)).map((row) => (
+                <option key={row.id} value={row.email}>{row.name}</option>
+              ))}
+            </Input>
+          </FormGroup>
+        </ModalBody>
+        <ModalFooter>
+          {canReturnToQueue && (
+            <Button color="secondary" outline type="button" onClick={onReturnToQueue}>
+              Return to queue
+            </Button>
+          )}
+          <Button color="secondary" outline type="button" onClick={onClose}>Cancel</Button>
+          <Button color="primary" type="submit">Save assignment</Button>
+        </ModalFooter>
+      </Form>
+    </Modal>
+  );
+}
+
+function SetPriorityModal({ isOpen, onClose, ticket, ticketPriority, setTicketPriority, priorities, onSubmit }) {
+  return (
+    <Modal isOpen={isOpen} toggle={onClose} backdrop>
+      <Form onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}>
+        <ModalHeader toggle={onClose}>Set priority</ModalHeader>
+        <ModalBody>
+          <p className="tm-muted tm-modal-lead">
+            Current priority: <StatusPill value={ticket?.priority} priority={ticket?.priority} />
+          </p>
+          <FormGroup>
+            <Label for="tm-set-priority-select">Priority</Label>
+            <Input
+              id="tm-set-priority-select"
+              type="select"
+              value={ticketPriority || ticket?.priority || ''}
+              onChange={(event) => setTicketPriority(event.target.value)}
+            >
+              {priorities.map((priority) => <option key={priority} value={priority}>{labelValue(priority)}</option>)}
+            </Input>
+          </FormGroup>
+        </ModalBody>
+        <ModalFooter>
+          <Button color="secondary" outline type="button" onClick={onClose}>Cancel</Button>
+          <Button color="primary" type="submit" disabled={!ticketPriority || ticketPriority === ticket?.priority}>
+            Save priority
+          </Button>
+        </ModalFooter>
+      </Form>
+    </Modal>
+  );
+}
+
+function MoreActionsModal({
+  isOpen,
+  onClose,
+  ticket,
+  participants,
+  attachments,
+  partnerUsers,
+  responsibleUsers,
+  ticketTypes,
+  canManageParticipants,
+  canAddCommunication,
+  canEditTicketType,
+  canTransferOwner,
+  canReturnToQueue,
+  participantId,
+  setParticipantId,
+  uploadFile,
+  setUploadFile,
+  ticketType,
+  setTicketType,
+  transferOwner,
+  setTransferOwner,
+  downloadingAttachmentId,
+  onDownload,
+  onCopyTicketId,
+  onAddParticipant,
+  onRemoveParticipant,
+  onUploadAttachment,
+  onSaveTicketType,
+  onTransferOwner,
+  onReturnToQueue
+}) {
+  const [view, setView] = useState('menu');
+
+  useEffect(() => {
+    if (!isOpen) setView('menu');
+  }, [isOpen]);
+
+  const close = () => {
+    setView('menu');
+    onClose();
+  };
+
+  const titles = {
+    menu: 'More actions',
+    participants: 'Manage participants',
+    attachments: 'Manage attachments',
+    'ticket-type': 'Change ticket type',
+    'transfer-owner': 'Transfer owner'
+  };
+
+  return (
+    <Modal isOpen={isOpen} toggle={close} backdrop size={view === 'menu' ? undefined : 'lg'}>
+      <ModalHeader toggle={close}>
+        {view !== 'menu' && (
+          <Button color="link" className="tm-modal-back p-0 me-2" type="button" onClick={() => setView('menu')} aria-label="Back to actions">
+            <i className="bi bi-arrow-left" />
+          </Button>
+        )}
+        {titles[view]}
+      </ModalHeader>
+      <ModalBody>
+        {view === 'menu' && (
+          <div className="tm-more-actions-menu">
+            {canManageParticipants && (
+              <Button color="secondary" outline className="tm-more-action-btn" onClick={() => setView('participants')}>
+                <i className="bi bi-people" aria-hidden="true" />
+                Manage participants
+              </Button>
+            )}
+            <Button color="secondary" outline className="tm-more-action-btn" onClick={() => setView('attachments')}>
+              <i className="bi bi-paperclip" aria-hidden="true" />
+              Manage attachments
+            </Button>
+            <Button
+              color="secondary"
+              outline
+              className="tm-more-action-btn"
+              onClick={() => {
+                onCopyTicketId();
+              }}
+            >
+              <i className="bi bi-clipboard" aria-hidden="true" />
+              Copy ticket ID
+            </Button>
+            {canEditTicketType && (
+              <Button color="secondary" outline className="tm-more-action-btn" onClick={() => setView('ticket-type')}>
+                <i className="bi bi-tag" aria-hidden="true" />
+                Change ticket type
+              </Button>
+            )}
+            {canTransferOwner && (
+              <Button color="secondary" outline className="tm-more-action-btn" onClick={() => setView('transfer-owner')}>
+                <i className="bi bi-arrow-left-right" aria-hidden="true" />
+                Transfer owner
+              </Button>
+            )}
+            {canReturnToQueue && (
+              <Button color="secondary" outline className="tm-more-action-btn" onClick={onReturnToQueue}>
+                <i className="bi bi-inbox" aria-hidden="true" />
+                Return to queue
+              </Button>
+            )}
+          </div>
+        )}
+        {view === 'participants' && (
+          <div className="tm-more-action-view">
+            <div className={`tm-participant-list${canManageParticipants ? ' tm-participant-list-managed' : ''}`}>
+              {participants.map((participant) => (
+                canManageParticipants ? (
+                  <div className="tm-participant-row" key={participant.id}>
+                    <span className="tm-participant-pill">{participant.name}</span>
+                    <Button
+                      color="secondary"
+                      outline
+                      size="sm"
+                      type="button"
+                      className="tm-participant-remove-btn"
+                      aria-label={`Remove ${participant.name}`}
+                      onClick={() => onRemoveParticipant(participant.id)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ) : (
+                  <span className="tm-participant-pill" key={participant.id}>{participant.name}</span>
+                )
+              ))}
+              {participants.length === 0 && <span className="tm-muted">No participants.</span>}
+            </div>
+            {canManageParticipants && partnerUsers.length > 0 && (
+              <Form className="tm-inline-form tm-inline-form-compact mt-2" onSubmit={(event) => {
+                event.preventDefault();
+                if (participantId) onAddParticipant(participantId);
+              }}>
+                <Input
+                  type="select"
+                  value={participantId}
+                  onChange={(event) => setParticipantId(event.target.value)}
+                  aria-label="Add participant"
+                >
+                  <option value="">Add participant</option>
+                  {partnerUsers.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+                </Input>
+                <Button color="primary" size="sm" type="submit" disabled={!participantId}>
+                  Add
+                </Button>
+              </Form>
+            )}
+          </div>
+        )}
+        {view === 'attachments' && (
+          <AttachmentPanel
+            compact
+            attachments={attachments}
+            uploadFile={uploadFile}
+            setUploadFile={setUploadFile}
+            canUpload={canAddCommunication}
+            downloadingAttachmentId={downloadingAttachmentId}
+            onDownload={onDownload}
+            onUpload={() => {
+              if (uploadFile) onUploadAttachment();
+            }}
+          />
+        )}
+        {view === 'ticket-type' && (
+          <Form onSubmit={(event) => {
+            event.preventDefault();
+            onSaveTicketType();
+          }}>
+            <FormGroup>
+              <Label for="tm-more-ticket-type">Type</Label>
+              <Input
+                id="tm-more-ticket-type"
+                type="select"
+                value={ticketType || ticket?.type || ''}
+                onChange={(event) => setTicketType(event.target.value)}
+              >
+                {ticketTypes.map((type) => <option key={type} value={type}>{labelValue(type)}</option>)}
+              </Input>
+            </FormGroup>
+            <Button color="primary" size="sm" type="submit" disabled={!ticketType || ticketType === ticket?.type}>
+              Save type
+            </Button>
+          </Form>
+        )}
+        {view === 'transfer-owner' && (
+          <Form onSubmit={(event) => {
+            event.preventDefault();
+            onTransferOwner();
+          }}>
+            <FormGroup>
+              <Label for="tm-more-transfer-owner">New owner</Label>
+              <Input
+                id="tm-more-transfer-owner"
+                type="select"
+                value={transferOwner}
+                onChange={(event) => setTransferOwner(event.target.value)}
+              >
+                <option value="">Select owner</option>
+                {responsibleUsers.map((row) => <option key={row.id} value={row.email}>{row.name}</option>)}
+              </Input>
+            </FormGroup>
+            <Button color="primary" size="sm" type="submit" disabled={!transferOwner}>
+              Transfer
+            </Button>
+          </Form>
+        )}
+      </ModalBody>
+      {view === 'menu' && (
+        <ModalFooter>
+          <Button color="secondary" outline type="button" onClick={close}>Cancel</Button>
+        </ModalFooter>
+      )}
+    </Modal>
   );
 }
 

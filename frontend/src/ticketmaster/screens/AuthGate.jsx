@@ -80,10 +80,10 @@ export function useSession() {
 export default function AuthGate({ children }) {
   const session = useSession();
   useEffect(() => {
-    if (!session.loading && !session.user) {
+    if (!session.loading) {
       window.dispatchEvent(new Event('tm:auth-ready'));
     }
-  }, [session.loading, session.user]);
+  }, [session.loading]);
   if (session.loading) {
     return <Loading />;
   }
