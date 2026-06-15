@@ -15,7 +15,7 @@ import {
 
 import api, { clearSession, currentUser, saveSession } from '../../api/client.js';
 import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
-import { Loading, roleLabel } from './helpers.jsx';
+import { Loading, formatInternalRoles, roleLabel } from './helpers.jsx';
 
 export function useSession() {
   const [user, setUserState] = useState(currentUser());
@@ -101,7 +101,9 @@ export default function AuthGate({ children }) {
 function HeaderSession({ user, onLogout }) {
   const [headerNavList, setHeaderNavList] = useState(null);
   const displayName = (user?.name || user?.email || 'User').trim();
-  const role = roleLabel(user?.internal_role || user?.partner_role);
+  const role = user?.kind === 'internal'
+    ? formatInternalRoles(user) || 'Not set'
+    : roleLabel(user?.partner_role) || 'Not set';
   const email = (user?.email || '').trim();
   const initials = userInitials(user?.name, email);
 

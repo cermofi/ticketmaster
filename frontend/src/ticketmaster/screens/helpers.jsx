@@ -105,6 +105,25 @@ export function roleLabel(role) {
   return role;
 }
 
+export function getInternalRoles(user) {
+  if (!user || user.kind !== 'internal') return [];
+  if (Array.isArray(user.internal_roles) && user.internal_roles.length) return user.internal_roles;
+  if (user.internal_role) return [user.internal_role];
+  return [];
+}
+
+export function hasInternalRole(user, role) {
+  return getInternalRoles(user).includes(role);
+}
+
+export function hasAnyInternalRole(user, roles) {
+  return roles.some((role) => hasInternalRole(user, role));
+}
+
+export function formatInternalRoles(user) {
+  return getInternalRoles(user).map((role) => roleLabel(role)).join(', ');
+}
+
 export function apiError(err) {
   return err.response?.data?.detail || err.message || 'Unexpected error';
 }

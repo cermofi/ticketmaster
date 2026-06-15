@@ -4,7 +4,7 @@ import { Form, Input, Table } from 'reactstrap';
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
 import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
-import { EmptyRow, ErrorBanner, PageHeader, TimeCell, apiError } from './helpers.jsx';
+import { EmptyRow, ErrorBanner, PageHeader, TimeCell, apiError, hasAnyInternalRole } from './helpers.jsx';
 
 export default function AuditScreen() {
   return (
@@ -48,7 +48,7 @@ function Audit({ user }) {
 
   useRefetchOnFocus(load);
 
-  if (user.kind !== 'internal' || !['Admin', 'DeliveryManager'].includes(user.internal_role)) {
+  if (user.kind !== 'internal' || !hasAnyInternalRole(user, ['Admin', 'DeliveryManager'])) {
     return <div className="tm-screen"><ErrorBanner error="Audit log is available only to Admin and Delivery Manager." /></div>;
   }
 

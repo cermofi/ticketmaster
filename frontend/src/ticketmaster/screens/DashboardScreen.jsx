@@ -16,7 +16,7 @@ import {
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
 import { usePolling, useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
-import { EmptyRow, ErrorBanner, Loading, PageHeader, StatusPill, TimeCell, apiError, asArray, downloadResponse, exportError, labelValue } from './helpers.jsx';
+import { EmptyRow, ErrorBanner, Loading, PageHeader, StatusPill, TimeCell, apiError, asArray, downloadResponse, exportError, hasAnyInternalRole, labelValue } from './helpers.jsx';
 
 const EMPTY_FILTERS = { search: '', status: '', priority: '', type: '', resolver_team: '', internal: '' };
 const TICKETS_POLL_MS = 30000;
@@ -120,7 +120,7 @@ function Dashboard({ user }) {
     ));
   };
 
-  const canCreateOnBehalf = user.kind === 'internal' && ['Admin', 'DeliveryManager'].includes(user.internal_role);
+  const canCreateOnBehalf = user.kind === 'internal' && hasAnyInternalRole(user, ['Admin', 'DeliveryManager']);
 
   return (
     <div className="tm-screen tm-tickets-screen">

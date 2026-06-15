@@ -15,7 +15,7 @@ import {
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
 import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
-import { EmptyRow, ErrorBanner, PageHeader, apiError, roleLabel } from './helpers.jsx';
+import { EmptyRow, ErrorBanner, PageHeader, apiError, formatInternalRoles, getInternalRoles, hasAnyInternalRole, hasInternalRole, roleLabel } from './helpers.jsx';
 
 export default function AdminScreen() {
   return (
@@ -32,7 +32,7 @@ function Admin({ user }) {
   const [error, setError] = useState('');
   const [partnerName, setPartnerName] = useState('');
   const [clientForm, setClientForm] = useState({ partner_id: '', name: '' });
-  const [internalUser, setInternalUser] = useState({ email: '', name: '', role: 'L1' });
+  const [internalUser, setInternalUser] = useState({ email: '', name: '', roles: ['L1'] });
   const [partnerUser, setPartnerUser] = useState({ partner_id: '', email: '', name: '', role: 'responsible' });
   const [assignment, setAssignment] = useState({ client_id: '', user_id: '' });
   const [editingClient, setEditingClient] = useState(null);
@@ -108,7 +108,7 @@ function Admin({ user }) {
     }
   }, [assignment.user_id, assignmentResponsibleUsers]);
 
-  if (user.kind !== 'internal' || !['Admin', 'DeliveryManager'].includes(user.internal_role)) {
+  if (user.kind !== 'internal' || !hasAnyInternalRole(user, ['Admin', 'DeliveryManager'])) {
     return <div className="tm-screen"><ErrorBanner error="Admin section is available only to Admin and Delivery Manager users." /></div>;
   }
 
@@ -255,7 +255,7 @@ function ActionPanel({
   compact = false
 }) {
   const actions = [
-    ...(user.internal_role === 'Admin' ? [
+    ...(hasInternalRole(user, 'Admin') ? [
       { id: 'partner', label: 'Partner' },
       { id: 'internal-user', label: 'Internal user' }
     ] : []),
@@ -309,7 +309,7 @@ function ActionPanel({
             event.preventDefault();
             submit(async () => {
               await api.post('/users/internal', internalUser);
-              setInternalUser({ email: '', name: '', role: 'L1' });
+              setInternalUser({ email: '', name: '', roles: ['L1'] });
             });
           }}>
             <h3>Create internal user</h3>
@@ -322,12 +322,13 @@ function ActionPanel({
               <Input value={internalUser.name} onChange={(event) => setInternalUser({ ...internalUser, name: event.target.value })} autoComplete="name" />
             </FormGroup>
             <FormGroup>
-              <Label>Role</Label>
-              <Input type="select" value={internalUser.role} onChange={(event) => setInternalUser({ ...internalUser, role: event.target.value })}>
-                {['Admin', 'DeliveryManager', 'L1', 'L2', 'L3'].map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}
-              </Input>
+              <Label>Roles</Label>
+              <InternalRolePicker
+                roles={internalUser.roles}
+                onChange={(roles) => setInternalUser({ ...internalUser, roles })}
+              />
             </FormGroup>
-            <Button color="primary" type="submit" className="w-100" disabled={!internalUser.email.trim() || !internalUser.name.trim()}>
+            <Button color="primary" type="submit" className="w-100" disabled={!internalUser.email.trim() || !internalUser.name.trim() || internalUser.roles.length === 0}>
               Create user
             </Button>
           </Form>
@@ -584,7 +585,7 @@ function UsersTable({ rows, partners, currentUser, onEdit, onDelete }) {
         </thead>
         <tbody>
           {rows.map((row) => {
-            const canManage = currentUser.internal_role === 'Admin' || row.kind === 'partner';
+            const canManage = hasInternalRole(currentUser, 'Admin') || row.kind === 'partner';
             return (
               <tr key={row.id}>
                 <td>{row.email}</td>
@@ -719,7 +720,7 @@ function ClientEditModal({ client, users, isOpen, onClose, onSave, submit: runAd
 }
 
 function UserEditModal({ userRow, currentUser, isOpen, onClose, onSave, onPasswordReset, actionMessage, clearActionMessage }) {
-  const [form, setForm] = useState({ email: '', name: '', role: '', active: true });
+  const [form, setForm] = useState({ email: '', name: '', roles: [], active: true });
   const roleOptions = userRow?.kind === 'internal'
     ? ['Admin', 'DeliveryManager', 'L1', 'L2', 'L3']
     : ['responsible', 'technical'];
@@ -730,17 +731,26 @@ function UserEditModal({ userRow, currentUser, isOpen, onClose, onSave, onPasswo
     setForm({
       email: userRow?.email || '',
       name: userRow?.name || '',
-      role: userRow ? userRole(userRow) : '',
+      roles: userRow?.kind === 'internal' ? getInternalRoles(userRow) : [userRole(userRow)].filter(Boolean),
       active: userRow?.active ?? true
     });
   }, [userRow]);
 
   const submit = (event) => {
     event.preventDefault();
+    if (userRow?.kind === 'internal') {
+      onSave({
+        email: form.email.trim(),
+        name: form.name.trim(),
+        roles: form.roles,
+        active: form.active
+      });
+      return;
+    }
     onSave({
       email: form.email.trim(),
       name: form.name.trim(),
-      role: form.role,
+      role: form.roles[0],
       active: form.active
     });
   };
@@ -759,10 +769,17 @@ function UserEditModal({ userRow, currentUser, isOpen, onClose, onSave, onPasswo
             <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
           </FormGroup>
           <FormGroup>
-            <Label>Role</Label>
-            <Input type="select" value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value })}>
-              {roleOptions.map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}
-            </Input>
+            <Label>{userRow?.kind === 'internal' ? 'Roles' : 'Role'}</Label>
+            {userRow?.kind === 'internal' ? (
+              <InternalRolePicker
+                roles={form.roles}
+                onChange={(roles) => setForm({ ...form, roles })}
+              />
+            ) : (
+              <Input type="select" value={form.roles[0] || ''} onChange={(event) => setForm({ ...form, roles: [event.target.value] })}>
+                {roleOptions.map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}
+              </Input>
+            )}
           </FormGroup>
           <div className="tm-switch-row">
             <span>Active</span>
@@ -784,10 +801,43 @@ function UserEditModal({ userRow, currentUser, isOpen, onClose, onSave, onPasswo
             Send password reset
           </Button>
           <Button outline color="secondary" type="button" onClick={onClose}>Cancel</Button>
-          <Button color="primary" type="submit" disabled={!form.email.trim() || !form.name.trim() || !form.role}>Save</Button>
+          <Button color="primary" type="submit" disabled={!form.email.trim() || !form.name.trim() || form.roles.length === 0}>Save</Button>
         </ModalFooter>
       </Form>
     </Modal>
+  );
+}
+
+function InternalRolePicker({ roles, onChange }) {
+  const options = ['Admin', 'DeliveryManager', 'L1', 'L2', 'L3'];
+
+  const toggleRole = (role) => {
+    if (roles.includes(role)) {
+      onChange(roles.filter((item) => item !== role));
+      return;
+    }
+    if (roles.length >= 3) return;
+    onChange([...roles, role]);
+  };
+
+  return (
+    <div className="tm-role-picker" role="group" aria-label="Internal roles">
+      {options.map((role) => {
+        const selected = roles.includes(role);
+        return (
+          <button
+            key={role}
+            type="button"
+            className={`tm-role-option ${selected ? 'is-selected' : ''}`}
+            aria-pressed={selected}
+            onClick={() => toggleRole(role)}
+          >
+            {roleLabel(role)}
+          </button>
+        );
+      })}
+      <div className="tm-muted mt-2">Select up to 3 roles. Permissions combine across selected roles.</div>
+    </div>
   );
 }
 
@@ -796,7 +846,17 @@ function ActiveBadge({ active }) {
 }
 
 function userRole(row) {
-  return row.kind === 'internal' ? row.internal_role : row.partner_role;
+  if (row.kind === 'internal') {
+    return formatInternalRoles(row);
+  }
+  return row.partner_role;
+}
+
+function userRoleValues(row) {
+  if (row.kind === 'internal') {
+    return getInternalRoles(row);
+  }
+  return row.partner_role ? [row.partner_role] : [];
 }
 
 function filterPartners(rows, filters) {
@@ -812,12 +872,12 @@ function filterClients(rows, partnerNames, filters) {
 
 function filterUsers(rows, partnerNames, filters) {
   return rows.filter((row) => {
-    const role = userRole(row);
+    const roles = userRoleValues(row);
     return (
       (!filters.partner_id || row.partner_id === filters.partner_id)
       && (!filters.user_kind || row.kind === filters.user_kind)
-      && (!filters.role || role === filters.role)
-      && matchesSearch([row.email, row.name, row.kind, role, partnerNames.get(row.partner_id)], filters.search)
+      && (!filters.role || roles.includes(filters.role))
+      && matchesSearch([row.email, row.name, row.kind, userRole(row), partnerNames.get(row.partner_id)], filters.search)
     );
   });
 }

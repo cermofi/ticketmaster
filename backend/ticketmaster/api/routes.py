@@ -27,6 +27,7 @@ from ticketmaster.schemas.serializers import (
 from ticketmaster.services import account, admin, auth, gitlab, malware, notifications, ticket_exports, tickets
 from ticketmaster.services.audit import audit
 from ticketmaster.services.errors import NotFoundError, PermissionDenied, ValidationError
+from ticketmaster.services.internal_roles import get_internal_roles, user_has_any_internal_role
 
 
 router = APIRouter()
@@ -54,7 +55,8 @@ class PartnerBody(BaseModel):
 class InternalUserBody(BaseModel):
     email: str
     name: str
-    role: str
+    role: str | None = None
+    roles: list[str] | None = Field(default=None, min_length=1, max_length=3)
 
 
 class PartnerUserBody(BaseModel):
@@ -82,6 +84,7 @@ class UserUpdateBody(BaseModel):
     email: str | None = Field(default=None, min_length=1, max_length=320)
     name: str | None = Field(default=None, min_length=1, max_length=200)
     role: str | None = Field(default=None, min_length=1, max_length=40)
+    roles: list[str] | None = Field(default=None, min_length=1, max_length=3)
     active: bool | None = None
 
 
@@ -221,7 +224,7 @@ def _clear_login_rate_limit(request: Request, email: str) -> None:
 
 
 def _require_partner_api_access(user: User, partner_id: str, *, create: bool) -> None:
-    if user.kind == "internal" and user.internal_role in {"Admin", "DeliveryManager"}:
+    if user.kind == "internal" and user_has_any_internal_role(user, {"Admin", "DeliveryManager"}):
         return
     if user.kind == "partner" and user.partner_id == partner_id:
         if create and user.partner_role != "responsible":
@@ -411,7 +414,7 @@ def users_list(db: DbSession, user: CurrentUser, partner: str | None = None) -> 
 @router.post("/users/internal")
 def users_create_internal(db: DbSession, user: CurrentUser, body: InternalUserBody) -> dict:
     admin.require_admin_or_dm(user)
-    row = admin.create_internal_user(db, email=body.email, name=body.name, role=body.role, actor=user)
+    row = admin.create_internal_user(db, email=body.email, name=body.name, role=body.role, roles=body.roles, actor=user)
     db.commit()
     return user_to_dict(row)
 
@@ -429,7 +432,7 @@ def users_invite_partner(db: DbSession, user: CurrentUser, body: PartnerUserBody
 @router.patch("/users/{user_id}")
 def users_update(db: DbSession, user: CurrentUser, user_id: str, body: UserUpdateBody) -> dict:
     admin.require_admin_or_dm(user)
-    row = admin.update_user(db, user_id=user_id, email=body.email, name=body.name, role=body.role, active=body.active, actor=user)
+    row = admin.update_user(db, user_id=user_id, email=body.email, name=body.name, role=body.role, roles=body.roles, active=body.active, actor=user)
     db.commit()
     return user_to_dict(row)
 
@@ -627,7 +630,7 @@ def tickets_export(
             "ticket_count": result.ticket_count,
             "filters": result.filters,
             "viewer_kind": user.kind,
-            "viewer_role": user.internal_role or user.partner_role,
+            "viewer_role": ", ".join(get_internal_roles(user)) if user.kind == "internal" else user.partner_role,
         },
     )
     db.commit()
@@ -877,7 +880,7 @@ def attachments_download(db: DbSession, user: CurrentUser, attachment_id: str) -
 
 @router.get("/audit")
 def audit_list(db: DbSession, user: CurrentUser, entity_id: str | None = None) -> list[dict]:
-    if user.kind != "internal" or user.internal_role not in {"Admin", "DeliveryManager"}:
+    if user.kind != "internal" or not user_has_any_internal_role(user, {"Admin", "DeliveryManager"}):
         raise PermissionDenied("Audit log is visible only for Admin and Delivery Manager")
     stmt = select(AuditLog)
     if entity_id:
@@ -915,7 +918,7 @@ def gitlab_sync_status(db: DbSession, user: CurrentUser, ticket_id: str) -> dict
 
 @router.post("/email/test")
 def email_test(db: DbSession, user: CurrentUser, to: str) -> dict:
-    if user.kind != "internal" or user.internal_role not in {"Admin", "DeliveryManager"}:
+    if user.kind != "internal" or not user_has_any_internal_role(user, {"Admin", "DeliveryManager"}):
         raise PermissionDenied("Only Admin or Delivery Manager can test e-mail")
     row = notifications.queue_email(db, event="email_test", recipient_email=to, subject="TicketMaster test e-mail", body="TicketMaster SMTP test succeeded.", ticket_id=None)
     notifications.retry_failed(db)
@@ -925,6 +928,6 @@ def email_test(db: DbSession, user: CurrentUser, to: str) -> dict:
 
 @router.post("/notifications/retry-failed")
 def notifications_retry(db: DbSession, user: CurrentUser) -> dict:
-    if user.kind != "internal" or user.internal_role not in {"Admin", "DeliveryManager"}:
+    if user.kind != "internal" or not user_has_any_internal_role(user, {"Admin", "DeliveryManager"}):
         raise PermissionDenied("Only Admin or Delivery Manager can retry notifications")
     raise PermissionDenied("Manual notification retry is not available in MVP")

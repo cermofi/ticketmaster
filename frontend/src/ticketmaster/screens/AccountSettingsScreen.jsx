@@ -4,7 +4,7 @@ import { Alert, Button, Form, FormGroup, Input, Label } from 'reactstrap';
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
 import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
-import { ErrorBanner, Loading, PageHeader, apiError, roleLabel } from './helpers.jsx';
+import { ErrorBanner, Loading, PageHeader, apiError, formatInternalRoles, roleLabel } from './helpers.jsx';
 
 export default function AccountSettingsScreen() {
   return (
@@ -45,7 +45,9 @@ function AccountSettings({ user, session }) {
 
   const emailEditable = profile?.email_editable === true;
   const role = useMemo(
-    () => roleLabel(profile?.internal_role || profile?.partner_role) || 'Not set',
+    () => (profile?.kind === 'internal'
+      ? formatInternalRoles(profile)
+      : roleLabel(profile?.partner_role)) || 'Not set',
     [profile]
   );
   const hasChanges = useMemo(() => (
@@ -175,6 +177,7 @@ function profileToSessionUser(profile) {
     name: profile?.name,
     kind: profile?.kind,
     internal_role: profile?.internal_role,
+    internal_roles: profile?.internal_roles,
     partner_id: profile?.partner_id,
     partner_role: profile?.partner_role,
     active: profile?.active,

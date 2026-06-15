@@ -24,6 +24,14 @@ from ticketmaster.services import gitlab, search as ticket_search
 from ticketmaster.services.audit import audit
 from ticketmaster.services.admin import resolve_client, resolve_partner, resolve_user
 from ticketmaster.services.errors import ConflictError, NotFoundError, PermissionDenied, ValidationError
+from ticketmaster.services.internal_roles import (
+    ADMIN_DM_ROLES,
+    assignee_has_resolver_team,
+    get_internal_roles,
+    get_user_resolver_teams,
+    user_has_any_internal_role,
+    user_has_internal_role,
+)
 from ticketmaster.services.notifications import queue_email
 
 
@@ -46,10 +54,11 @@ def get_ticket(db: Session, ticket_id: str) -> Ticket:
 
 def can_view_ticket(db: Session, user: User, ticket: Ticket) -> bool:
     if user.kind == "internal":
-        if user.internal_role in {"Admin", "DeliveryManager"}:
+        if user_has_any_internal_role(user, ADMIN_DM_ROLES):
             return True
-        if user.internal_role in RESOLVER_TEAMS:
-            return ticket.resolver_team == user.internal_role
+        resolver_teams = get_user_resolver_teams(user)
+        if resolver_teams:
+            return ticket.resolver_team in resolver_teams
         return False
     if ticket.internal:
         return False
@@ -158,7 +167,7 @@ def create_partner_ticket_on_behalf(
 ) -> Ticket:
     if not actor.active:
         raise PermissionDenied("Account is inactive")
-    if actor.kind != "internal" or actor.internal_role not in {"Admin", "DeliveryManager"}:
+    if actor.kind != "internal" or not user_has_any_internal_role(actor, ADMIN_DM_ROLES):
         raise PermissionDenied("Only Admin or Delivery Manager can create partner tickets on behalf of a partner")
     validate_ticket_type(ticket_type)
     validate_priority(priority)
@@ -254,7 +263,7 @@ def create_internal_ticket(
 ) -> Ticket:
     if not actor.active:
         raise PermissionDenied("Account is inactive")
-    if actor.kind != "internal" or actor.internal_role not in {"Admin", "DeliveryManager", "L1", "L2", "L3"}:
+    if actor.kind != "internal" or not get_internal_roles(actor):
         raise PermissionDenied("Only internal users can create internal tickets")
     validate_ticket_type(ticket_type)
     validate_priority(priority)
@@ -306,7 +315,7 @@ def create_system_ticket(
         if not team:
             raise ValidationError("Assignee requires resolver team")
         assignee = resolve_user(db, assignee_ref)
-        if not assignee.active or assignee.kind != "internal" or assignee.internal_role != team:
+        if not assignee_has_resolver_team(assignee, team):
             raise ValidationError("Assignee must be an active internal user from the resolver team")
     ticket = Ticket(
         id=new_id(),
@@ -407,8 +416,12 @@ def _visible_ticket_stmt(
     stmt = select(Ticket)
     if actor.kind == "partner":
         stmt = stmt.where(Ticket.internal.is_(False), Ticket.partner_id == actor.partner_id)
-    elif actor.internal_role not in {"Admin", "DeliveryManager"}:
-        stmt = stmt.where(Ticket.resolver_team == actor.internal_role)
+    elif not user_has_any_internal_role(actor, ADMIN_DM_ROLES):
+        resolver_teams = get_user_resolver_teams(actor)
+        if resolver_teams:
+            stmt = stmt.where(Ticket.resolver_team.in_(resolver_teams))
+        else:
+            stmt = stmt.where(false())
     if search:
         search_ids = ticket_search.find_ticket_ids(search)
         if search_ids is not None:
@@ -526,7 +539,7 @@ def assign_ticket(
     assignee = None
     if assignee_ref:
         assignee = resolve_user(db, assignee_ref)
-        if not assignee.active or assignee.kind != "internal" or assignee.internal_role != team:
+        if not assignee_has_resolver_team(assignee, team):
             raise ValidationError("Assignee must be an active internal user from the resolver team")
         _add_watcher_if_missing(db, ticket.id, assignee.id)
     old = {"status": ticket.status, "resolver_team": ticket.resolver_team, "assignee_id": ticket.assignee_id}
@@ -551,7 +564,7 @@ def assign_ticket(
 
 
 def unassign_ticket(db: Session, *, ticket: Ticket, actor: User, source: str = "ui") -> Ticket:
-    if actor.kind != "internal" or actor.internal_role not in {"Admin", "DeliveryManager"}:
+    if actor.kind != "internal" or not user_has_any_internal_role(actor, ADMIN_DM_ROLES):
         raise PermissionDenied("Only Admin or Delivery Manager can return tickets to the queue")
     if ticket.status == "Closed":
         raise ValidationError("Closed tickets cannot be unassigned")
@@ -583,7 +596,7 @@ def transition_ticket(db: Session, *, ticket: Ticket, actor: User, new_status: s
 def change_ticket_type(db: Session, *, ticket: Ticket, actor: User, ticket_type: str, source: str = "ui") -> Ticket:
     if not actor.active:
         raise PermissionDenied("Account is inactive")
-    if actor.kind != "internal" or actor.internal_role not in {"Admin", "DeliveryManager"}:
+    if actor.kind != "internal" or not user_has_any_internal_role(actor, ADMIN_DM_ROLES):
         raise PermissionDenied("Only Admin or Delivery Manager can change ticket type")
     validate_ticket_type(ticket_type)
     if ticket.type == ticket_type:
@@ -634,7 +647,7 @@ def available_transitions(db: Session, *, ticket: Ticket, actor: User) -> list[s
 
 
 def close_ticket(db: Session, *, ticket: Ticket, actor: User | None, source: str = "ui") -> Ticket:
-    if actor is None or actor.kind != "internal" or actor.internal_role not in {"Admin", "DeliveryManager"}:
+    if actor is None or actor.kind != "internal" or not user_has_any_internal_role(actor, ADMIN_DM_ROLES):
         raise PermissionDenied("Only Admin or Delivery Manager can close tickets")
     if ticket.status != "Closed":
         old = {"status": ticket.status}
@@ -649,7 +662,7 @@ def transfer_owner(db: Session, *, ticket: Ticket, actor: User | None, new_owner
     if ticket.internal or ticket.system:
         raise ValidationError("Only partner tickets have partner owners")
     if actor:
-        allowed = actor.kind == "internal" and actor.internal_role in {"Admin", "DeliveryManager"}
+        allowed = actor.kind == "internal" and user_has_any_internal_role(actor, ADMIN_DM_ROLES)
         allowed = allowed or (actor.kind == "partner" and ticket.owner_id == actor.id)
         if not allowed:
             raise PermissionDenied("You are not allowed to transfer this ticket")
@@ -702,7 +715,7 @@ def comment_revisions(db: Session, *, comment: Comment, actor: User) -> list[Com
 
 
 def _require_comment_moderation(actor: User) -> None:
-    if actor.kind != "internal" or actor.internal_role not in {"Admin", "DeliveryManager"}:
+    if actor.kind != "internal" or not user_has_any_internal_role(actor, ADMIN_DM_ROLES):
         raise PermissionDenied("Only Admin or Delivery Manager can edit or delete comments")
 
 
@@ -717,7 +730,7 @@ def _require_participant_management(ticket: Ticket, actor: User) -> None:
         if ticket.owner_id != actor.id:
             raise PermissionDenied("Only the ticket owner can manage partner participants")
         return
-    if actor.kind == "internal" and actor.internal_role in {"Admin", "DeliveryManager"}:
+    if actor.kind == "internal" and user_has_any_internal_role(actor, ADMIN_DM_ROLES):
         return
     raise PermissionDenied("Admin or Delivery Manager role is required")
 
@@ -725,9 +738,9 @@ def _require_participant_management(ticket: Ticket, actor: User) -> None:
 def _require_assign_permission(actor: User, ticket: Ticket, target_team: str) -> None:
     if actor.kind != "internal":
         raise PermissionDenied("Only internal users can assign tickets")
-    if actor.internal_role in {"Admin", "DeliveryManager"}:
+    if user_has_any_internal_role(actor, ADMIN_DM_ROLES):
         return
-    if ticket.resolver_team == actor.internal_role and target_team == actor.internal_role:
+    if ticket.resolver_team and user_has_internal_role(actor, ticket.resolver_team) and target_team == ticket.resolver_team:
         return
     raise PermissionDenied("Resolver team assignment is not allowed for this role")
 
@@ -735,9 +748,9 @@ def _require_assign_permission(actor: User, ticket: Ticket, target_team: str) ->
 def _require_transition_permission(actor: User, ticket: Ticket, new_status: str) -> None:
     if actor.kind != "internal":
         raise PermissionDenied("Only internal users can transition ticket status in MVP")
-    if actor.internal_role in {"Admin", "DeliveryManager"}:
+    if user_has_any_internal_role(actor, ADMIN_DM_ROLES):
         return
-    if ticket.resolver_team == actor.internal_role and new_status in {"In progress", "Resolved", "Need more info", "Assigned"}:
+    if ticket.resolver_team and user_has_internal_role(actor, ticket.resolver_team) and new_status in {"In progress", "Resolved", "Need more info", "Assigned"}:
         return
     raise PermissionDenied("Status transition is not allowed for this role")
 
@@ -747,7 +760,11 @@ def _ensure_l3_issue(db: Session, ticket: Ticket, actor: User | None, source: st
 
 
 def _notify_delivery_managers(db: Session, ticket: Ticket, subject: str, body: str, *, exclude_user_id: str | None = None) -> None:
-    managers = db.scalars(select(User).where(User.kind == "internal", User.internal_role == "DeliveryManager", User.active.is_(True))).all()
+    managers = [
+        user
+        for user in db.scalars(select(User).where(User.kind == "internal", User.active.is_(True))).all()
+        if user_has_internal_role(user, "DeliveryManager")
+    ]
     for manager in managers:
         if exclude_user_id and manager.id == exclude_user_id:
             continue
@@ -761,6 +778,10 @@ def _notify_partner_comment_recipients(db: Session, ticket: Ticket, body: str) -
         if assignee and assignee.active:
             queue_email(db, event="partner_comment", recipient_email=assignee.email, subject=subject, body=body, ticket_id=ticket.id)
         return
-    managers = db.scalars(select(User).where(User.kind == "internal", User.internal_role == "DeliveryManager", User.active.is_(True))).all()
+    managers = [
+        user
+        for user in db.scalars(select(User).where(User.kind == "internal", User.active.is_(True))).all()
+        if user_has_internal_role(user, "DeliveryManager")
+    ]
     for manager in managers:
         queue_email(db, event="partner_comment", recipient_email=manager.email, subject=subject, body=body, ticket_id=ticket.id)

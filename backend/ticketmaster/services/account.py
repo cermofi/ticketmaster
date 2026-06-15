@@ -8,6 +8,7 @@ from ticketmaster.core.security import hash_password, verify_password
 from ticketmaster.models import User
 from ticketmaster.services.audit import audit
 from ticketmaster.services.errors import PermissionDenied, ValidationError
+from ticketmaster.services.internal_roles import get_internal_roles
 
 _PASSWORD_MIN_LENGTH = 8
 _LETTER_RE = re.compile(r"[A-Za-z]")
@@ -16,12 +17,14 @@ _EMAIL_READONLY_REASON = "E-mail is used as login identity and cannot be changed
 
 
 def profile_to_dict(user: User) -> dict:
+    internal_roles = get_internal_roles(user) if user.kind == "internal" else []
     return {
         "id": user.id,
         "email": user.email,
         "name": user.name,
         "kind": user.kind,
         "internal_role": user.internal_role,
+        "internal_roles": internal_roles,
         "partner_id": user.partner_id,
         "partner_role": user.partner_role,
         "active": user.active,

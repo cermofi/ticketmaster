@@ -3,32 +3,49 @@ from __future__ import annotations
 import secrets
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ticketmaster.core.config import settings
 from ticketmaster.core.slug import slugify
 from ticketmaster.core.security import hash_password
 from ticketmaster.models import Attachment, AuditLog, Client, ClientAssignment, Comment, CommentRevision, Partner, Ticket, TicketParticipant, TicketWatcher, User
-from ticketmaster.models.constants import INTERNAL_ROLES, PARTNER_ROLES
+from ticketmaster.models.constants import PARTNER_ROLES
 from ticketmaster.models.entities import new_id
 from ticketmaster.services.audit import audit
 from ticketmaster.services.errors import ConflictError, NotFoundError, PermissionDenied, ValidationError
+from ticketmaster.services.internal_roles import (
+    get_internal_roles,
+    resolve_internal_role_input,
+    set_internal_roles,
+    user_has_any_internal_role,
+    user_has_internal_role,
+    user_is_active_admin,
+)
 from ticketmaster.services.notifications import queue_email
 
 
 def require_admin_or_dm(actor: User | None) -> None:
-    if actor is None or actor.kind != "internal" or actor.internal_role not in {"Admin", "DeliveryManager"}:
+    if actor is None or actor.kind != "internal" or not user_has_any_internal_role(actor, {"Admin", "DeliveryManager"}):
         raise PermissionDenied("Admin or Delivery Manager role is required")
 
 
 def require_admin(actor: User | None) -> None:
-    if actor is None or actor.kind != "internal" or actor.internal_role != "Admin":
+    if actor is None or actor.kind != "internal" or not user_has_internal_role(actor, "Admin"):
         raise PermissionDenied("Admin role is required")
 
 
-def _require_internal_user_management(actor: User | None, *, target: User | None = None, next_role: str | None = None) -> None:
-    if target and target.kind == "internal" and target.internal_role == "Admin":
+def _require_internal_user_management(
+    actor: User | None,
+    *,
+    target: User | None = None,
+    next_role: str | None = None,
+    next_roles: list[str] | None = None,
+) -> None:
+    if target and target.kind == "internal" and user_has_internal_role(target, "Admin"):
+        require_admin(actor)
+        return
+    if next_roles and "Admin" in next_roles:
         require_admin(actor)
         return
     if next_role == "Admin":
@@ -49,17 +66,25 @@ def _clean_email(value: str) -> str:
 
 
 def _active_admins_excluding(db: Session, user_id: str) -> int:
-    return db.scalar(
-        select(func.count())
-        .select_from(User)
-        .where(User.kind == "internal", User.internal_role == "Admin", User.active.is_(True), User.id != user_id)
-    )
+    users = db.scalars(
+        select(User).where(User.kind == "internal", User.active.is_(True), User.id != user_id)
+    ).all()
+    return sum(1 for user in users if user_has_internal_role(user, "Admin"))
 
 
-def _guard_last_active_admin(db: Session, user: User, *, next_role: str | None = None, next_active: bool | None = None) -> None:
-    if user.kind != "internal" or user.internal_role != "Admin" or not user.active:
+def _guard_last_active_admin(
+    db: Session,
+    user: User,
+    *,
+    next_role: str | None = None,
+    next_roles: list[str] | None = None,
+    next_active: bool | None = None,
+) -> None:
+    if not user_is_active_admin(user):
         return
-    removes_admin_role = next_role is not None and next_role != "Admin"
+    removes_admin_role = next_roles is not None and "Admin" not in next_roles
+    if next_role is not None and next_roles is None:
+        removes_admin_role = next_role != "Admin"
     deactivates_user = next_active is False
     if (removes_admin_role or deactivates_user) and _active_admins_excluding(db, user.id) == 0:
         raise ValidationError("Cannot remove the last active Admin user")
@@ -98,14 +123,14 @@ def create_internal_user(
     *,
     email: str,
     name: str,
-    role: str,
+    role: str | None = None,
+    roles: list[str] | None = None,
     actor: User | None = None,
     source: str = "ui",
 ) -> User:
-    if role not in INTERNAL_ROLES:
-        raise ValidationError(f"Unsupported internal role: {role}")
+    resolved_roles = resolve_internal_role_input(role=role, roles=roles)
     if actor is not None:
-        _require_internal_user_management(actor, next_role=role)
+        _require_internal_user_management(actor, next_roles=resolved_roles)
     email = _clean_email(email)
     name = _clean_required(name, "Name")
     existing = db.scalar(select(User).where(User.email == email))
@@ -116,12 +141,20 @@ def create_internal_user(
         email=email,
         name=name,
         kind="internal",
-        internal_role=role,
         active=True,
     )
+    set_internal_roles(user, resolved_roles)
     db.add(user)
     db.flush()
-    audit(db, entity_type="User", entity_id=user.id, action="user.create_internal", actor=actor, source=source, new_value={"email": user.email, "role": role})
+    audit(
+        db,
+        entity_type="User",
+        entity_id=user.id,
+        action="user.create_internal",
+        actor=actor,
+        source=source,
+        new_value={"email": user.email, "roles": resolved_roles},
+    )
     return user
 
 
@@ -154,6 +187,7 @@ def update_user(
     email: str | None = None,
     name: str | None = None,
     role: str | None = None,
+    roles: list[str] | None = None,
     active: bool | None = None,
     actor: User | None = None,
     source: str = "ui",
@@ -162,11 +196,15 @@ def update_user(
     if not user:
         raise NotFoundError("User not found")
     if user.kind == "internal":
-        _require_internal_user_management(actor, target=user, next_role=role)
+        next_roles = resolve_internal_role_input(role=role, roles=roles) if roles is not None or role is not None else None
+        _require_internal_user_management(actor, target=user, next_role=role, next_roles=next_roles)
+    else:
+        next_roles = None
     old = {
         "email": user.email,
         "name": user.name,
         "internal_role": user.internal_role,
+        "internal_roles": get_internal_roles(user),
         "partner_role": user.partner_role,
         "active": user.active,
     }
@@ -178,17 +216,16 @@ def update_user(
         user.email = cleaned_email
     if name is not None:
         user.name = _clean_required(name, "Name")
-    if role is not None:
-        role = _clean_required(role, "Role")
+    if roles is not None or role is not None:
         if user.kind == "internal":
-            if role not in INTERNAL_ROLES:
-                raise ValidationError(f"Unsupported internal role: {role}")
-            _guard_last_active_admin(db, user, next_role=role)
-            user.internal_role = role
+            resolved_roles = resolve_internal_role_input(role=role, roles=roles)
+            _guard_last_active_admin(db, user, next_roles=resolved_roles)
+            set_internal_roles(user, resolved_roles)
         else:
-            if role not in PARTNER_ROLES:
-                raise ValidationError(f"Unsupported partner role: {role}")
-            user.partner_role = role
+            single_role = _clean_required(role or (roles[0] if roles else ""), "Role")
+            if single_role not in PARTNER_ROLES:
+                raise ValidationError(f"Unsupported partner role: {single_role}")
+            user.partner_role = single_role
     if active is not None:
         if not active:
             if actor and actor.id == user.id:
@@ -200,6 +237,7 @@ def update_user(
         "email": user.email,
         "name": user.name,
         "internal_role": user.internal_role,
+        "internal_roles": get_internal_roles(user),
         "partner_role": user.partner_role,
         "active": user.active,
     }

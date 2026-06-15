@@ -27,6 +27,7 @@ from ticketmaster.models import (
 )
 from ticketmaster.services import tickets
 from ticketmaster.services.errors import ValidationError
+from ticketmaster.services.internal_roles import get_internal_roles, user_has_any_internal_role
 
 
 @dataclass(frozen=True)
@@ -97,7 +98,7 @@ def build_ticket_export(db: Session, *, actor: User, export_format: str, filters
 def _build_sheets(db: Session, *, actor: User, ticket_rows: list[Ticket]) -> list[Sheet]:
     ticket_ids = [ticket.id for ticket in ticket_rows]
     internal_viewer = actor.kind == "internal"
-    audit_viewer = internal_viewer and actor.internal_role in {"Admin", "DeliveryManager"}
+    audit_viewer = internal_viewer and user_has_any_internal_role(actor, {"Admin", "DeliveryManager"})
 
     user_ids = {ticket.owner_id for ticket in ticket_rows if ticket.owner_id}
     user_ids.update(ticket.created_by_id for ticket in ticket_rows if ticket.created_by_id)
@@ -319,7 +320,7 @@ def _ticket_people_rows(db: Session, model: type[TicketParticipant] | type[Ticke
                 "name": user.name,
                 "email": user.email,
                 "kind": user.kind,
-                "role": user.internal_role or user.partner_role,
+                "role": ", ".join(get_internal_roles(user)) if user.kind == "internal" else user.partner_role,
                 "created_at": relation.created_at,
             }
         )

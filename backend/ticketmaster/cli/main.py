@@ -16,6 +16,7 @@ from ticketmaster.models.entities import new_id
 from ticketmaster.schemas.serializers import client_to_dict, partner_to_dict, ticket_to_dict, user_to_dict
 from ticketmaster.services import admin, gitlab, migrations, notifications, search, seed, tickets
 from ticketmaster.services.errors import TicketMasterError
+from ticketmaster.services.internal_roles import set_internal_roles
 
 
 @contextmanager
@@ -44,9 +45,9 @@ def cli_actor(db: Session) -> User:
         email="cli-system@ticketmaster.local",
         name="TicketMaster CLI",
         kind="internal",
-        internal_role="Admin",
         active=True,
     )
+    set_internal_roles(user, ["Admin"])
     db.add(user)
     db.flush()
     return user
@@ -93,7 +94,15 @@ def cmd_db_seed_dev(_: argparse.Namespace) -> int:
 
 def cmd_user_create_internal(args: argparse.Namespace) -> int:
     with session_scope() as db:
-        user = admin.create_internal_user(db, email=args.email, name=args.name, role=args.role, actor=cli_actor(db), source="cli")
+        user = admin.create_internal_user(
+            db,
+            email=args.email,
+            name=args.name,
+            role=args.role,
+            roles=args.roles,
+            actor=cli_actor(db),
+            source="cli",
+        )
         print_json(user_to_dict(user))
     return 0
 
@@ -282,7 +291,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = _command(user_sub, "create-internal", cmd_user_create_internal)
     p.add_argument("--email", required=True)
     p.add_argument("--name", required=True)
-    p.add_argument("--role", required=True, choices=["Admin", "DeliveryManager", "L1", "L2", "L3"])
+    p.add_argument("--role", choices=["Admin", "DeliveryManager", "L1", "L2", "L3"])
+    p.add_argument("--roles", nargs="+", choices=["Admin", "DeliveryManager", "L1", "L2", "L3"])
     p = _command(user_sub, "deactivate", cmd_user_deactivate)
     p.add_argument("--email", required=True)
     _command(user_sub, "list", cmd_user_list)

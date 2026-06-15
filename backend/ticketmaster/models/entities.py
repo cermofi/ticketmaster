@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from typing import List, Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
@@ -30,6 +31,7 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     internal_role: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    internal_roles: Mapped[Optional[List[str]]] = mapped_column(JsonType, nullable=True)
     partner_id: Mapped[str | None] = mapped_column(ForeignKey("partners.id"), nullable=True, index=True)
     partner_role: Mapped[str | None] = mapped_column(String(40), nullable=True)
     password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)

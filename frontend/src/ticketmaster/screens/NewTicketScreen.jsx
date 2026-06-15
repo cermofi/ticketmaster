@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router';
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
-import { ErrorBanner, Loading, PageHeader, apiError } from './helpers.jsx';
+import { ErrorBanner, Loading, PageHeader, apiError, hasAnyInternalRole } from './helpers.jsx';
 import { InternalTicketForm, PartnerOnBehalfTicketForm, PartnerTicketForm } from './ticketForms.jsx';
 
 export default function NewTicketScreen() {
@@ -22,7 +22,7 @@ function NewTicket({ user }) {
   const [partners, setPartners] = useState([]);
   const [users, setUsers] = useState([]);
   const [error, setError] = useState('');
-  const canCreateOnBehalf = user.kind === 'internal' && ['Admin', 'DeliveryManager'].includes(user.internal_role);
+  const canCreateOnBehalf = user.kind === 'internal' && hasAnyInternalRole(user, ['Admin', 'DeliveryManager']);
   const onBehalfMode = canCreateOnBehalf && searchParams.get('mode') === 'partner';
   const handleCancel = () => navigate('/');
   const handleCreated = (ticket, failedUploads = []) => {

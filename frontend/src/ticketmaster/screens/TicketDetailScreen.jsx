@@ -13,7 +13,7 @@ import {
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
 import { usePolling, useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
-import { EmptyRow, EmptyState, ErrorBanner, Loading, MarkdownText, PageHeader, StatusPill, TimeCell, apiError, asArray, downloadResponse, formatAttachmentSize, labelValue, normalizeApiPath } from './helpers.jsx';
+import { EmptyRow, EmptyState, ErrorBanner, Loading, MarkdownText, PageHeader, StatusPill, TimeCell, apiError, asArray, downloadResponse, formatAttachmentSize, hasAnyInternalRole, hasInternalRole, labelValue, normalizeApiPath } from './helpers.jsx';
 
 const TICKET_DETAIL_POLL_MS = 30000;
 
@@ -119,7 +119,7 @@ function TicketDetail({ user }) {
     ? user.kind === 'partner' && user.partner_role === 'responsible'
     : !ticket?.internal && (user.kind === 'internal' || ticket?.owner_id === user.id);
   const canEditTicketType = user.kind === 'internal'
-    && ['Admin', 'DeliveryManager'].includes(user.internal_role)
+    && hasAnyInternalRole(user, ['Admin', 'DeliveryManager'])
     && ticketTypes.length > 0;
   const showActions = user.kind === 'internal' || canTransferOwner;
   const canAddCommunication = ticket?.status !== 'Closed' && (
@@ -130,7 +130,7 @@ function TicketDetail({ user }) {
   const canAssignTicket = ticket?.status !== 'Closed';
   const canReturnToQueue = canAssignTicket
     && user.kind === 'internal'
-    && ['Admin', 'DeliveryManager'].includes(user.internal_role)
+    && hasAnyInternalRole(user, ['Admin', 'DeliveryManager'])
     && Boolean(ticket?.resolver_team)
     && Boolean(ticket?.assignee_id);
   const showPrimaryStatusActions = user.kind === 'internal';
@@ -270,7 +270,7 @@ function TicketDetail({ user }) {
                               <Label>Assignee</Label>
                               <Input type="select" value={assignment.assignee || ''} onChange={(event) => setAssignment({ ...assignment, assignee: event.target.value })}>
                                 <option value="">Unassigned</option>
-                                {internalUsers.filter((row) => row.internal_role === assignmentTeam).map((row) => <option key={row.id} value={row.email}>{row.name}</option>)}
+                                {internalUsers.filter((row) => hasInternalRole(row, assignmentTeam)).map((row) => <option key={row.id} value={row.email}>{row.name}</option>)}
                               </Input>
                             </FormGroup>
                             <Button color="primary" size="sm" className="w-100" type="submit">

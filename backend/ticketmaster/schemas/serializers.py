@@ -16,15 +16,18 @@ from ticketmaster.models import (
     TicketWatcher,
     User,
 )
+from ticketmaster.services.internal_roles import get_internal_roles
 
 
 def user_to_dict(user: User) -> dict:
+    internal_roles = get_internal_roles(user) if user.kind == "internal" else []
     return {
         "id": user.id,
         "email": user.email,
         "name": user.name,
         "kind": user.kind,
         "internal_role": user.internal_role,
+        "internal_roles": internal_roles,
         "partner_id": user.partner_id,
         "partner_role": user.partner_role,
         "active": user.active,
