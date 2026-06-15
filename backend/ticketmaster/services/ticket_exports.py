@@ -7,6 +7,7 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 from xml.sax.saxutils import escape
 
 from sqlalchemy import select
@@ -48,6 +49,9 @@ class Sheet:
     rows: list[dict[str, Any]]
 
 
+TICKET_EXPORT_DATETIME_FORMAT = "%d.%m.%Y %H:%M"
+TICKET_EXPORT_DATETIME_TZ = ZoneInfo("Europe/Prague")
+
 TICKET_EXPORT_COLUMNS: tuple[tuple[str, str], ...] = (
     ("created_at", "Vytvořeno"),
     ("updated_at", "Aktualizováno"),
@@ -61,6 +65,12 @@ TICKET_EXPORT_COLUMNS: tuple[tuple[str, str], ...] = (
     ("title", "Topic"),
     ("url", "URL"),
 )
+
+
+def format_ticket_export_datetime(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(TICKET_EXPORT_DATETIME_TZ).strftime(TICKET_EXPORT_DATETIME_FORMAT)
 
 
 def _ticket_detail_url(ticket_id: str) -> str:
@@ -131,8 +141,8 @@ def _build_sheets(db: Session, *, actor: User, ticket_rows: list[Ticket]) -> lis
     for ticket in ticket_rows:
         assignee = users.get(ticket.assignee_id)
         values = {
-            "created_at": ticket.created_at,
-            "updated_at": ticket.updated_at,
+            "created_at": format_ticket_export_datetime(ticket.created_at) if ticket.created_at else None,
+            "updated_at": format_ticket_export_datetime(ticket.updated_at) if ticket.updated_at else None,
             "partner_name": partners.get(ticket.partner_id).name if ticket.partner_id in partners else None,
             "client_name": clients.get(ticket.client_id).name if ticket.client_id in clients else None,
             "type": ticket.type,

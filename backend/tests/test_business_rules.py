@@ -4,6 +4,7 @@ import csv
 import json
 import zipfile
 from dataclasses import replace
+from datetime import datetime, timezone
 from io import BytesIO, StringIO
 
 import pytest
@@ -800,6 +801,34 @@ def test_ticket_export_respects_filters_and_rejects_unknown_format(db, fixture_d
         ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="pdf", filters={})
 
 
+def test_format_ticket_export_datetime():
+    value = datetime(2026, 6, 2, 11, 11, tzinfo=timezone.utc)
+    assert ticket_exports.format_ticket_export_datetime(value) == "02.06.2026 13:11"
+
+
+def test_ticket_export_formats_created_and_updated_as_czech_datetime(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+    known = datetime(2026, 6, 2, 11, 11, tzinfo=timezone.utc)
+    ticket.created_at = known
+    ticket.updated_at = known
+    db.commit()
+
+    json_result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="json", filters={})
+    payload = json.loads(json_result.content)
+    assert payload["tickets"][0]["Vytvořeno"] == "02.06.2026 13:11"
+    assert payload["tickets"][0]["Aktualizováno"] == "02.06.2026 13:11"
+
+    csv_result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="csv", filters={})
+    with zipfile.ZipFile(BytesIO(csv_result.content)) as archive:
+        tickets_csv = archive.read("tickets.csv").decode("utf-8")
+        assert "02.06.2026 13:11" in tickets_csv
+
+    xlsx_result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="xlsx", filters={})
+    with zipfile.ZipFile(BytesIO(xlsx_result.content)) as archive:
+        sheet1 = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
+        assert "02.06.2026 13:11" in sheet1
+
+
 def test_ticket_export_ticket_url_uses_app_base_url(db, fixture_data, monkeypatch):
     monkeypatch.setattr(
         ticket_exports,
@@ -812,6 +841,21 @@ def test_ticket_export_ticket_url_uses_app_base_url(db, fixture_data, monkeypatc
     payload = json.loads(result.content)
 
     assert payload["tickets"][0]["URL"] == f"https://tickets.example.test/#/tickets/{ticket.id}"
+
+
+def test_ticket_export_ticket_url_uses_production_base_url(db, fixture_data, monkeypatch):
+    monkeypatch.setattr(
+        ticket_exports,
+        "settings",
+        replace(ticket_exports.settings, base_url="https://ticketmaster.cermofi.cz"),
+    )
+    ticket = create_partner_ticket(db, fixture_data)
+
+    result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="json", filters={})
+    payload = json.loads(result.content)
+
+    assert payload["tickets"][0]["URL"] == f"https://ticketmaster.cermofi.cz/#/tickets/{ticket.id}"
+    assert "localhost" not in payload["tickets"][0]["URL"]
 
 
 def test_export_endpoint_audits_export_metadata(db, fixture_data):
