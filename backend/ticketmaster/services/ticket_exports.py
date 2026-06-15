@@ -48,6 +48,25 @@ class Sheet:
     rows: list[dict[str, Any]]
 
 
+TICKET_EXPORT_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("created_at", "Vytvořeno"),
+    ("updated_at", "Aktualizováno"),
+    ("partner_name", "Partner"),
+    ("client_name", "Klient"),
+    ("type", "Typ požadavku"),
+    ("priority", "Priorita"),
+    ("status", "Status"),
+    ("resolver_team", "Resolver team"),
+    ("assignee_name", "Asignee"),
+    ("title", "Topic"),
+    ("url", "URL"),
+)
+
+
+def _ticket_detail_url(ticket_id: str) -> str:
+    return f"{settings.base_url.rstrip('/')}/#/tickets/{ticket_id}"
+
+
 def build_ticket_export(db: Session, *, actor: User, export_format: str, filters: dict[str, Any]) -> ExportResult:
     normalized_format = export_format.lower().strip()
     if normalized_format not in {"json", "xlsx", "csv"}:
@@ -100,82 +119,31 @@ def _build_sheets(db: Session, *, actor: User, ticket_rows: list[Ticket]) -> lis
     internal_viewer = actor.kind == "internal"
     audit_viewer = internal_viewer and user_has_any_internal_role(actor, {"Admin", "DeliveryManager"})
 
-    user_ids = {ticket.owner_id for ticket in ticket_rows if ticket.owner_id}
-    user_ids.update(ticket.created_by_id for ticket in ticket_rows if ticket.created_by_id)
-    user_ids.update(ticket.assignee_id for ticket in ticket_rows if ticket.assignee_id)
+    user_ids = {ticket.assignee_id for ticket in ticket_rows if ticket.assignee_id}
     users = _users_by_id(db, user_ids)
     partners = _partners_by_id(db, {ticket.partner_id for ticket in ticket_rows if ticket.partner_id})
     clients = _clients_by_id(db, {ticket.client_id for ticket in ticket_rows if ticket.client_id})
     gitlab_links = _gitlab_by_ticket_id(db, ticket_ids)
 
-    ticket_columns = [
-        "id",
-        "kind",
-        "internal",
-        "system",
-        "partner_id",
-        "partner_name",
-        "client_id",
-        "client_name",
-        "owner_id",
-        "owner_name",
-        "created_by_id",
-        "created_by_name",
-    ]
-    ticket_columns.extend(
-        [
-            "type",
-            "priority",
-            "status",
-            "resolver_team",
-            "assignee_id",
-            "assignee_name",
-            "title",
-            "description",
-            "gitlab_status",
-            "gitlab_issue_exists",
-        ]
-    )
-    if internal_viewer:
-        ticket_columns.extend(["gitlab_issue_iid", "gitlab_link"])
-    ticket_columns.extend(["created_at", "updated_at"])
+    ticket_columns = [label for _, label in TICKET_EXPORT_COLUMNS]
 
     ticket_data = []
     for ticket in ticket_rows:
-        owner = users.get(ticket.owner_id)
-        created_by = users.get(ticket.created_by_id)
         assignee = users.get(ticket.assignee_id)
-        link = gitlab_links.get(ticket.id)
-        row = {
-            "id": ticket.id,
-            "kind": "system" if ticket.system else ("internal" if ticket.internal else "partner"),
-            "internal": ticket.internal,
-            "system": ticket.system,
-            "partner_id": ticket.partner_id,
+        values = {
+            "created_at": ticket.created_at,
+            "updated_at": ticket.updated_at,
             "partner_name": partners.get(ticket.partner_id).name if ticket.partner_id in partners else None,
-            "client_id": ticket.client_id,
             "client_name": clients.get(ticket.client_id).name if ticket.client_id in clients else None,
-            "owner_id": ticket.owner_id,
-            "owner_name": owner.name if owner else None,
-            "created_by_id": ticket.created_by_id,
-            "created_by_name": created_by.name if created_by else None,
             "type": ticket.type,
             "priority": ticket.priority,
             "status": ticket.status,
             "resolver_team": ticket.resolver_team,
-            "assignee_id": ticket.assignee_id,
             "assignee_name": assignee.name if assignee else None,
             "title": ticket.title,
-            "description": ticket.description,
-            "gitlab_status": link.status if link else None,
-            "gitlab_issue_exists": link is not None,
-            "created_at": ticket.created_at,
-            "updated_at": ticket.updated_at,
+            "url": _ticket_detail_url(ticket.id),
         }
-        if internal_viewer:
-            row["gitlab_issue_iid"] = link.issue_iid if link else None
-            row["gitlab_link"] = link.web_url if link else None
-        ticket_data.append(row)
+        ticket_data.append({label: values[key] for key, label in TICKET_EXPORT_COLUMNS})
 
     comment_columns = ["id", "ticket_id", "author_id", "author_name", "author_kind", "visibility", "body", "created_at"]
     comment_data: list[dict[str, Any]] = []
@@ -461,9 +429,10 @@ def _styles_xml() -> str:
 
 
 def _worksheet_xml(sheet: Sheet) -> str:
+    hyperlink_indices = {index for index, column in enumerate(sheet.columns) if column == "URL"}
     rows = [_xlsx_row(1, sheet.columns)]
     for index, row in enumerate(sheet.rows, start=2):
-        rows.append(_xlsx_row(index, [row.get(column) for column in sheet.columns]))
+        rows.append(_xlsx_row(index, [row.get(column) for column in sheet.columns], hyperlink_indices=hyperlink_indices))
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
@@ -472,10 +441,15 @@ def _worksheet_xml(sheet: Sheet) -> str:
     )
 
 
-def _xlsx_row(row_index: int, values: list[Any]) -> str:
+def _xlsx_row(row_index: int, values: list[Any], *, hyperlink_indices: set[int] | None = None) -> str:
+    hyperlink_indices = hyperlink_indices or set()
     cells = []
     for column_index, value in enumerate(values, start=1):
         cell_ref = f"{_excel_column(column_index)}{row_index}"
+        if (column_index - 1) in hyperlink_indices and value:
+            url = _xml_safe(_scalar_text(value)).replace('"', '""')
+            cells.append(f'<c r="{cell_ref}"><f>HYPERLINK("{escape(url)}","{escape(url)}")</f></c>')
+            continue
         text = escape(_xml_safe(_scalar_text(value)))
         cells.append(f'<c r="{cell_ref}" t="inlineStr"><is><t>{text}</t></is></c>')
     return f'<row r="{row_index}">{"".join(cells)}</row>'

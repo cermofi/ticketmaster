@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import csv
 import json
 import zipfile
-from io import BytesIO
+from io import BytesIO, StringIO
 
 import pytest
 from fastapi.testclient import TestClient
@@ -705,7 +706,7 @@ def test_ticket_export_hides_internal_data_from_partner_and_keeps_partner_isolat
     result = ticket_exports.build_ticket_export(db, actor=fixture_data["responsible_a"], export_format="json", filters={})
     payload = json.loads(result.content)
 
-    assert [row["id"] for row in payload["tickets"]] == [ticket.id]
+    assert len(payload["tickets"]) == 1
     assert "internal_notes" not in payload
     assert "audit" not in payload
     assert "gitlab_link" not in payload["tickets"][0]
@@ -731,18 +732,26 @@ def test_internal_ticket_export_formats_include_allowed_internal_data(db, fixtur
 
     json_result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="json", filters={})
     payload = json.loads(json_result.content)
-    assert payload["tickets"][0]["gitlab_link"] == "https://gitlab.example.test/issues/7"
     assert payload["internal_notes"][0]["body"] == "Internal note"
     assert payload["audit"]
+    assert list(payload["tickets"][0].keys()) == [label for _, label in ticket_exports.TICKET_EXPORT_COLUMNS]
+    assert payload["tickets"][0]["URL"].endswith(f"/#/tickets/{ticket.id}")
 
     csv_result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="csv", filters={})
     with zipfile.ZipFile(BytesIO(csv_result.content)) as archive:
         assert {"tickets.csv", "internal_notes.csv", "audit.csv", "gitlab.csv"}.issubset(set(archive.namelist()))
+        tickets_csv = archive.read("tickets.csv").decode("utf-8")
+        header = next(csv.reader(StringIO(tickets_csv)))
+        assert header == [label for _, label in ticket_exports.TICKET_EXPORT_COLUMNS]
+        assert f"/#/tickets/{ticket.id}" in tickets_csv
 
     xlsx_result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="xlsx", filters={})
     with zipfile.ZipFile(BytesIO(xlsx_result.content)) as archive:
         assert "xl/workbook.xml" in archive.namelist()
         assert "xl/worksheets/sheet1.xml" in archive.namelist()
+        sheet1 = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
+        assert "HYPERLINK" in sheet1
+        assert f"/#/tickets/{ticket.id}" in sheet1
 
 
 def test_ticket_export_respects_filters_and_rejects_unknown_format(db, fixture_data):
@@ -762,10 +771,23 @@ def test_ticket_export_respects_filters_and_rejects_unknown_format(db, fixture_d
     result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="json", filters={"priority": "High"})
     payload = json.loads(result.content)
     assert result.ticket_count == 1
-    assert payload["tickets"][0]["priority"] == "High"
+    assert payload["tickets"][0]["Priorita"] == "High"
 
     with pytest.raises(ValidationError):
         ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="pdf", filters={})
+
+
+def test_ticket_export_ticket_url_uses_app_base_url(db, fixture_data, monkeypatch):
+    monkeypatch.setenv("APP_BASE_URL", "https://tickets.example.test")
+    from ticketmaster.core.config import Settings
+
+    monkeypatch.setattr(ticket_exports, "settings", Settings())
+    ticket = create_partner_ticket(db, fixture_data)
+
+    result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="json", filters={})
+    payload = json.loads(result.content)
+
+    assert payload["tickets"][0]["URL"] == f"https://tickets.example.test/#/tickets/{ticket.id}"
 
 
 def test_export_endpoint_audits_export_metadata(db, fixture_data):
