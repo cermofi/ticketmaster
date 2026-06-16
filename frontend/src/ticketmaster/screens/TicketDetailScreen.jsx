@@ -677,6 +677,8 @@ function ReassignModal({
   );
 }
 
+const PRIORITY_TILE_ORDER = ['Critical', 'High', 'Normal', 'Low'];
+
 function priorityTileTone(priority) {
   if (priority === 'Critical') return 'danger';
   if (priority === 'High') return 'warning';
@@ -695,6 +697,7 @@ function SetPriorityModal({ isOpen, onClose, ticket, priorities, onSelectPriorit
 
   const currentPriority = ticket?.priority || '';
   const isBusy = Boolean(submittingPriority);
+  const orderedPriorities = PRIORITY_TILE_ORDER.filter((priority) => priorities.includes(priority));
 
   const handleSelect = async (priority) => {
     if (isBusy || priority === currentPriority) return;
@@ -715,7 +718,7 @@ function SetPriorityModal({ isOpen, onClose, ticket, priorities, onSelectPriorit
         </p>
         <p className="tm-muted tm-set-priority-hint">Select a new priority</p>
         <div className="tm-priority-tiles" role="group" aria-label="Priority options">
-          {priorities.map((priority) => {
+          {orderedPriorities.map((priority) => {
             const isSelected = priority === currentPriority;
             const isLoading = submittingPriority === priority;
             const tone = priorityTileTone(priority);
