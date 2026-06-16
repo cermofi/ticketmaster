@@ -173,52 +173,32 @@ function TicketDetail({ user }) {
         <div className="tm-ticket-layout">
           <main className="tm-ticket-main">
             <section className="tm-panel tm-ticket-summary-panel">
-              <header className="tm-ticket-section-head">
-                <h2>Description</h2>
-              </header>
               <MarkdownText content={ticket.description} className="tm-markdown tm-ticket-description" />
             </section>
             <section className="tm-panel tm-ticket-communication-panel">
-              <header className="tm-ticket-section-head">
-                <h2>Communication</h2>
-                {comments.length > 0 && (
-                  <span className="tm-section-count" aria-label={`${comments.length} comments`}>
-                    {comments.length}
-                  </span>
-                )}
-              </header>
+              <h2>Communication</h2>
               <CommentList comments={comments} />
-              {(canAddCommunication) && (
-                <div className="tm-ticket-composers">
-                  {canAddCommunication && (
-                    <CommentForm
-                      title="Add comment"
-                      compact
-                      value={commentBody}
-                      setValue={setCommentBody}
-                      onSubmit={() => action(async () => {
-                        await api.post(`/tickets/${ticket.id}/comments`, { body: commentBody });
-                        setCommentBody('');
-                      })}
-                    />
-                  )}
-                  {canAddCommunication && user.kind === 'internal' && (
-                    <details className="tm-internal-note-composer" open={Boolean(internalNoteBody.trim())}>
-                      <summary>Internal note</summary>
-                      <CommentForm
-                        title="Internal note"
-                        compact
-                        hideLabel
-                        value={internalNoteBody}
-                        setValue={setInternalNoteBody}
-                        onSubmit={() => action(async () => {
-                          await api.post(`/tickets/${ticket.id}/internal-notes`, { body: internalNoteBody });
-                          setInternalNoteBody('');
-                        })}
-                      />
-                    </details>
-                  )}
-                </div>
+              {canAddCommunication && (
+                <CommentForm
+                  title="Add comment"
+                  value={commentBody}
+                  setValue={setCommentBody}
+                  onSubmit={() => action(async () => {
+                    await api.post(`/tickets/${ticket.id}/comments`, { body: commentBody });
+                    setCommentBody('');
+                  })}
+                />
+              )}
+              {canAddCommunication && user.kind === 'internal' && (
+                <CommentForm
+                  title="Internal note"
+                  value={internalNoteBody}
+                  setValue={setInternalNoteBody}
+                  onSubmit={() => action(async () => {
+                    await api.post(`/tickets/${ticket.id}/internal-notes`, { body: internalNoteBody });
+                    setInternalNoteBody('');
+                  })}
+                />
               )}
             </section>
           </main>
@@ -1038,36 +1018,24 @@ function AttachmentPanel({ compact = false, attachments, uploadFile, setUploadFi
 
 function CommentList({ comments }) {
   return (
-    <div className="tm-comment-list">
+    <div className="mb-3">
+      <h3>Comments and notes</h3>
       {comments.map((comment) => (
-        <article
-          key={comment.id}
-          className={`tm-comment${comment.visibility === 'internal_note' ? ' is-internal' : ''}`}
-        >
+        <div key={comment.id} className="tm-comment">
           <div className="tm-comment-head">
-            <div className="tm-comment-meta">
-              <strong className="tm-comment-author">{comment.author_name || comment.author_id}</strong>
-              {comment.visibility === 'internal_note' && (
-                <span className="tm-comment-badge">Internal</span>
-              )}
-            </div>
-            <time className="tm-muted tm-comment-time"><TimeCell value={comment.created_at} /></time>
+            <strong className="tm-comment-author">{comment.author_name || comment.author_id}</strong>
+            <span className="tm-muted tm-comment-time"><TimeCell value={comment.created_at} /></span>
           </div>
+          {comment.visibility === 'internal_note' && <span className="badge text-bg-warning mb-1">Internal note</span>}
           <MarkdownText content={comment.body} className="tm-markdown tm-comment-body" />
-        </article>
+        </div>
       ))}
-      {comments.length === 0 && (
-        <EmptyState
-          icon="bi-chat-left-text"
-          title="No comments yet"
-          message="Ticket communication will appear here."
-        />
-      )}
+      {comments.length === 0 && <EmptyState icon="bi-chat-left-text" title="No comments yet" message="Ticket communication will appear here." />}
     </div>
   );
 }
 
-function CommentForm({ title, value, setValue, onSubmit, compact = false, hideLabel = false }) {
+function CommentForm({ title, value, setValue, onSubmit }) {
   const inputRef = useRef(null);
 
   const setValueWithSelection = (nextValue, selectionStart, selectionEnd) => {
@@ -1121,15 +1089,12 @@ function CommentForm({ title, value, setValue, onSubmit, compact = false, hideLa
   };
 
   return (
-    <Form
-      className={`tm-comment-form${compact ? ' tm-comment-form-compact' : ''}`}
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSubmit();
-      }}
-    >
+    <Form className="tm-comment-form mb-3" onSubmit={(event) => {
+      event.preventDefault();
+      onSubmit();
+    }}>
       <FormGroup>
-        {!hideLabel && <Label>{title}</Label>}
+        <Label>{title}</Label>
         <div className="tm-md-editor">
           <div className="tm-md-editor-toolbar" role="toolbar" aria-label={`${title} markdown panel`}>
             <Button type="button" color="secondary" outline size="sm" onClick={() => insertWrapped('**', '**', 'bold text')}>
@@ -1160,14 +1125,12 @@ function CommentForm({ title, value, setValue, onSubmit, compact = false, hideLa
           <Input
             innerRef={inputRef}
             type="textarea"
-            rows={compact ? 3 : 4}
+            rows="4"
             value={value}
             onChange={(event) => setValue(event.target.value)}
           />
         </div>
-        {!compact && (
-          <div className="tm-muted tm-field-help">Markdown supported (headings, lists, links, bold, code).</div>
-        )}
+        <div className="tm-muted tm-field-help">Markdown supported (headings, lists, links, bold, code).</div>
         <details className="tm-markdown-preview tm-markdown-preview-collapsible">
           <summary className="tm-markdown-preview-head">Markdown preview</summary>
           <MarkdownText
