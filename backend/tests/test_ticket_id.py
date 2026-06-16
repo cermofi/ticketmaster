@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from unittest.mock import patch
 
 import pytest
 
@@ -17,6 +18,24 @@ from ticketmaster.core.ticket_id import (
 from ticketmaster.models.entities import Ticket
 from ticketmaster.services import tickets
 from ticketmaster.services.errors import ConflictError
+
+
+def _make_ticket(db, *, ticket_id: str, fixture_data) -> None:
+    db.add(
+        Ticket(
+            id=ticket_id,
+            partner_id=fixture_data["partner_a"].id,
+            owner_id=fixture_data["responsible_a"].id,
+            created_by_id=fixture_data["responsible_a"].id,
+            internal=False,
+            system=False,
+            type="Question",
+            priority="Normal",
+            status="New",
+            title=f"Ticket {ticket_id}",
+            description=f"Ticket {ticket_id}",
+        )
+    )
 
 
 def test_ticket_id_format_helpers() -> None:
@@ -42,13 +61,13 @@ def test_ticket_id_int_roundtrip() -> None:
     assert int_to_ticket_id(ticket_id_to_int("ZZZZ")) == "ZZZZ"
 
 
-def test_allocate_ticket_id_starts_at_aaaa(db, fixture_data) -> None:
+def test_allocate_ticket_id_returns_standard_format(db, fixture_data) -> None:
     ticket_id = allocate_ticket_id(db)
-    assert ticket_id == "AAAA"
     assert re.fullmatch(r"[A-Z]{4}", ticket_id)
+    assert is_standard_ticket_id(ticket_id)
 
 
-def test_create_partner_ticket_uses_sequential_ids(db, fixture_data) -> None:
+def test_create_partner_ticket_uses_random_unique_ids(db, fixture_data) -> None:
     first = tickets.create_partner_ticket(
         db,
         actor=fixture_data["responsible_a"],
@@ -68,8 +87,7 @@ def test_create_partner_ticket_uses_sequential_ids(db, fixture_data) -> None:
         source="test",
     )
 
-    assert first.id == "AAAA"
-    assert second.id == "AAAB"
+    assert first.id != second.id
     assert re.fullmatch(r"[A-Z]{4}", first.id)
     assert re.fullmatch(r"[A-Z]{4}", second.id)
 
@@ -93,80 +111,67 @@ def test_allocate_ticket_id_skips_legacy_uuid_rows(db, fixture_data) -> None:
     )
     db.flush()
 
-    assert allocate_ticket_id(db) == MIN_TICKET_ID
+    first = allocate_ticket_id(db)
+    assert is_standard_ticket_id(first)
+    assert first != legacy_id
 
-    db.add(
-        Ticket(
-            id="AAAC",
-            partner_id=fixture_data["partner_a"].id,
-            owner_id=fixture_data["responsible_a"].id,
-            created_by_id=fixture_data["responsible_a"].id,
-            internal=False,
-            system=False,
-            type="Question",
-            priority="Normal",
-            status="New",
-            title="Standard ticket",
-            description="Existing AAAA-format id",
-        )
-    )
+    _make_ticket(db, ticket_id="AAAC", fixture_data=fixture_data)
     db.flush()
 
-    assert allocate_ticket_id(db) == "AAAD"
+    second = allocate_ticket_id(db)
+    assert is_standard_ticket_id(second)
+    assert second != "AAAC"
 
 
 def test_allocate_ticket_id_skips_occupied_slots(db, fixture_data) -> None:
-    db.add(
-        Ticket(
-            id="AAAA",
-            partner_id=fixture_data["partner_a"].id,
-            owner_id=fixture_data["responsible_a"].id,
-            created_by_id=fixture_data["responsible_a"].id,
-            internal=False,
-            system=False,
-            type="Question",
-            priority="Normal",
-            status="New",
-            title="First",
-            description="First",
-        )
-    )
-    db.add(
-        Ticket(
-            id="AAAB",
-            partner_id=fixture_data["partner_a"].id,
-            owner_id=fixture_data["responsible_a"].id,
-            created_by_id=fixture_data["responsible_a"].id,
-            internal=False,
-            system=False,
-            type="Question",
-            priority="Normal",
-            status="New",
-            title="Occupied next slot",
-            description="Occupied next slot",
-        )
-    )
+    _make_ticket(db, ticket_id="AAAA", fixture_data=fixture_data)
+    _make_ticket(db, ticket_id="AAAB", fixture_data=fixture_data)
     db.flush()
 
-    assert allocate_ticket_id(db) == "AAAC"
+    ticket_id = allocate_ticket_id(db)
+    assert ticket_id not in {"AAAA", "AAAB"}
+    assert is_standard_ticket_id(ticket_id)
 
 
-def test_allocate_ticket_id_exhaustion(db, fixture_data) -> None:
-    db.add(
-        Ticket(
-            id=MAX_TICKET_ID,
-            partner_id=fixture_data["partner_a"].id,
-            owner_id=fixture_data["responsible_a"].id,
-            created_by_id=fixture_data["responsible_a"].id,
-            internal=False,
-            system=False,
-            type="Question",
-            priority="Normal",
-            status="New",
-            title="Last ticket",
-            description="Last ticket",
-        )
-    )
+def test_allocate_ticket_id_retries_random_collisions(db, fixture_data, monkeypatch) -> None:
+    _make_ticket(db, ticket_id="ZZZZ", fixture_data=fixture_data)
+    _make_ticket(db, ticket_id="YYYY", fixture_data=fixture_data)
+    db.flush()
+
+    attempts = iter(["ZZZZ", "YYYY", MIN_TICKET_ID])
+
+    def fake_random_ticket_id() -> str:
+        return next(attempts)
+
+    monkeypatch.setattr("ticketmaster.core.ticket_id._random_ticket_id", fake_random_ticket_id)
+
+    assert allocate_ticket_id(db) == MIN_TICKET_ID
+
+
+def test_allocate_ticket_id_uses_deterministic_fallback(db, fixture_data, monkeypatch) -> None:
+    _make_ticket(db, ticket_id="AAAA", fixture_data=fixture_data)
+    db.flush()
+
+    monkeypatch.setattr("ticketmaster.core.ticket_id._MAX_RANDOM_ATTEMPTS", 0)
+
+    assert allocate_ticket_id(db) == "AAAB"
+
+
+def test_allocate_ticket_id_exhaustion(db, fixture_data, monkeypatch) -> None:
+    monkeypatch.setattr("ticketmaster.core.ticket_id.TICKET_ID_SPACE_SIZE", 2)
+
+    _make_ticket(db, ticket_id=int_to_ticket_id(0), fixture_data=fixture_data)
+    _make_ticket(db, ticket_id=int_to_ticket_id(1), fixture_data=fixture_data)
+    db.flush()
+
+    with pytest.raises(ConflictError, match="Ticket ID space exhausted"):
+        allocate_ticket_id(db)
+
+
+def test_allocate_ticket_id_exhaustion_when_last_code_taken(db, fixture_data, monkeypatch) -> None:
+    monkeypatch.setattr("ticketmaster.core.ticket_id.TICKET_ID_SPACE_SIZE", 1)
+
+    _make_ticket(db, ticket_id=MAX_TICKET_ID, fixture_data=fixture_data)
     db.flush()
 
     with pytest.raises(ConflictError, match="Ticket ID space exhausted"):
@@ -213,11 +218,12 @@ def test_all_create_flows_use_standard_ticket_ids(db, fixture_data) -> None:
         source="test",
     )
 
-    assert [partner_ticket.id, on_behalf_ticket.id, internal_ticket.id, system_ticket.id] == [
-        "AAAA",
-        "AAAB",
-        "AAAC",
-        "AAAD",
-    ]
-    for ticket_id in (partner_ticket.id, on_behalf_ticket.id, internal_ticket.id, system_ticket.id):
+    created_ids = [partner_ticket.id, on_behalf_ticket.id, internal_ticket.id, system_ticket.id]
+    assert len(set(created_ids)) == len(created_ids)
+    for ticket_id in created_ids:
         assert is_standard_ticket_id(ticket_id)
+
+
+def test_allocate_ticket_id_random_distribution(db, fixture_data) -> None:
+    with patch("ticketmaster.core.ticket_id._random_ticket_id", side_effect=lambda: "QQQQ"):
+        assert allocate_ticket_id(db) == "QQQQ"
