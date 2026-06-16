@@ -204,7 +204,6 @@ function TicketDetail({ user }) {
           <aside className="tm-ticket-side">
             <TicketInfoCard ticket={ticket} />
             <WorkflowCard
-              ticket={ticket}
               showChangeStatus={showChangeStatus}
               showReassign={showReassign}
               showSetPriority={showSetPriority}
@@ -381,7 +380,6 @@ function TicketInfoRow({ icon, label, value }) {
 }
 
 function WorkflowCard({
-  ticket,
   showChangeStatus,
   showReassign,
   showSetPriority,
@@ -393,10 +391,6 @@ function WorkflowCard({
   return (
     <section className="tm-panel tm-side-card tm-workflow-card" aria-labelledby="tm-workflow-heading">
       <SideCardHeader id="tm-workflow-heading" icon="bi-diagram-3" title="Workflow" trailingIcon="bi-chevron-right" />
-      <div className="tm-workflow-stage">
-        <span className="tm-workflow-stage-label">Current stage</span>
-        <StatusPill value={ticket?.status} />
-      </div>
       <div className="tm-workflow-actions">
         {showChangeStatus && (
           <button type="button" className="tm-workflow-action-btn tm-workflow-action-btn-primary" onClick={onChangeStatus}>

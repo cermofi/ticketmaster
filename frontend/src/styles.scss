@@ -2548,26 +2548,6 @@ body[data-tm-contrast="high"] {
   justify-content: flex-end;
 }
 
-.tm-workflow-stage {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: .55rem;
-  margin-bottom: .75rem;
-  padding: .55rem .65rem;
-  border: 1px solid rgba(255, 255, 255, .08);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, .02);
-}
-
-.tm-workflow-stage-label {
-  color: var(--tm-muted);
-  font-size: .75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-}
-
 .tm-workflow-actions {
   display: grid;
   gap: .5rem;
@@ -2869,12 +2849,6 @@ body[data-bs-theme="light"] .tm-ticket-side .tm-side-card {
 html[data-bs-theme="light"] .tm-side-info-row,
 body[data-bs-theme="light"] .tm-side-info-row {
   border-bottom-color: rgba(148, 163, 184, .2);
-}
-
-html[data-bs-theme="light"] .tm-workflow-stage,
-body[data-bs-theme="light"] .tm-workflow-stage {
-  border-color: rgba(148, 163, 184, .24);
-  background: rgba(248, 250, 252, .85);
 }
 
 html[data-bs-theme="light"] .tm-workflow-action-btn,
