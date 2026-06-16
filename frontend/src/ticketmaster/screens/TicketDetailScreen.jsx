@@ -347,6 +347,11 @@ function TicketInfoCard({ ticket }) {
       <SideCardHeader id="tm-ticket-info-heading" icon="bi-info-circle" title="Ticket info" trailingIcon="bi-three-dots" />
       <div className="tm-side-info-list">
         <TicketInfoRow icon="bi-hash" label="Ticket ID" value={ticket?.id || '-'} />
+        <TicketInfoRow
+          icon="bi-calendar-plus"
+          label="Created"
+          value={ticket?.created_at ? <TimeCell value={ticket.created_at} /> : '—'}
+        />
         <TicketInfoRow icon="bi-person-circle" label="Owner" value={ticket?.owner_name || '-'} />
         <TicketInfoRow icon="bi-tag" label="Type" value={labelValue(ticket?.type) || '-'} />
         <TicketInfoRow icon="bi-flag" label="Status" value={<StatusPill value={ticket?.status} />} />
