@@ -172,19 +172,6 @@ function TicketDetail({ user }) {
         <div className="tm-ticket-layout">
           <main className="tm-ticket-main">
             <section className="tm-panel tm-ticket-summary-panel">
-              <div className="tm-ticket-title-row">
-                <div className="tm-ticket-summary-pills">
-                  <StatusPill value={ticket.status} />
-                  <StatusPill value={ticket.priority} priority={ticket.priority} />
-                </div>
-                <div className="tm-ticket-summary-id tm-muted">{ticket.id}</div>
-              </div>
-              <div className="tm-ticket-summary-meta tm-muted">
-                <span>{labelValue(ticket.type) || '-'}</span>
-                <span>{ticket.partner_name || 'No partner'}</span>
-                <span>{ticket.owner_name || 'No owner'}</span>
-              </div>
-              <h2>Description</h2>
               <MarkdownText content={ticket.description} className="tm-markdown tm-ticket-description" />
             </section>
             <section className="tm-panel tm-ticket-communication-panel">
