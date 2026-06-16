@@ -44,7 +44,6 @@ function TicketDetail({ user }) {
   const [internalNoteBody, setInternalNoteBody] = useState('');
   const [assignment, setAssignment] = useState({ team: 'L1', assignee: '' });
   const [ticketType, setTicketType] = useState('');
-  const [ticketPriority, setTicketPriority] = useState('');
   const [transferOwner, setTransferOwner] = useState('');
   const [participantId, setParticipantId] = useState('');
   const [uploadFile, setUploadFile] = useState(null);
@@ -70,7 +69,6 @@ function TicketDetail({ user }) {
       setUsers(usersResponse.data);
       setAssignment({ team: ticketResponse.data.resolver_team || 'L1', assignee: ticketResponse.data.assignee_id || '' });
       setTicketType(ticketResponse.data.type || '');
-      setTicketPriority(ticketResponse.data.priority || '');
     } catch (err) {
       setError(apiError(err));
     }
@@ -280,13 +278,13 @@ function TicketDetail({ user }) {
             isOpen={setPriorityOpen}
             onClose={() => setSetPriorityOpen(false)}
             ticket={ticket}
-            ticketPriority={ticketPriority}
-            setTicketPriority={setTicketPriority}
             priorities={priorities}
-            onSubmit={() => action(async () => {
-              await api.post(`/tickets/${ticket.id}/priority`, { priority: ticketPriority });
-              setSetPriorityOpen(false);
-            })}
+            onSelectPriority={async (priority) => {
+              await action(async () => {
+                await api.post(`/tickets/${ticket.id}/priority`, { priority });
+                setSetPriorityOpen(false);
+              });
+            }}
           />
           <MoreActionsModal
             isOpen={moreActionsOpen}
@@ -679,37 +677,73 @@ function ReassignModal({
   );
 }
 
-function SetPriorityModal({ isOpen, onClose, ticket, ticketPriority, setTicketPriority, priorities, onSubmit }) {
+function priorityTileTone(priority) {
+  if (priority === 'Critical') return 'danger';
+  if (priority === 'High') return 'warning';
+  if (priority === 'Low') return 'soft';
+  return 'neutral';
+}
+
+function SetPriorityModal({ isOpen, onClose, ticket, priorities, onSelectPriority }) {
+  const [submittingPriority, setSubmittingPriority] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSubmittingPriority('');
+    }
+  }, [isOpen]);
+
+  const currentPriority = ticket?.priority || '';
+  const isBusy = Boolean(submittingPriority);
+
+  const handleSelect = async (priority) => {
+    if (isBusy || priority === currentPriority) return;
+    setSubmittingPriority(priority);
+    try {
+      await onSelectPriority(priority);
+    } finally {
+      setSubmittingPriority('');
+    }
+  };
+
   return (
     <Modal isOpen={isOpen} toggle={onClose} backdrop>
-      <Form onSubmit={(event) => {
-        event.preventDefault();
-        onSubmit();
-      }}>
-        <ModalHeader toggle={onClose}>Set priority</ModalHeader>
-        <ModalBody>
-          <p className="tm-muted tm-modal-lead">
-            Current priority: <StatusPill value={ticket?.priority} priority={ticket?.priority} />
-          </p>
-          <FormGroup>
-            <Label for="tm-set-priority-select">Priority</Label>
-            <Input
-              id="tm-set-priority-select"
-              type="select"
-              value={ticketPriority || ticket?.priority || ''}
-              onChange={(event) => setTicketPriority(event.target.value)}
-            >
-              {priorities.map((priority) => <option key={priority} value={priority}>{labelValue(priority)}</option>)}
-            </Input>
-          </FormGroup>
-        </ModalBody>
-        <ModalFooter>
-          <Button color="secondary" outline type="button" onClick={onClose}>Cancel</Button>
-          <Button color="primary" type="submit" disabled={!ticketPriority || ticketPriority === ticket?.priority}>
-            Save priority
-          </Button>
-        </ModalFooter>
-      </Form>
+      <ModalHeader toggle={onClose}>Set priority</ModalHeader>
+      <ModalBody>
+        <p className="tm-muted tm-modal-lead">
+          Current priority: <StatusPill value={ticket?.priority} priority={ticket?.priority} />
+        </p>
+        <p className="tm-muted tm-set-priority-hint">Select a new priority</p>
+        <div className="tm-priority-tiles" role="group" aria-label="Priority options">
+          {priorities.map((priority) => {
+            const isSelected = priority === currentPriority;
+            const isLoading = submittingPriority === priority;
+            const tone = priorityTileTone(priority);
+            return (
+              <button
+                key={priority}
+                type="button"
+                className={[
+                  'tm-priority-tile',
+                  `tm-priority-tile-${tone}`,
+                  isSelected ? 'tm-priority-tile-selected' : '',
+                  isLoading ? 'tm-priority-tile-loading' : ''
+                ].filter(Boolean).join(' ')}
+                onClick={() => handleSelect(priority)}
+                disabled={isBusy}
+                aria-pressed={isSelected}
+                aria-busy={isLoading}
+              >
+                {isLoading && <span className="tm-priority-tile-spinner" aria-hidden="true" />}
+                <span className="tm-priority-tile-label">{labelValue(priority)}</span>
+              </button>
+            );
+          })}
+        </div>
+      </ModalBody>
+      <ModalFooter>
+        <Button color="secondary" outline type="button" onClick={onClose} disabled={isBusy}>Cancel</Button>
+      </ModalFooter>
     </Modal>
   );
 }
