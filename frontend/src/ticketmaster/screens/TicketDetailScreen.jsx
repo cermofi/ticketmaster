@@ -359,6 +359,9 @@ function TicketInfoCard({ ticket }) {
     <section className="tm-panel tm-side-card tm-ticket-info-card" aria-labelledby="tm-ticket-info-heading">
       <SideCardHeader id="tm-ticket-info-heading" icon="bi-info-circle" title="Ticket info" trailingIcon="bi-three-dots" />
       <div className="tm-side-info-list">
+        <TicketInfoRow icon="bi-hash" label="Ticket ID" value={ticket?.id || '-'} />
+        <TicketInfoRow icon="bi-person-circle" label="Owner" value={ticket?.owner_name || '-'} />
+        <TicketInfoRow icon="bi-tag" label="Type" value={labelValue(ticket?.type) || '-'} />
         <TicketInfoRow icon="bi-flag" label="Status" value={<StatusPill value={ticket?.status} />} />
         <TicketInfoRow icon="bi-exclamation-triangle" label="Priority" value={<StatusPill value={ticket?.priority} priority={ticket?.priority} />} />
         <TicketInfoRow icon="bi-person" label="Assignee" value={ticket?.assignee_name || 'Unassigned'} />
