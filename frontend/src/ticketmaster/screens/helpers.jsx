@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useLayoutEffect } from 'react';
 import { Alert } from 'reactstrap';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -15,7 +15,7 @@ export function ErrorBanner({ error }) {
 }
 
 export function Loading() {
-  useEffect(() => {
+  useLayoutEffect(() => {
     loadingStateMounts += 1;
     document.body.classList.add('tm-route-loading');
     return () => {

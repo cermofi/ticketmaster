@@ -39,6 +39,31 @@
           transform: rotate(360deg);
         }
       }
+
+      #app-brandimage > a,
+      #app-brandimage img,
+      #app-sidebar-logo,
+      #app-sidepanel img,
+      #app-sidepanel [class*="logo"],
+      #app-sidepanel [class*="brand"] {
+        background-image: none !important;
+      }
+
+      #app-brandimage img,
+      #app-sidebar-logo {
+        display: none !important;
+      }
+
+      body.tm-app-booting #app-brandimage,
+      body.tm-app-booting #app-sidebar,
+      body.tm-app-booting #app-header,
+      body.tm-app-booting #app-sidepanel,
+      body.tm-route-loading #app-brandimage,
+      body.tm-route-loading #app-sidebar,
+      body.tm-route-loading #app-header,
+      body.tm-route-loading #app-sidepanel {
+        display: none !important;
+      }
     </style>
   </head>
   <body class="tm-app-booting">

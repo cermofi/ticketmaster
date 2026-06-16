@@ -70,6 +70,45 @@ function installChunkRecovery() {
 
 installChunkRecovery();
 
+const BRAND_IMAGE_SELECTOR = '#app-brandimage a, #app-sidebar-logo';
+
+function neutralizeBrandImageNodes(root = document) {
+  root.querySelectorAll(BRAND_IMAGE_SELECTOR).forEach((node) => {
+    if (node.style.backgroundImage) {
+      node.style.backgroundImage = 'none';
+    }
+    node.querySelectorAll('img').forEach((img) => img.remove());
+  });
+}
+
+function installBrandImageGuard() {
+  neutralizeBrandImageNodes();
+
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      if (mutation.type === 'attributes' && mutation.target.matches?.(BRAND_IMAGE_SELECTOR)) {
+        neutralizeBrandImageNodes(mutation.target.parentElement || document);
+        continue;
+      }
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        if (node.matches?.(BRAND_IMAGE_SELECTOR) || node.querySelector?.(BRAND_IMAGE_SELECTOR)) {
+          neutralizeBrandImageNodes(node);
+        }
+      });
+    }
+  });
+
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['style']
+  });
+}
+
+installBrandImageGuard();
+
 function releaseBootModeWhenReady() {
   let resolved = false;
   const appRoot = document.getElementById('app');
@@ -139,20 +178,6 @@ const ConfigDefaults = {
   },
   authorization: 'disabled',
   hasHeaderTitle: false,
-  defaultBrandImage: {
-    full: 'media/logo/header-logo-full.svg',
-    minimized: 'media/logo/header-logo-minimized.svg'
-  },
-  brandImage: {
-    light: {
-      full: 'media/logo/header-logo-full.svg',
-      minimized: 'media/logo/header-logo-minimized.svg'
-    },
-    dark: {
-      full: 'media/logo/header-logo-full-dark.svg',
-      minimized: 'media/logo/header-logo-minimized-dark.svg'
-    }
-  },
   i18n: {
     fallbackLng: 'en',
     supportedLngs: ['en'],

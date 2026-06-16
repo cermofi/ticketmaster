@@ -327,12 +327,21 @@ body.tm-login-session #app-main,
   overflow: hidden;
 }
 
+#app-brandimage > a,
+#app-brandimage img,
+#app-sidebar-logo {
+  background-image: none !important;
+}
+
+#app-brandimage img {
+  display: none !important;
+}
+
 #app-brandimage > a {
   display: flex;
   align-items: center;
   width: 100%;
   height: 100%;
-  background-image: none !important;
   text-decoration: none;
   overflow: hidden;
 }
