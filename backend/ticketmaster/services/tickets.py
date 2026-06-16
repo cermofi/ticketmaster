@@ -19,6 +19,7 @@ from ticketmaster.models import (
     User,
 )
 from ticketmaster.models.constants import PRIORITIES, RESOLVER_TEAMS, STATUSES, TICKET_TYPES, WORKFLOW_TRANSITIONS
+from ticketmaster.core.ticket_id import allocate_ticket_id
 from ticketmaster.models.entities import new_id
 from ticketmaster.services import gitlab, search as ticket_search
 from ticketmaster.services.audit import audit
@@ -131,7 +132,7 @@ def create_partner_ticket(
         if not assignment:
             raise ValidationError("Ticket owner must be assigned as responsible person for the selected client")
     ticket = Ticket(
-        id=new_id(),
+        id=allocate_ticket_id(db),
         partner_id=actor.partner_id,
         client_id=client.id if client else None,
         owner_id=actor.id,
@@ -193,7 +194,7 @@ def create_partner_ticket_on_behalf(
         if not assignment:
             raise ValidationError("Ticket owner must be assigned as responsible person for the selected client")
     ticket = Ticket(
-        id=new_id(),
+        id=allocate_ticket_id(db),
         partner_id=partner.id,
         client_id=client.id if client else None,
         owner_id=owner.id,
@@ -278,7 +279,7 @@ def create_internal_ticket(
     if team and team not in RESOLVER_TEAMS:
         raise ValidationError("Invalid resolver team")
     ticket = Ticket(
-        id=new_id(),
+        id=allocate_ticket_id(db),
         owner_id=actor.id,
         created_by_id=actor.id,
         internal=True,
@@ -326,7 +327,7 @@ def create_system_ticket(
         if not assignee_has_resolver_team(assignee, team):
             raise ValidationError("Assignee must be an active internal user from the resolver team")
     ticket = Ticket(
-        id=new_id(),
+        id=allocate_ticket_id(db),
         partner_id=partner.id,
         client_id=None,
         owner_id=None,

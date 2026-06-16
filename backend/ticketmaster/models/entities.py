@@ -79,7 +79,7 @@ class ClientAssignment(Base):
 class Ticket(Base):
     __tablename__ = "tickets"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
     partner_id: Mapped[str | None] = mapped_column(ForeignKey("partners.id"), nullable=True, index=True)
     client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True, index=True)
     owner_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
