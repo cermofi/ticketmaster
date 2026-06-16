@@ -361,17 +361,17 @@ function TicketInfoCard({ ticket }) {
       <SideCardHeader id="tm-ticket-info-heading" icon="bi-info-circle" title="Ticket info" trailingIcon="bi-three-dots" />
       <div className="tm-side-info-list">
         <TicketInfoRow icon="bi-hash" label="Ticket ID" value={ticket?.id || '-'} />
+        <TicketInfoRow icon="bi-tag" label="Type" value={labelValue(ticket?.type) || '-'} />
+        <TicketInfoRow icon="bi-exclamation-triangle" label="Priority" value={<StatusPill value={ticket?.priority} priority={ticket?.priority} />} />
+        <TicketInfoRow icon="bi-flag" label="Status" value={<StatusPill value={ticket?.status} />} />
+        <TicketInfoRow icon="bi-person-circle" label="Owner" value={ticket?.owner_name || '-'} />
+        <TicketInfoRow icon="bi-person" label="Assignee" value={ticket?.assignee_name || 'Unassigned'} />
+        <TicketInfoRow icon="bi-people" label="Team" value={ticket?.resolver_team || 'No team'} />
         <TicketInfoRow
           icon="bi-calendar-plus"
           label="Created"
           value={ticket?.created_at ? <TimeCell value={ticket.created_at} /> : '—'}
         />
-        <TicketInfoRow icon="bi-person-circle" label="Owner" value={ticket?.owner_name || '-'} />
-        <TicketInfoRow icon="bi-tag" label="Type" value={labelValue(ticket?.type) || '-'} />
-        <TicketInfoRow icon="bi-flag" label="Status" value={<StatusPill value={ticket?.status} />} />
-        <TicketInfoRow icon="bi-exclamation-triangle" label="Priority" value={<StatusPill value={ticket?.priority} priority={ticket?.priority} />} />
-        <TicketInfoRow icon="bi-person" label="Assignee" value={ticket?.assignee_name || 'Unassigned'} />
-        <TicketInfoRow icon="bi-people" label="Team" value={ticket?.resolver_team || 'No team'} />
         <TicketInfoRow
           icon="bi-clock"
           label="Updated"
