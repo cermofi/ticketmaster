@@ -24,7 +24,7 @@ from ticketmaster.schemas.serializers import (
     ticket_to_dict,
     user_to_dict,
 )
-from ticketmaster.services import account, admin, auth, gitlab, malware, notifications, ticket_exports, tickets
+from ticketmaster.services import account, admin, auth, gitlab, malware, notifications, ticket_activity, ticket_exports, tickets
 from ticketmaster.services.audit import audit
 from ticketmaster.services.errors import NotFoundError, PermissionDenied, ValidationError
 from ticketmaster.services.internal_roles import get_internal_roles, user_has_any_internal_role
@@ -209,6 +209,7 @@ def _login_rate_limit_key(request: Request, email: str) -> str:
 def _ticket_detail(db: DbSession, user: User, ticket: Ticket) -> dict:
     data = ticket_to_dict(db, ticket, viewer=user, include_detail=True)
     data["available_transitions"] = tickets.available_transitions(db, ticket=ticket, actor=user)
+    data["recent_activity"] = ticket_activity.ticket_activity(db, ticket=ticket, viewer=user, limit=3)
     return data
 
 
@@ -717,6 +718,13 @@ def tickets_detail(db: DbSession, user: CurrentUser, ticket_id: str) -> dict:
     ticket = tickets.get_ticket(db, ticket_id)
     tickets.require_view(db, user, ticket)
     return _ticket_detail(db, user, ticket)
+
+
+@router.get("/tickets/{ticket_id}/activity")
+def tickets_activity(db: DbSession, user: CurrentUser, ticket_id: str) -> list[dict]:
+    ticket = tickets.get_ticket(db, ticket_id)
+    tickets.require_view(db, user, ticket)
+    return ticket_activity.ticket_activity(db, ticket=ticket, viewer=user, limit=200)
 
 
 @router.post("/tickets/{ticket_id}/comments")

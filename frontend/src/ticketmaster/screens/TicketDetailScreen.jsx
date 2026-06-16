@@ -51,6 +51,7 @@ function TicketDetail({ user }) {
   const [reassignOpen, setReassignOpen] = useState(false);
   const [setPriorityOpen, setSetPriorityOpen] = useState(false);
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const load = useCallback(async () => {
     setError('');
@@ -212,7 +213,7 @@ function TicketDetail({ user }) {
               onSetPriority={() => setSetPriorityOpen(true)}
               onMoreActions={() => setMoreActionsOpen(true)}
             />
-            <RecentActivityCard ticket={ticket} />
+            <RecentActivityCard ticket={ticket} onOpenHistory={() => setHistoryOpen(true)} />
           </aside>
         </div>
       )}
@@ -320,22 +321,36 @@ function TicketDetail({ user }) {
               setMoreActionsOpen(false);
             })}
           />
+          <TicketHistoryModal
+            isOpen={historyOpen}
+            onClose={() => setHistoryOpen(false)}
+            ticketId={ticket.id}
+          />
         </>
       )}
     </div>
   );
 }
 
-function SideCardHeader({ id, icon, title, trailingIcon }) {
+function SideCardHeader({ id, icon, title, trailingIcon, onTrailingClick, trailingLabel }) {
   return (
     <header className="tm-side-card-header">
       <div className="tm-side-card-header-main">
         <i className={`bi ${icon}`} aria-hidden="true" />
         <h2 id={id}>{title}</h2>
       </div>
-      {trailingIcon && (
+      {trailingIcon && onTrailingClick ? (
+        <button
+          type="button"
+          className="tm-side-card-header-trail-btn"
+          onClick={onTrailingClick}
+          aria-label={trailingLabel || `View full ${title.toLowerCase()}`}
+        >
+          <i className={`bi ${trailingIcon}`} aria-hidden="true" />
+        </button>
+      ) : trailingIcon ? (
         <i className={`bi ${trailingIcon} tm-side-card-header-trail`} aria-hidden="true" />
-      )}
+      ) : null}
     </header>
   );
 }
@@ -419,108 +434,100 @@ function WorkflowCard({
   );
 }
 
-function RecentActivityCard({ ticket }) {
-  const items = buildRecentActivity(ticket);
+function ActivityTimelineList({ items }) {
+  if (!items.length) {
+    return <p className="tm-muted tm-activity-empty">No recent activity</p>;
+  }
+
+  return (
+    <ul className="tm-activity-timeline">
+      {items.map((item, index) => (
+        <li key={item.id || item.key} className="tm-activity-timeline-item">
+          <div className="tm-activity-timeline-marker" aria-hidden="true">
+            <span className="tm-activity-timeline-dot" />
+            {index < items.length - 1 && <span className="tm-activity-timeline-line" />}
+          </div>
+          <div className="tm-activity-timeline-body">
+            <div className="tm-activity-timeline-title">{item.title}</div>
+            <div className="tm-activity-timeline-meta tm-muted">
+              <span>{item.author}</span>
+              <span className="tm-activity-timeline-sep" aria-hidden="true">·</span>
+              {item.time ? <TimeCell value={item.time} /> : <span>—</span>}
+            </div>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function RecentActivityCard({ ticket, onOpenHistory }) {
+  const items = asArray(ticket?.recent_activity);
 
   return (
     <section className="tm-panel tm-side-card tm-activity-card" aria-labelledby="tm-activity-heading">
-      <SideCardHeader id="tm-activity-heading" icon="bi-clock-history" title="Recent activity" trailingIcon="bi-chevron-right" />
-      {items.length === 0 ? (
-        <p className="tm-muted tm-activity-empty">No recent activity</p>
-      ) : (
-        <ul className="tm-activity-timeline">
-          {items.map((item, index) => (
-            <li key={item.key} className="tm-activity-timeline-item">
-              <div className="tm-activity-timeline-marker" aria-hidden="true">
-                <span className="tm-activity-timeline-dot" />
-                {index < items.length - 1 && <span className="tm-activity-timeline-line" />}
-              </div>
-              <div className="tm-activity-timeline-body">
-                <div className="tm-activity-timeline-title">{item.title}</div>
-                <div className="tm-activity-timeline-meta tm-muted">
-                  <span>{item.author}</span>
-                  <span className="tm-activity-timeline-sep" aria-hidden="true">·</span>
-                  {item.time ? <TimeCell value={item.time} /> : <span>—</span>}
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+      <SideCardHeader
+        id="tm-activity-heading"
+        icon="bi-clock-history"
+        title="Recent activity"
+        trailingIcon="bi-chevron-right"
+        onTrailingClick={onOpenHistory}
+        trailingLabel="View full ticket history"
+      />
+      <ActivityTimelineList items={items} />
     </section>
   );
 }
 
-function parseActivityTime(value) {
-  if (!value) return null;
-  const parsed = new Date(value).getTime();
-  return Number.isFinite(parsed) ? parsed : null;
-}
+function TicketHistoryModal({ isOpen, onClose, ticketId }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-function buildRecentActivity(ticket) {
-  if (!ticket) return [];
-
-  const candidates = [];
-  const snapshotTime = ticket.updated_at || ticket.created_at || null;
-  const assigneeLabel = ticket.assignee_name || 'Unassigned';
-  const teamLabel = ticket.resolver_team ? ` · ${ticket.resolver_team}` : '';
-
-  if (ticket.status) {
-    candidates.push({
-      key: 'status',
-      icon: 'bi-flag',
-      title: `Status set to ${labelValue(ticket.status) || ticket.status}`,
-      author: ticket.assignee_name || 'System',
-      time: snapshotTime,
-      tieBreak: 40
-    });
-  }
-
-  candidates.push({
-    key: 'assignment',
-    icon: 'bi-person-check',
-    title: `Assigned to ${assigneeLabel}${teamLabel}`,
-    author: ticket.assignee_name || 'Unassigned',
-    time: snapshotTime,
-    tieBreak: 30
-  });
-
-  if (ticket.created_at || ticket.id) {
-    candidates.push({
-      key: 'created',
-      icon: 'bi-plus-circle',
-      title: 'Ticket created',
-      author: ticket.owner_name || 'Unknown',
-      time: ticket.created_at || null,
-      tieBreak: 10
-    });
-  }
-
-  if (ticket.priority) {
-    candidates.push({
-      key: 'priority',
-      icon: 'bi-exclamation-triangle',
-      title: `Priority set to ${labelValue(ticket.priority) || ticket.priority}`,
-      author: ticket.assignee_name || 'System',
-      time: snapshotTime,
-      tieBreak: 20
-    });
-  }
-
-  if (candidates.length === 0) return [];
-
-  candidates.sort((a, b) => {
-    const aTime = parseActivityTime(a.time);
-    const bTime = parseActivityTime(b.time);
-    if (aTime !== bTime) {
-      if (aTime === null) return 1;
-      if (bTime === null) return -1;
-      return bTime - aTime;
+  useEffect(() => {
+    if (!isOpen || !ticketId) {
+      return undefined;
     }
-    return b.tieBreak - a.tieBreak;
-  });
 
-  return candidates.slice(0, 3);
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+    setItems([]);
+
+    api.get(`/tickets/${ticketId}/activity`)
+      .then((response) => {
+        if (!cancelled) {
+          setItems(asArray(response.data));
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(apiError(err));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, ticketId]);
+
+  return (
+    <Modal isOpen={isOpen} toggle={onClose} size="lg" backdrop>
+      <ModalHeader toggle={onClose}>Ticket history</ModalHeader>
+      <ModalBody>
+        <ErrorBanner error={error} />
+        {loading ? <Loading /> : <ActivityTimelineList items={items} />}
+      </ModalBody>
+      <ModalFooter>
+        <Button color="secondary" outline type="button" onClick={onClose}>Close</Button>
+      </ModalFooter>
+    </Modal>
+  );
 }
 
 function ChangeStatusModal({ isOpen, onClose, ticket, availableTransitions, onConfirm }) {

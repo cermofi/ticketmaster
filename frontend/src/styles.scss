@@ -2498,6 +2498,33 @@ body[data-tm-contrast="high"] {
   opacity: .55;
 }
 
+.tm-side-card-header-trail-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: .72rem;
+  color: var(--tm-muted);
+  opacity: .55;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.tm-side-card-header-trail-btn:hover,
+.tm-side-card-header-trail-btn:focus-visible {
+  opacity: 1;
+  color: var(--tm-text);
+}
+
+.tm-side-card-header-trail-btn:focus-visible {
+  outline: 2px solid var(--tm-accent, #4d9fff);
+  outline-offset: 2px;
+  border-radius: .2rem;
+}
+
 .tm-side-info-list {
   display: grid;
   gap: 0;
