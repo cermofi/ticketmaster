@@ -51,6 +51,7 @@ class Settings:
     gitlab_token: str | None = os.getenv("GITLAB_TOKEN") or None
     gitlab_project_id: str | None = os.getenv("GITLAB_PROJECT_ID", "503") or None
     gitlab_dry_run: bool = _bool("GITLAB_DRY_RUN", True)
+    gitlab_webhook_secret: str | None = os.getenv("GITLAB_WEBHOOK_SECRET") or None
 
     upload_dir: str = os.getenv("UPLOAD_DIR", "/app/uploads")
 

@@ -918,6 +918,22 @@ def gitlab_check(user: CurrentUser) -> dict:
     return gitlab.check_configuration()
 
 
+@router.post("/gitlab/webhook")
+async def gitlab_webhook(request: Request, db: DbSession) -> dict:
+    if not settings.gitlab_webhook_secret:
+        raise HTTPException(status_code=503, detail="GitLab webhook is not configured")
+    token = request.headers.get("X-Gitlab-Token")
+    if not gitlab.validate_webhook_token(token):
+        raise HTTPException(status_code=401, detail="Invalid GitLab webhook token")
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
+    result = gitlab.apply_inbound_webhook(db, payload=payload)
+    db.commit()
+    return result
+
+
 @router.post("/tickets/{ticket_id}/gitlab/create-issue")
 def gitlab_create_issue(db: DbSession, user: CurrentUser, ticket_id: str) -> dict:
     if user.kind != "internal":

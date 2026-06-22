@@ -298,6 +298,7 @@ def create_internal_ticket(
         _ensure_l3_issue(db, ticket, actor, source)
     audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.create_internal", actor=actor, source=source, new_value={"team": team, "status": ticket.status})
     ticket_search.enqueue_ticket_index(ticket.id)
+    _sync_l3_gitlab_status(db, ticket, actor=actor, source=source)
     return ticket
 
 
@@ -351,6 +352,7 @@ def create_system_ticket(
     audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.create_system", actor=actor, source=source, new_value={"partner_id": partner.id, "team": team, "status": ticket.status})
     _notify_delivery_managers(db, ticket, "New system TicketMaster ticket", f"New system ticket created: {ticket.title}")
     ticket_search.enqueue_ticket_index(ticket.id)
+    _sync_l3_gitlab_status(db, ticket, actor=actor, source=source)
     return ticket
 
 
@@ -480,6 +482,7 @@ def add_comment(db: Session, *, ticket: Ticket, actor: User, body: str, source: 
         ticket.status = _status_for_resolver_state(resolver_team=ticket.resolver_team, assignee_id=ticket.assignee_id)
         ticket.updated_at = datetime.now(timezone.utc)
         audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.status_auto_return", actor=actor, source=source, old_value=old, new_value={"status": ticket.status})
+        _sync_l3_gitlab_status(db, ticket, actor=actor, source=source)
     if actor.kind == "partner":
         _notify_partner_comment_recipients(db, ticket, body)
     ticket_search.enqueue_ticket_index(ticket.id)
@@ -569,6 +572,7 @@ def assign_ticket(
             raise
     audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.assign", actor=actor, source=source, old_value=old, new_value={"status": ticket.status, "resolver_team": team, "assignee_id": ticket.assignee_id})
     ticket_search.enqueue_ticket_index(ticket.id)
+    _sync_l3_gitlab_status(db, ticket, actor=actor, source=source)
     return ticket
 
 
@@ -588,6 +592,7 @@ def unassign_ticket(db: Session, *, ticket: Ticket, actor: User, source: str = "
     db.flush()
     audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.unassign", actor=actor, source=source, old_value=old, new_value={"status": ticket.status, "resolver_team": ticket.resolver_team, "assignee_id": None})
     ticket_search.enqueue_ticket_index(ticket.id)
+    _sync_l3_gitlab_status(db, ticket, actor=actor, source=source)
     return ticket
 
 
@@ -599,6 +604,7 @@ def transition_ticket(db: Session, *, ticket: Ticket, actor: User, new_status: s
     db.flush()
     audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.status_change", actor=actor, source=source, old_value=old, new_value={"status": new_status})
     ticket_search.enqueue_ticket_index(ticket.id)
+    _sync_l3_gitlab_status(db, ticket, actor=actor, source=source)
     return ticket
 
 
@@ -695,6 +701,7 @@ def close_ticket(db: Session, *, ticket: Ticket, actor: User | None, source: str
         ticket.updated_at = datetime.now(timezone.utc)
         audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.close", actor=actor, source=source, old_value=old, new_value={"status": "Closed"})
         ticket_search.enqueue_ticket_index(ticket.id)
+        _sync_l3_gitlab_status(db, ticket, actor=actor, source=source)
     return ticket
 
 
@@ -798,6 +805,12 @@ def _require_transition_permission(actor: User, ticket: Ticket, new_status: str)
 def _ensure_l3_issue(db: Session, ticket: Ticket, actor: User | None, source: str) -> None:
     """Create the main GitLab issue when resolver_team becomes L3. Raises on failure."""
     gitlab.create_main_issue(db, ticket=ticket, actor=actor, source=source)
+
+
+def _sync_l3_gitlab_status(db: Session, ticket: Ticket, *, actor: User | None, source: str) -> None:
+    if source == "gitlab_webhook":
+        return
+    gitlab.push_ticket_status(db, ticket=ticket, actor=actor, source=source)
 
 
 def _notify_delivery_managers(db: Session, ticket: Ticket, subject: str, body: str, *, exclude_user_id: str | None = None) -> None:
