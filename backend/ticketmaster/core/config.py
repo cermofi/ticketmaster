@@ -47,9 +47,9 @@ class Settings:
     smtp_tls: bool = _bool("SMTP_TLS", False)
     mail_suppress_send: bool = _bool("MAIL_SUPPRESS_SEND", False)
 
-    gitlab_base_url: str = os.getenv("GITLAB_BASE_URL", "https://gitlab.example.test")
+    gitlab_base_url: str = os.getenv("GITLAB_BASE_URL", "https://gitlab.teskalabs.int")
     gitlab_token: str | None = os.getenv("GITLAB_TOKEN") or None
-    gitlab_project_id: str | None = os.getenv("GITLAB_PROJECT_ID", "ticketmaster-dev-placeholder") or None
+    gitlab_project_id: str | None = os.getenv("GITLAB_PROJECT_ID", "503") or None
     gitlab_dry_run: bool = _bool("GITLAB_DRY_RUN", True)
 
     upload_dir: str = os.getenv("UPLOAD_DIR", "/app/uploads")

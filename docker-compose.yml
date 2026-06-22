@@ -10,10 +10,10 @@ x-app-environment: &app-environment
   SMTP_FROM: ${SMTP_FROM:-ticketmaster@example.test}
   SMTP_TLS: ${SMTP_TLS:-false}
   MAIL_SUPPRESS_SEND: ${MAIL_SUPPRESS_SEND:-false}
-  GITLAB_BASE_URL: ${GITLAB_BASE_URL:-https://gitlab.example.test}
-  GITLAB_PROJECT_ID: ${GITLAB_PROJECT_ID:-ticketmaster-dev-placeholder}
+  GITLAB_BASE_URL: ${GITLAB_BASE_URL:-https://gitlab.teskalabs.int}
+  GITLAB_PROJECT_ID: ${GITLAB_PROJECT_ID:-503}
   GITLAB_TOKEN: ${GITLAB_TOKEN:-}
-  GITLAB_DRY_RUN: ${GITLAB_DRY_RUN:-true}
+  GITLAB_DRY_RUN: ${GITLAB_DRY_RUN:-false}
   UPLOAD_DIR: /app/uploads
   CORS_ORIGINS: ${CORS_ORIGINS:-*}
   TRUSTED_HOSTS: ${TRUSTED_HOSTS:-*}

@@ -294,9 +294,9 @@ def create_internal_ticket(
     db.add(ticket)
     db.flush()
     _add_watcher_if_missing(db, ticket.id, actor.id)
-    audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.create_internal", actor=actor, source=source, new_value={"team": team, "status": ticket.status})
     if team == "L3":
         _ensure_l3_issue(db, ticket, actor, source)
+    audit(db, entity_type="Ticket", entity_id=ticket.id, action="ticket.create_internal", actor=actor, source=source, new_value={"team": team, "status": ticket.status})
     ticket_search.enqueue_ticket_index(ticket.id)
     return ticket
 
@@ -796,7 +796,8 @@ def _require_transition_permission(actor: User, ticket: Ticket, new_status: str)
 
 
 def _ensure_l3_issue(db: Session, ticket: Ticket, actor: User | None, source: str) -> None:
-    gitlab.create_main_issue(db, ticket=ticket, actor=actor, source="system" if source == "ui" else source)
+    """Create the main GitLab issue when resolver_team becomes L3. Raises on failure."""
+    gitlab.create_main_issue(db, ticket=ticket, actor=actor, source=source)
 
 
 def _notify_delivery_managers(db: Session, ticket: Ticket, subject: str, body: str, *, exclude_user_id: str | None = None) -> None:
