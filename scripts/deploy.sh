@@ -46,6 +46,11 @@ save_rollback_point() {
 PRE_DEPLOY_REV="$(save_rollback_point)"
 echo "Rollback point saved: ${PRE_DEPLOY_REV}"
 
+if [[ "${PRODUCTION}" == "production" ]]; then
+  echo "==> Validating production configuration"
+  bash "${ROOT}/scripts/check-production-config.sh"
+fi
+
 echo "==> Pulling latest main (ff-only)"
 git pull --ff-only origin main
 

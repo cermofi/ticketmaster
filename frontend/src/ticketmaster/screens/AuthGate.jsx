@@ -364,8 +364,8 @@ function userInitials(name, email = '') {
 function LoginScreen() {
   document.body.classList.add('tm-login-session');
   const initialToken = new URLSearchParams((window.location.hash.split('?')[1] || '')).get('token') || '';
-  const [identifier, setIdentifier] = useState('admin@example.test');
-  const [password, setPassword] = useState('ChangeMe123!');
+  const [identifier, setIdentifier] = useState(import.meta.env.DEV ? 'admin@example.test' : '');
+  const [password, setPassword] = useState(import.meta.env.DEV ? 'ChangeMe123!' : '');
   const [activationToken, setActivationToken] = useState(initialToken);
   const [error, setError] = useState('');
 

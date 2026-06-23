@@ -20,6 +20,7 @@ from ticketmaster.schemas.serializers import (
     comment_to_dict,
     partner_to_dict,
     ticket_to_dict,
+    tickets_to_dict,
     user_to_dict,
 )
 from ticketmaster.services import account, admin, auth, gitlab, malware, notifications, ticket_activity, ticket_exports, tickets
@@ -258,6 +259,8 @@ def login(db: DbSession, request: Request, body: LoginBody) -> dict:
 
 @router.post("/auth/dev-sso")
 def dev_sso(db: DbSession, request: Request, body: DevSsoBody) -> dict:
+    if not settings.allow_dev_sso:
+        raise PermissionDenied("Dev SSO is disabled in this environment")
     _check_auth_rate_limit(request, "login", body.email)
     try:
         user, token = auth.authenticate_dev_sso(db, body.email)
@@ -273,7 +276,21 @@ def dev_sso(db: DbSession, request: Request, body: DevSsoBody) -> dict:
 
 @router.post("/auth/activate")
 def activate(db: DbSession, request: Request, body: ActivateBody) -> dict:
-    user, token = auth.activate_invitation(db, body.token, body.password)
+    _check_auth_rate_limit(request, "activate", body.token)
+    try:
+        user, token = auth.activate_invitation(db, body.token, body.password)
+    except (PermissionDenied, ValidationError):
+        audit(
+            db,
+            entity_type="Auth",
+            entity_id=body.token[:64],
+            action="auth.activate_failed",
+            source="ui",
+            new_value=_request_audit_info(request, method="activation"),
+        )
+        db.commit()
+        raise
+    _clear_auth_rate_limit(request, "activate", body.token)
     audit(db, entity_type="Auth", entity_id=user.id, action="auth.activate", actor=user, source="ui", new_value=_request_audit_info(request, method="activation", email=user.email))
     db.commit()
     return {"token": token, "user": user_to_dict(user)}
@@ -593,7 +610,7 @@ def tickets_list(
         offset=actual_offset,
     )
     return {
-        "items": [ticket_to_dict(db, ticket, viewer=user) for ticket in rows],
+        "items": tickets_to_dict(db, rows, viewer=user),
         "total": total,
         "limit": actual_limit,
         "offset": actual_offset,
@@ -737,7 +754,7 @@ def partner_api_tickets_list(
         total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
         rows = list(db.scalars(stmt.order_by(Ticket.created_at.desc()).limit(actual_limit).offset(actual_offset)).all())
     return {
-        "items": [ticket_to_dict(db, ticket, viewer=user) for ticket in rows],
+        "items": tickets_to_dict(db, rows, viewer=user),
         "total": total,
         "limit": actual_limit,
         "offset": actual_offset,

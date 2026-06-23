@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from ticketmaster.api.deps import get_db
 from ticketmaster.api.main import app
+from ticketmaster.api import routes as routes_module
 from ticketmaster.core.config import settings
 from ticketmaster.services import admin
 from ticketmaster.services import rate_limit as rate_limit_service
@@ -24,6 +25,50 @@ def api_client(db):
         yield client
     finally:
         app.dependency_overrides.clear()
+
+
+def test_dev_sso_disabled_by_default(db, fixture_data, monkeypatch):
+    monkeypatch.setattr(routes_module, "settings", replace(settings, allow_dev_sso=False))
+    reset_rate_limits(scope="login")
+
+    with api_client(db) as client:
+        response = client.post("/api/auth/dev-sso", json={"email": fixture_data["admin"].email})
+
+    assert response.status_code == 403
+    payload = response.json()
+    assert payload["code"] == "permission_denied"
+    assert "disabled" in payload["message"].lower()
+
+
+def test_dev_sso_enabled_when_configured(db, fixture_data, monkeypatch):
+    monkeypatch.setattr(routes_module, "settings", replace(settings, allow_dev_sso=True))
+    reset_rate_limits(scope="login")
+
+    with api_client(db) as client:
+        response = client.post("/api/auth/dev-sso", json={"email": fixture_data["admin"].email})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["token"]
+    assert payload["user"]["email"] == fixture_data["admin"].email
+
+
+def test_activate_rate_limit(db, fixture_data, monkeypatch):
+    monkeypatch.setattr(
+        rate_limit_service,
+        "settings",
+        replace(settings, auth_rate_limit_attempts=2, auth_rate_limit_window_seconds=300),
+    )
+    reset_rate_limits(scope="activate")
+
+    with api_client(db) as client:
+        for _ in range(2):
+            client.post("/api/auth/activate", json={"token": "bad-token", "password": "longenough"})
+        response = client.post("/api/auth/activate", json={"token": "bad-token", "password": "longenough"})
+
+    assert response.status_code == 429
+    payload = response.json()
+    assert payload["code"] == "rate_limit_exceeded"
 
 
 def test_unified_error_payload_for_permission_denied(db, fixture_data):

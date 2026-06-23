@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Sequence
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -43,6 +46,105 @@ def partner_to_dict(partner: Partner) -> dict:
 
 def client_to_dict(client: Client) -> dict:
     return {"id": client.id, "key": client.key, "partner_id": client.partner_id, "name": client.name, "created_at": client.created_at}
+
+
+@dataclass(frozen=True)
+class _TicketListContext:
+    partners: dict[str, Partner]
+    clients: dict[str, Client]
+    users: dict[str, User]
+    gitlab_links: dict[str, GitLabLink]
+
+
+def _build_ticket_list_context(db: Session, tickets: Sequence[Ticket]) -> _TicketListContext:
+    if not tickets:
+        return _TicketListContext({}, {}, {}, {})
+    ticket_ids = [ticket.id for ticket in tickets]
+    partner_ids = {ticket.partner_id for ticket in tickets if ticket.partner_id}
+    client_ids = {ticket.client_id for ticket in tickets if ticket.client_id}
+    user_ids = {user_id for ticket in tickets for user_id in (ticket.owner_id, ticket.assignee_id) if user_id}
+    partners = (
+        {partner.id: partner for partner in db.scalars(select(Partner).where(Partner.id.in_(partner_ids))).all()}
+        if partner_ids
+        else {}
+    )
+    clients = (
+        {client.id: client for client in db.scalars(select(Client).where(Client.id.in_(client_ids))).all()} if client_ids else {}
+    )
+    users = {user.id: user for user in db.scalars(select(User).where(User.id.in_(user_ids))).all()} if user_ids else {}
+    gitlab_links = {
+        link.ticket_id: link
+        for link in db.scalars(
+            select(GitLabLink).where(GitLabLink.ticket_id.in_(ticket_ids), GitLabLink.is_main.is_(True))
+        ).all()
+    }
+    return _TicketListContext(partners=partners, clients=clients, users=users, gitlab_links=gitlab_links)
+
+
+def _ticket_to_dict_with_context(
+    ticket: Ticket,
+    *,
+    context: _TicketListContext,
+    viewer: User | None = None,
+    include_detail: bool = False,
+    db: Session | None = None,
+) -> dict:
+    gitlab_link = context.gitlab_links.get(ticket.id)
+    partner = context.partners.get(ticket.partner_id) if ticket.partner_id else None
+    client = context.clients.get(ticket.client_id) if ticket.client_id else None
+    owner = context.users.get(ticket.owner_id) if ticket.owner_id else None
+    assignee = context.users.get(ticket.assignee_id) if ticket.assignee_id else None
+    internal_viewer = viewer is None or viewer.kind == "internal"
+    data = {
+        "id": ticket.id,
+        "internal": ticket.internal,
+        "system": ticket.system,
+        "kind": "system" if ticket.system else ("internal" if ticket.internal else "partner"),
+        "partner_id": ticket.partner_id,
+        "partner_name": partner.name if partner else None,
+        "client_id": ticket.client_id,
+        "client_name": client.name if client else None,
+        "owner_id": ticket.owner_id,
+        "owner_name": owner.name if owner else None,
+        "created_by_id": ticket.created_by_id,
+        "type": ticket.type,
+        "priority": ticket.priority,
+        "status": ticket.status,
+        "resolver_team": ticket.resolver_team,
+        "assignee_id": ticket.assignee_id,
+        "assignee_name": assignee.name if assignee else None,
+        "title": ticket.title,
+        "description": ticket.description,
+        "gitlab_status": gitlab_link.status if gitlab_link else None,
+        "gitlab_issue_exists": gitlab_link is not None,
+        "created_at": ticket.created_at,
+        "updated_at": ticket.updated_at,
+    }
+    if internal_viewer:
+        data["gitlab_link"] = gitlab_link.web_url if gitlab_link else None
+        data["gitlab_issue_iid"] = gitlab_link.issue_iid if gitlab_link else None
+    if include_detail:
+        if db is None:
+            raise ValueError("db session is required when include_detail=True")
+        data["participants"] = [
+            user_to_dict(user)
+            for user in db.scalars(
+                select(User).join(TicketParticipant, TicketParticipant.user_id == User.id).where(TicketParticipant.ticket_id == ticket.id)
+            ).all()
+        ]
+        data["watchers"] = [
+            user_to_dict(user)
+            for user in db.scalars(select(User).join(TicketWatcher, TicketWatcher.user_id == User.id).where(TicketWatcher.ticket_id == ticket.id)).all()
+        ]
+    return data
+
+
+def tickets_to_dict(db: Session, tickets: Sequence[Ticket], *, viewer: User | None = None, include_detail: bool = False) -> list[dict]:
+    context = _build_ticket_list_context(db, tickets)
+    return [
+        _ticket_to_dict_with_context(ticket, context=context, viewer=viewer, include_detail=include_detail, db=db)
+        for ticket in tickets
+    ]
 
 
 def ticket_to_dict(db: Session, ticket: Ticket, *, viewer: User | None = None, include_detail: bool = False) -> dict:

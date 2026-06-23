@@ -60,6 +60,7 @@ docker compose up -d --build
 | Proměnná | Účel |
 | --- | --- |
 | `ALLOW_SEED_DEV` | Povolit `db seed-dev` (auto `true` pokud URL obsahuje localhost) |
+| `ALLOW_DEV_SSO` | Povolit `POST /api/auth/dev-sso` (default `false`; pro lokální dev nastavte `true`) |
 | `SMOKE_CHECK_BASE_URL` | URL pro post-deploy smoke (prod: `https://ticketmaster.cermofi.cz`) |
 
 ## Produkc (navíc)
@@ -74,6 +75,7 @@ docker compose up -d --build
 | `GITLAB_DRY_RUN` | `false` + platný `GITLAB_TOKEN` |
 | `GITLAB_WEBHOOK_SECRET` | Pro inbound sync |
 | `ALLOW_SEED_DEV` | **Ne** nastavovat (nebo `false`) |
+| `ALLOW_DEV_SSO` | **Ne** nastavovat (nebo `false`) |
 
 ## Ověření
 

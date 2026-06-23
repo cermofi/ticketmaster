@@ -13,6 +13,7 @@ cd /home/new-ticketmaster
 
 Skript automaticky:
 
+0. v produkci (`TM_ENV=production`) ověří bezpečnou konfiguraci (`scripts/check-production-config.sh`) — selže při default `APP_SECRET`, `APP_DEBUG`, `ALLOW_SEED_DEV`, `ALLOW_DEV_SSO`, nebo default `TICKETMASTER_DEV_PASSWORD`
 1. uloží rollback git revizi do `.deploy/last-good-rev`
 2. zkontroluje pending migrace (`ticketmaster-cli db plan`)
 3. u **risky** migrací vytvoří DB backup a rollback artifact (vyžaduje `MIGRATE_CONFIRM=1` v produkci)
@@ -132,7 +133,7 @@ Contract testy: `backend/tests/test_policy_contract.py`
 | `AUTH_RATE_LIMIT_WINDOW_SECONDS` | Délka okna (s) | `300` |
 | `LOGIN_RATE_LIMIT_*` | Alias | stejné |
 
-Chráněné endpointy: `/api/auth/login`, `/api/auth/dev-sso`, `/api/auth/sign-in-as-partner`, `/api/auth/back-to-admin`.
+Chráněné endpointy: `/api/auth/login`, `/api/auth/dev-sso`, `/api/auth/activate`, `/api/auth/sign-in-as-partner`, `/api/auth/back-to-admin`.
 
 ```bash
 docker compose exec api ticketmaster-cli rate-limit reset --scope login --ip <CLIENT_IP> --identifier user@example.com

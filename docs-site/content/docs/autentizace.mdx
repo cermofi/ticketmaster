@@ -8,7 +8,7 @@ description: Přihlášení, JWT tokeny, dev SSO, impersonace partnera a návrat
 | Režim | Endpoint | Kdo | Použití |
 | --- | --- | --- | --- |
 | E-mail + heslo | `POST /api/auth/login` | Partner (i interní s heslem) | Produkční přihlášení partnerů |
-| Dev SSO | `POST /api/auth/dev-sso` | Interní uživatel | Vývoj — bez hesla, jen e-mail |
+| Dev SSO | `POST /api/auth/dev-sso` | Interní uživatel | Vývoj — bez hesla, jen e-mail (`ALLOW_DEV_SSO=true`) |
 | Aktivace invite | `POST /api/auth/activate` | Pozvaný uživatel | Nastavení hesla z pozvánky |
 | Sign in as partner | `POST /api/auth/sign-in-as-partner` | Admin / DM | Impersonace partner usera |
 | Back to admin | `POST /api/auth/back-to-admin` | Partner session s return tokenem | Návrat z impersonace |
@@ -35,7 +35,7 @@ Login akceptuje e-mail nebo **jednoznačné** jméno uživatele. Více shod podl
 
 ## Dev SSO (interní)
 
-Pouze pro interní uživatele existující v DB:
+Vyžaduje `ALLOW_DEV_SSO=true` (defaultně vypnuto; v produkci ponechte vypnuto). Pouze pro interní uživatele existující v DB:
 
 ```bash
 curl -sS -X POST http://localhost:3006/api/auth/dev-sso \
@@ -43,7 +43,7 @@ curl -sS -X POST http://localhost:3006/api/auth/dev-sso \
   -d '{"email":"admin@example.test"}'
 ```
 
-V produkci používejte reálné heslo přes `/api/auth/login` (pokud je nastaveno).
+V produkci používejte reálné heslo přes `/api/auth/login` (pokud je nastaveno). Endpoint vrátí `403` pokud je Dev SSO vypnuto.
 
 ## Aktivace pozvánky
 
@@ -103,6 +103,7 @@ Return token je **jednorázový** a musí odpovídat aktuální partner session.
 Chráněné endpointy:
 
 - `/api/auth/login`, `/api/auth/dev-sso` — scope `login`, identifier = e-mail
+- `/api/auth/activate` — scope `activate`, identifier = invitation token
 - `/api/auth/sign-in-as-partner` — scope `sign-in-as-partner`, identifier = user id volajícího
 - `/api/auth/back-to-admin` — scope `back-to-admin`, identifier = user id partner session
 
