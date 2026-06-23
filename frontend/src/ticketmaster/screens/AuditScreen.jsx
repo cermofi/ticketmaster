@@ -3,6 +3,7 @@ import ReactJson from '@microlink/react-json-view';
 import { Button, Form, FormGroup, Input, Label, Modal, ModalBody, ModalFooter, ModalHeader, Table } from 'reactstrap';
 
 import api from '../../api/client.js';
+import { shouldShowAuditInitialLoading } from '../auditLoad.js';
 import AuthGate from './AuthGate.jsx';
 import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
 import { useUrlFilters } from '../hooks/useUrlFilters.js';
@@ -40,6 +41,7 @@ function Audit({ user }) {
   const [options, setOptions] = useState({ actions: [], sources: [], entity_types: [] });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const skipDebouncedReload = useRef(true);
   const filtersRef = useRef(filters);
@@ -50,10 +52,12 @@ function Audit({ user }) {
     syncFiltersToUrl(merged);
   }, [syncFiltersToUrl]);
 
-  const load = useCallback(async (nextFilters) => {
+  const load = useCallback(async (nextFilters, { background = false } = {}) => {
     const activeFilters = nextFilters ?? filtersRef.current;
     setError('');
-    setLoading(true);
+    if (!background) {
+      setLoading(true);
+    }
     try {
       const params = buildAuditParams(activeFilters);
       const response = await api.get('/audit', { params });
@@ -61,9 +65,16 @@ function Audit({ user }) {
     } catch (err) {
       setError(apiError(err));
     } finally {
-      setLoading(false);
+      if (!background) {
+        setLoading(false);
+      }
+      setHasLoaded(true);
     }
   }, []);
+
+  const refreshInBackground = useCallback(() => {
+    load(undefined, { background: true });
+  }, [load]);
 
   const loadOptions = useCallback(async () => {
     try {
@@ -90,7 +101,7 @@ function Audit({ user }) {
     return () => window.clearTimeout(handle);
   }, [filtersKey, load, filters]);
 
-  useRefetchOnFocus(load);
+  useRefetchOnFocus(refreshInBackground);
 
   const updateFilter = (key, value) => setFilters((current) => ({ ...current, [key]: value }));
 
@@ -121,7 +132,7 @@ function Audit({ user }) {
         onApply={updateAndApply}
         onReset={resetFilters}
       />
-      {loading ? <Loading /> : (
+      {shouldShowAuditInitialLoading(loading, hasLoaded) ? <Loading /> : (
       <div className="tm-table-wrap tm-audit-table-wrap">
         <Table hover className="tm-table tm-audit-table">
           <colgroup>
