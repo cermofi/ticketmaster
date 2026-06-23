@@ -15,6 +15,7 @@ from ticketmaster.models import Client, GitLabLink, Partner, Ticket, User
 from ticketmaster.models.entities import new_id
 from ticketmaster.schemas.serializers import client_to_dict, partner_to_dict, ticket_to_dict, user_to_dict
 from ticketmaster.services import admin, gitlab, migrations, notifications, search, seed, smoke_check, smoke_cleanup, tickets
+from ticketmaster.services.audit_context import suppress_audit
 from ticketmaster.services.errors import TicketMasterError
 from ticketmaster.services.internal_roles import set_internal_roles
 from ticketmaster.services.rate_limit import list_rate_limit_keys, reset_rate_limits
@@ -300,12 +301,13 @@ def cmd_smoke_cleanup(args: argparse.Namespace) -> int:
         print("error: pass --confirm to delete smoke artifacts (or use --dry-run to preview)", file=sys.stderr)
         return 1
     with session_scope() as db:
-        result = smoke_cleanup.cleanup_smoke_artifacts(
-            db,
-            marker_only=not args.include_seed_artifacts,
-            dry_run=args.dry_run,
-        )
-        result["discovery_sql"] = smoke_cleanup.sql_discovery_queries(marker_only=not args.include_seed_artifacts)
+        with suppress_audit():
+            result = smoke_cleanup.cleanup_smoke_artifacts(
+                db,
+                marker_only=not args.include_seed_artifacts,
+                dry_run=args.dry_run,
+            )
+            result["discovery_sql"] = smoke_cleanup.sql_discovery_queries(marker_only=not args.include_seed_artifacts)
         print_json(result)
     return 0
 

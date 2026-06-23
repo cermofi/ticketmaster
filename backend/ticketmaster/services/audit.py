@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from ticketmaster.models import AuditLog, User
+from ticketmaster.services.audit_context import is_audit_suppressed
 
 
 def audit(
@@ -15,7 +16,9 @@ def audit(
     source: str = "ui",
     old_value: dict | None = None,
     new_value: dict | None = None,
-) -> AuditLog:
+) -> AuditLog | None:
+    if is_audit_suppressed():
+        return None
     row = AuditLog(
         entity_type=entity_type,
         entity_id=entity_id,

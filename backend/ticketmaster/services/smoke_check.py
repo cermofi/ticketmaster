@@ -7,11 +7,12 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from ticketmaster.core.config import settings
+from ticketmaster.services.audit_context import SMOKE_REQUEST_HEADERS
 
 
 def _request(method: str, url: str, *, headers: dict[str, str] | None = None, body: dict | None = None, timeout: float = 15.0) -> tuple[int, Any]:
     data = None
-    req_headers = {"Accept": "application/json"}
+    req_headers = {"Accept": "application/json", **SMOKE_REQUEST_HEADERS}
     if body is not None:
         data = json.dumps(body).encode("utf-8")
         req_headers["Content-Type"] = "application/json"
