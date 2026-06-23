@@ -49,8 +49,11 @@ echo "Rollback point saved: ${PRE_DEPLOY_REV}"
 echo "==> Pulling latest main (ff-only)"
 git pull --ff-only origin main
 
+echo "==> Building API image (migration/smoke tooling)"
+"${COMPOSE[@]}" build api
+
 echo "==> Inspecting pending migrations"
-MIGRATION_PLAN="$("${COMPOSE[@]}" exec -T api ticketmaster-cli db plan)"
+MIGRATION_PLAN="$("${COMPOSE[@]}" run --rm -T api ticketmaster-cli db plan)"
 echo "${MIGRATION_PLAN}"
 
 RISKY_PENDING="$(echo "${MIGRATION_PLAN}" | python3 -c "import json,sys; print(','.join(json.load(sys.stdin).get('risky_pending',[])))")"
@@ -96,9 +99,9 @@ fi
 
 echo "==> Running database migrations"
 if [[ -n "${RISKY_PENDING}" && "${PRODUCTION}" == "production" ]]; then
-  MIGRATE_CONFIRM=1 "${COMPOSE[@]}" exec -T -e MIGRATE_CONFIRM=1 api ticketmaster-cli db migrate --confirm-risky
+  MIGRATE_CONFIRM=1 "${COMPOSE[@]}" run --rm -T -e MIGRATE_CONFIRM=1 api ticketmaster-cli db migrate --confirm-risky
 else
-  "${COMPOSE[@]}" exec -T api ticketmaster-cli db migrate
+  "${COMPOSE[@]}" run --rm -T api ticketmaster-cli db migrate
 fi
 
 echo "==> Building and restarting changed services"
