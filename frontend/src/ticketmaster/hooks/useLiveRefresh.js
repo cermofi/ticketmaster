@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 
+import { SESSION_CHANGE_EVENT } from '../../api/client.js';
+
 export function useRefetchOnFocus(refetch, enabled = true) {
   const refetchRef = useRef(refetch);
   refetchRef.current = refetch;
@@ -18,6 +20,22 @@ export function useRefetchOnFocus(refetch, enabled = true) {
       window.removeEventListener('focus', handleRefresh);
       document.removeEventListener('visibilitychange', handleRefresh);
     };
+  }, [enabled]);
+}
+
+export function useRefetchOnSessionChange(refetch, enabled = true) {
+  const refetchRef = useRef(refetch);
+  refetchRef.current = refetch;
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+
+    const handleSessionChange = () => {
+      refetchRef.current();
+    };
+
+    window.addEventListener(SESSION_CHANGE_EVENT, handleSessionChange);
+    return () => window.removeEventListener(SESSION_CHANGE_EVENT, handleSessionChange);
   }, [enabled]);
 }
 

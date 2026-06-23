@@ -13,6 +13,11 @@ api.interceptors.request.use((config) => {
 });
 
 const RETURN_TOKEN_KEY = 'ticketmaster.return_token';
+export const SESSION_CHANGE_EVENT = 'tm:session-change';
+
+export function notifySessionChange() {
+  window.dispatchEvent(new Event(SESSION_CHANGE_EVENT));
+}
 
 export function saveSession(payload) {
   localStorage.setItem('ticketmaster.token', payload.token);
@@ -22,6 +27,7 @@ export function saveSession(payload) {
   } else {
     localStorage.removeItem(RETURN_TOKEN_KEY);
   }
+  notifySessionChange();
 }
 
 export function clearSession() {
