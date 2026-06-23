@@ -65,6 +65,8 @@ def can_view_ticket(db: Session, user: User, ticket: Ticket) -> bool:
     if user.kind == "internal":
         if user_has_any_internal_role(user, ADMIN_DM_ROLES):
             return True
+        if ticket.created_by_id == user.id:
+            return True
         resolver_teams = get_user_resolver_teams(user)
         if resolver_teams:
             return ticket.resolver_team in resolver_teams
@@ -176,8 +178,8 @@ def create_partner_ticket_on_behalf(
 ) -> Ticket:
     if not actor.active:
         raise PermissionDenied("Account is inactive")
-    if actor.kind != "internal" or not user_has_any_internal_role(actor, ADMIN_DM_ROLES):
-        raise PermissionDenied("Only Admin or Delivery Manager can create partner tickets on behalf of a partner")
+    if actor.kind != "internal" or not get_internal_roles(actor):
+        raise PermissionDenied("Only internal users can create partner tickets on behalf of a partner")
     validate_ticket_type(ticket_type)
     validate_priority(priority)
     partner = resolve_partner(db, partner_id)
@@ -210,6 +212,7 @@ def create_partner_ticket_on_behalf(
     db.add(ticket)
     db.flush()
     _add_participant_if_missing(db, ticket.id, owner.id)
+    _add_watcher_if_missing(db, ticket.id, actor.id)
     for user_id in dict.fromkeys(participant_ids or []):
         user = db.get(User, user_id)
         if not user or user.kind != "partner" or user.partner_id != partner.id or not user.active:
@@ -429,10 +432,10 @@ def _visible_ticket_stmt(
         stmt = stmt.where(Ticket.internal.is_(False), Ticket.partner_id == actor.partner_id)
     elif not user_has_any_internal_role(actor, ADMIN_DM_ROLES):
         resolver_teams = get_user_resolver_teams(actor)
+        visibility = [Ticket.created_by_id == actor.id]
         if resolver_teams:
-            stmt = stmt.where(Ticket.resolver_team.in_(resolver_teams))
-        else:
-            stmt = stmt.where(false())
+            visibility.append(Ticket.resolver_team.in_(resolver_teams))
+        stmt = stmt.where(or_(*visibility)) if visibility else stmt.where(false())
     if search:
         search_ids = ticket_search.find_ticket_ids(search)
         if search_ids is not None:

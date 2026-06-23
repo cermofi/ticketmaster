@@ -340,7 +340,7 @@ def account_change_password(db: DbSession, user: CurrentUser, body: ChangePasswo
 
 @router.get("/partners")
 def partners_list(db: DbSession, user: CurrentUser) -> list[dict]:
-    admin.require_admin_or_dm(user)
+    admin.require_internal(user)
     return [partner_to_dict(partner) for partner in db.scalars(select(Partner).order_by(Partner.name)).all()]
 
 
@@ -365,7 +365,7 @@ def clients_list(db: DbSession, user: CurrentUser, partner: str | None = None) -
     if user.kind == "partner":
         stmt = select(Client).where(Client.partner_id == user.partner_id)
     else:
-        admin.require_admin_or_dm(user)
+        admin.require_internal(user)
         stmt = select(Client)
         if partner:
             resolved = admin.resolve_partner(db, partner)
@@ -435,9 +435,14 @@ def client_assignments_delete(db: DbSession, user: CurrentUser, assignment_id: s
 def users_list(db: DbSession, user: CurrentUser, partner: str | None = None) -> list[dict]:
     if user.kind == "partner":
         stmt = select(User).where(User.partner_id == user.partner_id, User.active.is_(True))
-    else:
-        admin.require_admin_or_dm(user)
+    elif user_has_any_internal_role(user, {"Admin", "DeliveryManager"}):
         stmt = select(User)
+        if partner:
+            resolved = admin.resolve_partner(db, partner)
+            stmt = stmt.where(User.partner_id == resolved.id)
+    else:
+        admin.require_internal(user)
+        stmt = select(User).where(User.kind == "partner", User.active.is_(True))
         if partner:
             resolved = admin.resolve_partner(db, partner)
             stmt = stmt.where(User.partner_id == resolved.id)

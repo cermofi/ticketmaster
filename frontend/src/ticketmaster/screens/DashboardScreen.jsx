@@ -126,9 +126,20 @@ function Dashboard({ user }) {
         title="Tickets"
         actions={(
           <>
-            <Button color="primary" tag={Link} to="/tickets/new">
-              Create ticket
-            </Button>
+            {user.kind === 'internal' ? (
+              <>
+                <Button color="primary" tag={Link} to="/tickets/new">
+                  Create ticket
+                </Button>
+                <Button color="secondary" outline tag={Link} to="/tickets/new?target=partner">
+                  To partner
+                </Button>
+              </>
+            ) : (
+              <Button color="primary" tag={Link} to="/tickets/new">
+                Create ticket
+              </Button>
+            )}
             <MoreActionsMenu
               isOpen={moreOpen}
               setOpen={setMoreOpen}

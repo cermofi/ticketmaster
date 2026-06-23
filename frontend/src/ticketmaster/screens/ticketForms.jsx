@@ -231,7 +231,7 @@ export function PartnerOnBehalfTicketForm({ meta, partners, clients, users, onCr
           type="submit"
           disabled={submitting || !form.partner_id || !form.owner_id || !form.title.trim() || !form.description.trim()}
         >
-          {submitting ? 'Creating ticket...' : 'Create for partner'}
+          {submitting ? 'Creating ticket...' : 'Create to partner'}
         </Button>
       </div>
     </Form>

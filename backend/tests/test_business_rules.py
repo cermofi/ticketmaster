@@ -645,20 +645,28 @@ def test_delivery_manager_can_create_partner_ticket_on_behalf(db, fixture_data):
     assert db.scalar(select(Notification).where(Notification.event == "ticket_created_on_behalf", Notification.recipient_email == fixture_data["responsible_a"].email))
 
 
-def test_create_partner_ticket_on_behalf_rejects_invalid_roles_and_relationships(db, fixture_data):
-    with pytest.raises(PermissionDenied):
-        tickets.create_partner_ticket_on_behalf(
-            db,
-            actor=fixture_data["l1"],
-            partner_id=fixture_data["partner_a"].id,
-            owner_ref=fixture_data["responsible_a"].id,
-            ticket_type="Question",
-            priority="Normal",
-            title="Not allowed",
-            description="Nope",
-            source="test",
-        )
+def test_l1_can_create_partner_ticket_on_behalf(db, fixture_data):
+    ticket = tickets.create_partner_ticket_on_behalf(
+        db,
+        actor=fixture_data["l1"],
+        partner_id=fixture_data["partner_a"].id,
+        owner_ref=fixture_data["responsible_a"].id,
+        ticket_type="Question",
+        priority="Normal",
+        title="Created by L1",
+        description="Partner ticket from internal user",
+        client_id=fixture_data["client_a"].id,
+        source="test",
+    )
 
+    assert ticket.created_by_id == fixture_data["l1"].id
+    assert tickets.can_view_ticket(db, fixture_data["l1"], ticket)
+    assert ticket in tickets.list_visible_tickets(db, actor=fixture_data["l1"])
+    assert tickets.can_view_ticket(db, fixture_data["responsible_a"], ticket)
+    assert db.scalar(select(TicketWatcher).where(TicketWatcher.ticket_id == ticket.id, TicketWatcher.user_id == fixture_data["l1"].id))
+
+
+def test_create_partner_ticket_on_behalf_rejects_invalid_roles_and_relationships(db, fixture_data):
     with pytest.raises(PermissionDenied):
         tickets.create_partner_ticket_on_behalf(
             db,

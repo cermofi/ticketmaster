@@ -25,6 +25,11 @@ from ticketmaster.services.internal_roles import (
 from ticketmaster.services.notifications import queue_email
 
 
+def require_internal(actor: User | None) -> None:
+    if actor is None or actor.kind != "internal" or not get_internal_roles(actor):
+        raise PermissionDenied("Internal user role is required")
+
+
 def require_admin_or_dm(actor: User | None) -> None:
     if actor is None or actor.kind != "internal" or not user_has_any_internal_role(actor, {"Admin", "DeliveryManager"}):
         raise PermissionDenied("Admin or Delivery Manager role is required")
