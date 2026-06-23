@@ -73,7 +73,7 @@ function Audit({ user }) {
             <col className="tm-audit-col-action" />
             <col className="tm-audit-col-source" />
             <col className="tm-audit-col-changed-by" />
-            <col className="tm-audit-col-details" />
+            <col className="tm-audit-col-view" />
           </colgroup>
           <thead>
             <tr>
@@ -82,7 +82,7 @@ function Audit({ user }) {
               <th className="tm-audit-col-action">Action</th>
               <th className="tm-audit-col-source">Source</th>
               <th className="tm-audit-col-changed-by">Changed by</th>
-              <th className="tm-audit-col-details">Details</th>
+              <th className="tm-audit-col-view" aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
@@ -93,8 +93,8 @@ function Audit({ user }) {
                 <td className="tm-audit-col-action">{row.action}</td>
                 <td className="tm-audit-col-source tm-quiet-cell">{row.source}</td>
                 <td className="tm-audit-col-changed-by tm-quiet-cell">{row.changed_by_label || '-'}</td>
-                <td className="tm-audit-col-details">
-                  <AuditDetailsButton row={row} onOpen={setDetailRow} />
+                <td className="tm-audit-col-view">
+                  <AuditViewButton row={row} onOpen={setDetailRow} />
                 </td>
               </tr>
             ))}
@@ -107,8 +107,7 @@ function Audit({ user }) {
   );
 }
 
-function AuditDetailsButton({ row, onOpen }) {
-  const preview = truncateValue(stringifyPayload(row));
+function AuditViewButton({ row, onOpen }) {
   const hasPayload = row.old_value != null || row.new_value != null;
 
   if (!hasPayload) {
@@ -116,10 +115,9 @@ function AuditDetailsButton({ row, onOpen }) {
   }
 
   return (
-    <button type="button" className="tm-audit-details-btn" onClick={() => onOpen(row)} title="View payload details">
-      <code className="tm-code-cell tm-audit-json">{preview}</code>
-      <span className="tm-audit-details-open">View</span>
-    </button>
+    <Button color="link" size="sm" className="tm-audit-view-btn p-0" onClick={() => onOpen(row)}>
+      View
+    </Button>
   );
 }
 
@@ -176,23 +174,3 @@ function AuditPayloadSection({ title, value }) {
   );
 }
 
-function stringifyPayload(row) {
-  const parts = [];
-  if (row.old_value != null) parts.push(`old: ${stringifyValue(row.old_value)}`);
-  if (row.new_value != null) parts.push(`new: ${stringifyValue(row.new_value)}`);
-  return parts.join(' · ') || '-';
-}
-
-function stringifyValue(value) {
-  if (value === null || typeof value === 'undefined') return '-';
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
-function truncateValue(value, length = 80) {
-  if (!value || value.length <= length) return value;
-  return `${value.slice(0, length)}...`;
-}

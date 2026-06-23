@@ -836,12 +836,15 @@ body[data-tm-density="compact"] .tm-login-form {
 
 .tm-audit-table {
   width: 100%;
-  min-width: 42rem;
+  min-width: 36rem;
   table-layout: fixed;
 }
 
 .tm-audit-table .tm-audit-col-time {
-  width: 10.5rem;
+  width: 11.5rem;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 .tm-audit-table .tm-audit-col-entity {
@@ -860,54 +863,25 @@ body[data-tm-density="compact"] .tm-login-form {
   width: 11rem;
 }
 
-.tm-audit-table .tm-audit-col-details {
-  width: auto;
+.tm-audit-table .tm-audit-col-view {
+  width: 4.5rem;
 }
 
-.tm-audit-table th,
-.tm-audit-table td {
+.tm-audit-table th:not(.tm-audit-col-time),
+.tm-audit-table td:not(.tm-audit-col-time) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.tm-audit-details-btn .tm-audit-json {
-  flex: 1 1 auto;
+.tm-audit-view-btn {
+  font-size: .82rem;
+  font-weight: 500;
+  text-decoration: none;
 }
 
-.tm-audit-json {
-  color: var(--tm-code-muted);
-  font-size: .77rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  max-width: none;
-  min-width: 0;
-}
-
-.tm-audit-details-btn {
-  display: flex;
-  align-items: center;
-  gap: .45rem;
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.tm-audit-details-btn:hover .tm-audit-details-open {
-  color: var(--tm-accent);
-}
-
-.tm-audit-details-open {
-  flex: 0 0 auto;
-  font-size: .72rem;
-  color: var(--tm-muted);
-  text-transform: uppercase;
-  letter-spacing: .03em;
+.tm-audit-view-btn:hover {
+  text-decoration: underline;
 }
 
 .tm-audit-details-modal {
