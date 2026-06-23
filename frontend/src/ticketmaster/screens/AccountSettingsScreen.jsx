@@ -3,7 +3,7 @@ import { Alert, Button, Form, FormGroup, Input, Label } from 'reactstrap';
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
-import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
+import { useRefetchOnFocus, useSessionDomainRefresh, DATA_DOMAINS } from '../hooks/useLiveRefresh.js';
 import { ErrorBanner, Loading, PageHeader, apiError, formatInternalRoles, roleLabel } from './helpers.jsx';
 
 export default function AccountSettingsScreen() {
@@ -42,6 +42,7 @@ function AccountSettings({ user, session }) {
 
   const refreshProfile = useCallback(() => loadProfile({ silent: true }), [loadProfile]);
   useRefetchOnFocus(refreshProfile);
+  useSessionDomainRefresh(DATA_DOMAINS.account, refreshProfile);
 
   const emailEditable = profile?.email_editable === true;
   const role = useMemo(

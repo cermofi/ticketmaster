@@ -16,7 +16,7 @@ import {
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
-import { usePolling, useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
+import { usePolling, useRefetchOnFocus, useSessionDomainRefresh, DATA_DOMAINS } from '../hooks/useLiveRefresh.js';
 import { EmptyRow, EmptyState, ErrorBanner, Loading, MarkdownText, PageHeader, StatusPill, TimeCell, apiError, asArray, downloadResponse, formatAttachmentSize, hasAnyInternalRole, hasInternalRole, labelValue, normalizeApiPath } from './helpers.jsx';
 
 const TICKET_DETAIL_POLL_MS = 30000;
@@ -82,6 +82,7 @@ function TicketDetail({ user }) {
   }, [load]);
 
   useRefetchOnFocus(load);
+  useSessionDomainRefresh([DATA_DOMAINS.ticketDetail, DATA_DOMAINS.meta, DATA_DOMAINS.users], load);
   usePolling(load, TICKET_DETAIL_POLL_MS);
 
   useEffect(() => {

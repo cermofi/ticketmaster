@@ -14,7 +14,7 @@ import {
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
-import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
+import { useRefetchOnFocus, useSessionDomainRefresh, DATA_DOMAINS } from '../hooks/useLiveRefresh.js';
 import { asArray, EmptyRow, ErrorBanner, Loading, PageHeader, apiError, formatInternalRoles, getInternalRoles, hasAnyInternalRole, hasInternalRole, roleLabel } from './helpers.jsx';
 
 function sanitizeUserRows(rows) {
@@ -86,6 +86,7 @@ function Admin({ user }) {
   }, [load]);
 
   useRefetchOnFocus(load);
+  useSessionDomainRefresh([DATA_DOMAINS.admin, DATA_DOMAINS.partners, DATA_DOMAINS.clients, DATA_DOMAINS.users], load);
 
   const partnerNames = useMemo(() => new Map(partners.map((partner) => [partner.id, partner.name])), [partners]);
   const filteredPartners = useMemo(() => filterPartners(partners, directoryFilters), [partners, directoryFilters]);

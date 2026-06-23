@@ -1,7 +1,9 @@
 # Access and visibility rules
 
-Contract for ticket visibility and internal resolver access. Backend tests in
-`backend/tests/test_business_rules.py` enforce these rules.
+Contract for ticket visibility and internal resolver access. The authoritative
+machine-readable matrix lives in
+`backend/ticketmaster/policy/access_matrix.json`. Backend contract tests in
+`backend/tests/test_policy_contract.py` iterate matrix scenarios.
 
 ## Roles
 
@@ -38,6 +40,17 @@ Resolver users see tickets when **any** of these hold:
 Rationale: internal queue routing is strict; partner-facing work still grants access
 to the assignee and creating internal user.
 
+## Internal → partner on-behalf creation (intentional)
+
+When an internal user creates a partner ticket on behalf (`create_partner_on_behalf`):
+
+- **Status** is set to `Assigned` (not `New`).
+- **Assignee** is the creating internal user (`assignee_id = actor.id`).
+
+This is deliberate product intent so the creator owns follow-up. Documented in
+`access_matrix.json` under `action_rules.create_partner_on_behalf.intent` and
+covered by contract tests.
+
 ## Partner and system tickets
 
 - Partner users never see `internal=true` tickets.
@@ -56,3 +69,18 @@ to the assignee and creating internal user.
 - `sign-in-as-partner` returns a one-time `return_token` stored client-side.
 - `back-to-admin` requires the partner JWT plus matching `return_token`.
 - Return token is single-use and invalidated after successful return.
+
+## Frontend session/query invalidation
+
+Central store: `frontend/src/api/queryStore.js`.
+
+| Transition | Invalidated domains |
+| --- | --- |
+| login | session, meta, tickets, ticketDetail, audit, admin, account, partners, clients, users, partnerOverview |
+| logout | all domains |
+| impersonationStart | same as login |
+| impersonationEnd | same as login |
+| sessionRefresh | session, account |
+
+Screens register domain refetch handlers via `useSessionDomainRefresh`. Hard reload
+is fallback only when soft session finalization cannot proceed.

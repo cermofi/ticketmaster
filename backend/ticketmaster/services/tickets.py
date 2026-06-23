@@ -35,6 +35,7 @@ from ticketmaster.services.internal_roles import (
     user_has_any_internal_role,
     user_has_internal_role,
 )
+from ticketmaster.policy.matrix import evaluate_visibility
 from ticketmaster.services.notifications import queue_email
 
 
@@ -64,24 +65,7 @@ def get_ticket(db: Session, ticket_id: str) -> Ticket:
 
 
 def can_view_ticket(db: Session, user: User, ticket: Ticket) -> bool:
-    if user.kind == "internal":
-        if user_has_any_internal_role(user, ADMIN_DM_ROLES):
-            return True
-        resolver_teams = get_user_resolver_teams(user)
-        if resolver_teams:
-            if ticket.internal:
-                return ticket.resolver_team in resolver_teams
-            return (
-                ticket.resolver_team in resolver_teams
-                or ticket.assignee_id == user.id
-                or ticket.created_by_id == user.id
-            )
-        if ticket.created_by_id == user.id:
-            return True
-        return False
-    if ticket.internal:
-        return False
-    return ticket.partner_id == user.partner_id
+    return evaluate_visibility(user, ticket)
 
 
 def require_view(db: Session, user: User, ticket: Ticket) -> None:

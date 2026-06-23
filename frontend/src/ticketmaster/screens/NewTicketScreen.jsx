@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { Button } from 'reactstrap';
 
 import api from '../../api/client.js';
+import { DATA_DOMAINS } from '../../api/queryStore.js';
 import AuthGate from './AuthGate.jsx';
+import { useSessionDomainRefresh } from '../hooks/useLiveRefresh.js';
 import { isNewTicketModeVisible, resolveNewTicketInitialMode } from '../newTicketMode.js';
 import { ErrorBanner, Loading, PageHeader, apiError } from './helpers.jsx';
 import { InternalTicketForm, PartnerOnBehalfTicketForm, PartnerTicketForm } from './ticketForms.jsx';
@@ -36,7 +38,7 @@ function NewTicket({ user }) {
     setMode(resolveNewTicketInitialMode(user, searchParams.get('target')));
   }, [user.kind, searchParams]);
 
-  useEffect(() => {
+  const loadFormData = useCallback(async () => {
     const requests = [api.get('/meta')];
     if (user.kind === 'partner') {
       requests.push(api.get('/clients').catch(() => ({ data: [] })));
@@ -47,21 +49,31 @@ function NewTicket({ user }) {
         api.get('/users').catch(() => ({ data: [] }))
       );
     }
-    Promise.all(requests)
-      .then((responses) => {
-        setMeta(responses[0].data);
-        if (user.kind === 'partner') {
-          setClients(responses[1]?.data || []);
-          return;
-        }
-        if (mode === 'partner') {
-          setClients(responses[1]?.data || []);
-          setPartners(responses[2]?.data || []);
-          setUsers(responses[3]?.data || []);
-        }
-      })
-      .catch((err) => setError(apiError(err)));
+    try {
+      const responses = await Promise.all(requests);
+      setMeta(responses[0].data);
+      if (user.kind === 'partner') {
+        setClients(responses[1]?.data || []);
+        return;
+      }
+      if (mode === 'partner') {
+        setClients(responses[1]?.data || []);
+        setPartners(responses[2]?.data || []);
+        setUsers(responses[3]?.data || []);
+      }
+    } catch (err) {
+      setError(apiError(err));
+    }
   }, [user.kind, mode]);
+
+  useEffect(() => {
+    loadFormData();
+  }, [loadFormData]);
+
+  useSessionDomainRefresh(
+    [DATA_DOMAINS.meta, DATA_DOMAINS.clients, DATA_DOMAINS.partners, DATA_DOMAINS.users],
+    loadFormData
+  );
 
   if (!meta && !error) return <Loading />;
 

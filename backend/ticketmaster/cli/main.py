@@ -81,9 +81,26 @@ def cmd_config_check(_: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_db_migrate(_: argparse.Namespace) -> int:
+def cmd_db_migrate(args: argparse.Namespace) -> int:
+    import os
+
+    plan = migrations.plan_migrations(engine)
+    confirm = args.confirm_risky or os.getenv("MIGRATE_CONFIRM") == "1"
+    if plan.has_risky and not confirm:
+        print(
+            "error: risky migrations pending; re-run with --confirm-risky or set MIGRATE_CONFIRM=1",
+            file=sys.stderr,
+        )
+        print_json({"pending": plan.pending, "risky_pending": plan.risky_pending})
+        return 1
     applied = migrations.run_migrations(engine)
-    print_json({"applied": applied, "status": "ok"})
+    print_json({"applied": applied, "status": "ok", "risky_applied": [row for row in applied if row in plan.risky_pending]})
+    return 0
+
+
+def cmd_db_plan(_: argparse.Namespace) -> int:
+    plan = migrations.plan_migrations(engine)
+    print_json({"pending": plan.pending, "risky_pending": plan.risky_pending, "status": "ok"})
     return 0
 
 
@@ -355,7 +372,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     db = sub.add_parser("db")
     db_sub = db.add_subparsers(dest="subcommand", required=True)
-    _command(db_sub, "migrate", cmd_db_migrate)
+    p = _command(db_sub, "migrate", cmd_db_migrate)
+    p.add_argument("--confirm-risky", action="store_true", help="Allow applying risky SQL migrations")
+    _command(db_sub, "plan", cmd_db_plan)
     _command(db_sub, "seed-dev", cmd_db_seed_dev)
 
     user = sub.add_parser("user")

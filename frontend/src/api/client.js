@@ -1,5 +1,7 @@
 import axios from 'axios';
 
+import { invalidateAllDomains, registerDomainInvalidator } from './queryStore.js';
+
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || '/api'
 });
@@ -16,22 +18,13 @@ const RETURN_TOKEN_KEY = 'ticketmaster.return_token';
 export const SESSION_CHANGE_EVENT = 'tm:session-change';
 export const SESSION_FINALIZED_EVENT = 'tm:session-finalized';
 
-const sessionCacheInvalidators = new Set();
-
+/** @deprecated Use registerDomainInvalidator from queryStore.js */
 export function registerSessionCacheInvalidator(invalidator) {
-  sessionCacheInvalidators.add(invalidator);
-  return () => sessionCacheInvalidators.delete(invalidator);
+  return registerDomainInvalidator('*', invalidator);
 }
 
 export function invalidateSessionCaches() {
-  sessionCacheInvalidators.forEach((invalidator) => {
-    try {
-      invalidator();
-    } catch {
-      // Cache invalidation must not block session changes.
-    }
-  });
-  notifySessionChange();
+  invalidateAllDomains();
 }
 
 export function notifySessionChange() {

@@ -15,7 +15,7 @@ import {
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
-import { usePolling, useRefetchOnFocus, useRefetchOnSessionChange } from '../hooks/useLiveRefresh.js';
+import { usePolling, useRefetchOnFocus, useSessionDomainRefresh, DATA_DOMAINS } from '../hooks/useLiveRefresh.js';
 import { useUrlFilters } from '../hooks/useUrlFilters.js';
 import { EmptyRow, ErrorBanner, Loading, PageHeader, StatusPill, TimeCell, apiError, asArray, downloadResponse, exportError, labelValue } from './helpers.jsx';
 
@@ -100,7 +100,7 @@ function Dashboard({ user }) {
   }, [filtersKey, load, filters.search]);
 
   useRefetchOnFocus(load);
-  useRefetchOnSessionChange(load);
+  useSessionDomainRefresh([DATA_DOMAINS.tickets, DATA_DOMAINS.meta], load);
   usePolling(load, TICKETS_POLL_MS);
   useEffect(() => {
     if (!loading && meta) {

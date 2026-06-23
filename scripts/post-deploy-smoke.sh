@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BASE_URL="${SMOKE_CHECK_BASE_URL:-https://ticketmaster.cermofi.cz}"
 
-echo "Running smoke check against ${BASE_URL}"
+echo "Mandatory post-deploy smoke gate against ${BASE_URL}"
 export SMOKE_CHECK_BASE_URL="${BASE_URL}"
 
 if [[ -z "${SMOKE_ALLOW_AUTH:-}" ]]; then
@@ -22,4 +22,4 @@ else
   python -m ticketmaster.cli.main smoke check
 fi
 
-echo "Smoke check passed."
+echo "Smoke gate passed."

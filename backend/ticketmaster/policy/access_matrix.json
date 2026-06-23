@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "description": "Authoritative role × ticket class × status visibility and key action contract.",
+  "ticket_classes": {
+    "internal": { "internal": true, "system": false },
+    "partner": { "internal": false, "system": false },
+    "system": { "internal": false, "system": true }
+  },
+  "visibility_scenarios": [
+    {
+      "name": "admin_sees_internal",
+      "actor": { "kind": "internal", "roles": ["Admin"] },
+      "ticket": { "class": "internal", "resolver_team": "L1", "status": "New" },
+      "visible": true
+    },
+    {
+      "name": "dm_sees_partner",
+      "actor": { "kind": "internal", "roles": ["DeliveryManager"] },
+      "ticket": { "class": "partner", "partner_key": "partner_a", "status": "New" },
+      "visible": true
+    },
+    {
+      "name": "l1_sees_internal_by_resolver_team",
+      "actor": { "kind": "internal", "roles": ["L1"] },
+      "ticket": { "class": "internal", "resolver_team": "L1", "status": "Queued" },
+      "visible": true
+    },
+    {
+      "name": "l2_cannot_see_internal_routed_to_l1",
+      "actor": { "kind": "internal", "roles": ["L2"] },
+      "ticket": { "class": "internal", "resolver_team": "L1", "status": "Queued", "created_by_key": "l2" },
+      "visible": false
+    },
+    {
+      "name": "l2_sees_internal_routed_to_l2",
+      "actor": { "kind": "internal", "roles": ["L2"] },
+      "ticket": { "class": "internal", "resolver_team": "L2", "status": "Assigned", "created_by_key": "l2" },
+      "visible": true
+    },
+    {
+      "name": "l1_sees_partner_by_resolver_team",
+      "actor": { "kind": "internal", "roles": ["L1"] },
+      "ticket": { "class": "partner", "partner_key": "partner_a", "resolver_team": "L1", "status": "Queued" },
+      "visible": true
+    },
+    {
+      "name": "l1_sees_partner_as_assignee",
+      "actor": { "kind": "internal", "roles": ["L1"] },
+      "ticket": { "class": "partner", "partner_key": "partner_a", "assignee_key": "l1", "status": "Assigned" },
+      "visible": true
+    },
+    {
+      "name": "l1_sees_partner_as_creator",
+      "actor": { "kind": "internal", "roles": ["L1"] },
+      "ticket": { "class": "partner", "partner_key": "partner_a", "created_by_key": "l1", "status": "Assigned" },
+      "visible": true
+    },
+    {
+      "name": "l2_cannot_see_unrelated_partner_ticket",
+      "actor": { "kind": "internal", "roles": ["L2"] },
+      "ticket": { "class": "partner", "partner_key": "partner_a", "resolver_team": "L1", "status": "New" },
+      "visible": false
+    },
+    {
+      "name": "internal_without_resolver_sees_own_creation",
+      "actor": { "kind": "internal", "roles": [] },
+      "ticket": { "class": "partner", "partner_key": "partner_a", "created_by_key": "no_resolver", "status": "New" },
+      "visible": true
+    },
+    {
+      "name": "partner_sees_own_partner_ticket",
+      "actor": { "kind": "partner", "partner_key": "partner_a", "role": "responsible" },
+      "ticket": { "class": "partner", "partner_key": "partner_a", "status": "New" },
+      "visible": true
+    },
+    {
+      "name": "partner_isolation",
+      "actor": { "kind": "partner", "partner_key": "partner_a", "role": "responsible" },
+      "ticket": { "class": "partner", "partner_key": "partner_b", "status": "New" },
+      "visible": false
+    },
+    {
+      "name": "partner_cannot_see_internal",
+      "actor": { "kind": "partner", "partner_key": "partner_a", "role": "responsible" },
+      "ticket": { "class": "internal", "resolver_team": "L1", "status": "New" },
+      "visible": false
+    },
+    {
+      "name": "partner_sees_system_ticket",
+      "actor": { "kind": "partner", "partner_key": "partner_a", "role": "responsible" },
+      "ticket": { "class": "system", "partner_key": "partner_a", "status": "New" },
+      "visible": true
+    }
+  ],
+  "action_rules": [
+    {
+      "action": "create_partner_on_behalf",
+      "allowed_actor_roles": ["Admin", "DeliveryManager", "L1", "L2", "L3"],
+      "intent": {
+        "status": "Assigned",
+        "assignee": "creator",
+        "description": "Internal→partner on-behalf creation intentionally sets status Assigned and assignee to the creating internal user."
+      }
+    },
+    {
+      "action": "delete_ticket",
+      "allowed_actor_roles": ["Admin"]
+    },
+    {
+      "action": "close_ticket",
+      "allowed_actor_roles": ["Admin", "DeliveryManager"]
+    },
+    {
+      "action": "change_ticket_type",
+      "allowed_actor_roles": ["Admin", "DeliveryManager"]
+    },
+    {
+      "action": "create_partner_ticket",
+      "allowed_actor_roles": ["responsible"]
+    }
+  ]
+}

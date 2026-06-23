@@ -11,17 +11,38 @@ cd /home/new-ticketmaster
 ./scripts/deploy.sh
 ```
 
+Skript automaticky:
+
+1. uloží rollback git revizi do `.deploy/last-good-rev`
+2. zkontroluje pending migrace (`ticketmaster-cli db plan`)
+3. u **risky** migrací vytvoří DB backup a rollback artifact (vyžaduje `MIGRATE_CONFIRM=1` v produkci)
+4. spustí migrace, rebuild/restart služeb
+5. **povinný** post-deploy smoke gate (`scripts/post-deploy-smoke.sh`) — při selhání deploy skončí s nenulovým exit kódem
+
 Ruční kroky (ekvivalent skriptu):
 
 ```bash
 cd /home/new-ticketmaster
 git pull origin main
-docker compose up -d --build
+docker compose exec api ticketmaster-cli db plan
 docker compose exec api ticketmaster-cli db migrate
+docker compose up -d --build
 ./scripts/post-deploy-smoke.sh
 ```
 
-Po deployu ověřte health a spusťte smoke check.
+## Risky migrations
+
+Risky migrace = SQL obsahující `DROP TABLE`, `DROP COLUMN`, `ALTER COLUMN … TYPE`, `TRUNCATE`, nebo `DELETE FROM`.
+
+| Krok | Chování |
+| --- | --- |
+| Detekce | `ticketmaster-cli db plan` vrátí `risky_pending` |
+| Backup | `./scripts/db-backup-checkpoint.sh` → `.deploy/backups/pre-migrate-*.sql` |
+| Potvrzení | V produkci `MIGRATE_CONFIRM=1` nebo `db migrate --confirm-risky` |
+| Rollback artifact | `.deploy/rollback-*.md` s git rev, backup cestou a příkazy |
+| Vypnutí backupu | `SKIP_MIGRATION_BACKUP=1` (jen pokud víte proč) |
+
+Běžné index/create migrace nejsou risky a nevyžadují potvrzení.
 
 ## Health checks
 
@@ -38,12 +59,19 @@ docker compose ps
 docker compose logs --tail=100 api frontend docs
 ```
 
-## Post-deploy smoke check (read-only)
+## Post-deploy smoke gate (mandatory)
+
+Smoke gate je **povinný** krok deploy pipeline. Selhání = deploy failed.
 
 Smoke check **nevytváří** produkční data. Audit se u HTTP požadavků **vždy zapisuje**
 (potlačení auditu je jen u interních CLI cest přes `suppress_audit()`).
 
-Defaultně volá jen veřejné GET endpointy (`/api/health`, `/api/ready`, `/api/meta`).
+Minimální sada (read-only):
+
+- `GET /api/health`
+- `GET /api/ready`
+- `GET /api/meta`
+- volitelně autentizované kontroly při `SMOKE_ALLOW_AUTH=1`
 
 ```bash
 ./scripts/post-deploy-smoke.sh
@@ -57,7 +85,7 @@ Volitelně (read-only autentizované kontroly):
 SMOKE_ALLOW_AUTH=1 SMOKE_CHECK_EMAIL=... SMOKE_CHECK_PASSWORD=... ./scripts/post-deploy-smoke.sh
 ```
 
-GitHub Actions: `.github/workflows/post-deploy-smoke.yml`.
+GitHub Actions: `.github/workflows/post-deploy-smoke.yml`, `.github/workflows/deploy.yml`.
 
 ## Rollback
 
@@ -68,13 +96,16 @@ git checkout <predchozi-commit>
 docker compose up -d --build
 docker compose exec api ticketmaster-cli db migrate
 curl -fsS https://ticketmaster.cermofi.cz/api/ready
+./scripts/post-deploy-smoke.sh
 ```
 
-Pokud nová migrace už proběhla, obnovte DB ze zálohy.
+Pokud nová **risky** migrace už proběhla, obnovte DB ze zálohy v `.deploy/backups/`.
 
 ## DB backup / restore
 
 ```bash
+./scripts/db-backup-checkpoint.sh
+# nebo ručně:
 docker compose exec -T db pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > backup-$(date +%F).sql
 ```
 
@@ -85,6 +116,13 @@ docker compose exec -T db psql -U "$POSTGRES_USER" "$POSTGRES_DB" < backup-YYYY-
 ```
 
 Volume: `postgres_data`. Viz `docs-site/content/docs/databaze.mdx`.
+
+## Policy matrix
+
+Autoritativní pravidla viditelnosti a klíčových akcí:
+`backend/ticketmaster/policy/access_matrix.json`
+
+Contract testy: `backend/tests/test_policy_contract.py`
 
 ## Rate limit — konfigurace a reset
 

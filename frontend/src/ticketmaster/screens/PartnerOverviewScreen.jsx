@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
-import { usePolling, useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
+import { usePolling, useRefetchOnFocus, useSessionDomainRefresh, DATA_DOMAINS } from '../hooks/useLiveRefresh.js';
 import { EmptyState, ErrorBanner, Loading, PageHeader, apiError, asArray } from './helpers.jsx';
 
 const PARTNER_OVERVIEW_POLL_MS = 60000;
@@ -43,6 +43,7 @@ function PartnerOverview({ user }) {
 
   const refresh = useCallback(() => load({ silent: true }), [load]);
   useRefetchOnFocus(refresh, user.kind === 'partner');
+  useSessionDomainRefresh(DATA_DOMAINS.partnerOverview, refresh, user.kind === 'partner');
   usePolling(refresh, PARTNER_OVERVIEW_POLL_MS, user.kind === 'partner');
 
   if (user.kind !== 'partner') {

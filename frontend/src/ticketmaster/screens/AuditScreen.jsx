@@ -5,7 +5,7 @@ import { Button, Form, FormGroup, Input, Label, Modal, ModalBody, ModalFooter, M
 import api from '../../api/client.js';
 import { shouldShowAuditInitialLoading } from '../auditLoad.js';
 import AuthGate from './AuthGate.jsx';
-import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
+import { useRefetchOnFocus, useSessionDomainRefresh, DATA_DOMAINS } from '../hooks/useLiveRefresh.js';
 import { useUrlFilters } from '../hooks/useUrlFilters.js';
 import { AbsoluteTimeCell, EmptyRow, ErrorBanner, Loading, PageHeader, apiError, hasAnyInternalRole } from './helpers.jsx';
 
@@ -102,6 +102,10 @@ function Audit({ user }) {
   }, [filtersKey, load, filters]);
 
   useRefetchOnFocus(refreshInBackground);
+  useSessionDomainRefresh(DATA_DOMAINS.audit, () => {
+    load(undefined, { background: true });
+    loadOptions();
+  });
 
   const updateFilter = (key, value) => setFilters((current) => ({ ...current, [key]: value }));
 
