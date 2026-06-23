@@ -17,7 +17,8 @@ import {
   UncontrolledDropdown
 } from 'reactstrap';
 
-import api, { clearSession, currentUser, getReturnToken, hasReturnToAdmin, saveSession } from '../../api/client.js';
+import api, { clearSession, currentUser, getReturnToken, hasReturnToAdmin } from '../../api/client.js';
+import { finalizeSession } from '../../api/session.js';
 import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
 import { Loading, formatInternalRoles, hasAnyInternalRole, roleLabel } from './helpers.jsx';
 
@@ -92,17 +93,17 @@ export default function AuthGate({ children }) {
     return <Loading />;
   }
   if (!session.user) {
-    return <LoginScreen onLogin={session.setUser} />;
+    return <LoginScreen />;
   }
   return (
     <>
-      <HeaderSession user={session.user} onLogout={session.logout} onSessionChange={session.setUser} />
+      <HeaderSession user={session.user} onLogout={session.logout} />
       {children(session.user, session)}
     </>
   );
 }
 
-function HeaderSession({ user, onLogout, onSessionChange }) {
+function HeaderSession({ user, onLogout }) {
   const [headerNavList, setHeaderNavList] = useState(null);
   const [partnerSignInOpen, setPartnerSignInOpen] = useState(false);
   const [returningToAdmin, setReturningToAdmin] = useState(false);
@@ -157,9 +158,7 @@ function HeaderSession({ user, onLogout, onSessionChange }) {
     setReturningToAdmin(true);
     try {
       const response = await api.post('/auth/back-to-admin', { return_token: returnToken });
-      saveSession(response.data);
-      onSessionChange(response.data.user);
-      window.location.hash = '#/';
+      finalizeSession(response.data);
     } catch (err) {
       window.alert(err.response?.data?.detail || err.message || 'Unable to return to admin session');
     } finally {
@@ -215,10 +214,8 @@ function HeaderSession({ user, onLogout, onSessionChange }) {
           isOpen={partnerSignInOpen}
           onClose={() => setPartnerSignInOpen(false)}
           onSignedIn={(payload) => {
-            saveSession(payload);
-            onSessionChange(payload.user);
             setPartnerSignInOpen(false);
-            window.location.hash = '#/';
+            finalizeSession(payload);
           }}
         />
       )}
@@ -347,7 +344,7 @@ function userInitials(name, email = '') {
   return emailLetter || 'U';
 }
 
-function LoginScreen({ onLogin }) {
+function LoginScreen() {
   document.body.classList.add('tm-login-session');
   const initialToken = new URLSearchParams((window.location.hash.split('?')[1] || '')).get('token') || '';
   const [identifier, setIdentifier] = useState('admin@example.test');
@@ -362,9 +359,7 @@ function LoginScreen({ onLogin }) {
       const response = activationToken
         ? await api.post('/auth/activate', { token: activationToken, password })
         : await api.post('/auth/login', { email: identifier, password });
-      saveSession(response.data);
-      document.body.classList.remove('tm-login-session');
-      onLogin(response.data.user);
+      finalizeSession(response.data);
     } catch (err) {
       setError(err.response?.data?.detail || err.message);
     }
