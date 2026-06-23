@@ -826,6 +826,69 @@ body[data-tm-density="compact"] .tm-login-form {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+.tm-audit-details-btn {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tm-audit-details-btn:hover .tm-audit-details-open {
+  color: var(--tm-accent);
+}
+
+.tm-audit-details-open {
+  flex: 0 0 auto;
+  font-size: .72rem;
+  color: var(--tm-muted);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+
+.tm-audit-details-modal {
+  display: grid;
+  gap: 1rem;
+}
+
+.tm-audit-details-meta {
+  display: grid;
+  gap: .45rem;
+  margin: 0;
+}
+
+.tm-audit-details-meta div {
+  display: grid;
+  grid-template-columns: 7rem 1fr;
+  gap: .75rem;
+}
+
+.tm-audit-details-meta dt {
+  margin: 0;
+  color: var(--tm-muted);
+  font-weight: 500;
+}
+
+.tm-audit-details-meta dd {
+  margin: 0;
+}
+
+.tm-audit-payload-section h6 {
+  margin-bottom: .45rem;
+}
+
+.tm-audit-payload-json {
+  overflow: auto;
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-radius);
+  background: #1e1e1e;
+}
+
 .tm-toolbar-actions {
   display: flex;
   gap: var(--tm-space-2);

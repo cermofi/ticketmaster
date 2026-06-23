@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Form, Input, Table } from 'reactstrap';
+import ReactJson from '@microlink/react-json-view';
+import { Button, Form, Input, Modal, ModalBody, ModalFooter, ModalHeader, Table } from 'reactstrap';
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
 import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
-import { EmptyRow, ErrorBanner, PageHeader, TimeCell, apiError, hasAnyInternalRole } from './helpers.jsx';
+import { AbsoluteTimeCell, EmptyRow, ErrorBanner, PageHeader, apiError, hasAnyInternalRole } from './helpers.jsx';
 
 export default function AuditScreen() {
   return (
@@ -18,6 +19,7 @@ function Audit({ user }) {
   const [rows, setRows] = useState([]);
   const [entityId, setEntityId] = useState('');
   const [error, setError] = useState('');
+  const [detailRow, setDetailRow] = useState(null);
   const skipFilterEffect = useRef(true);
   const entityIdRef = useRef(entityId);
   entityIdRef.current = entityId;
@@ -72,21 +74,19 @@ function Audit({ user }) {
               <th>Action</th>
               <th>Source</th>
               <th>Changed by</th>
-              <th>New value</th>
+              <th>Details</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
               <tr key={row.id}>
-                <td><TimeCell value={row.changed_at} /></td>
-                <td>{row.entity_type}:{row.entity_id.slice(0, 8)}</td>
+                <td><AbsoluteTimeCell value={row.changed_at} /></td>
+                <td title={`${row.entity_type}:${row.entity_id}`}>{row.entity_label || `${row.entity_type}:${row.entity_id}`}</td>
                 <td>{row.action}</td>
                 <td className="tm-quiet-cell">{row.source}</td>
-                <td className="tm-quiet-cell">{row.changed_by_user_id?.slice(0, 8) || '-'}</td>
+                <td className="tm-quiet-cell">{row.changed_by_label || '-'}</td>
                 <td>
-                  <code className="tm-code-cell tm-audit-json" title={stringifyValue(row.new_value)}>
-                    {truncateValue(stringifyValue(row.new_value))}
-                  </code>
+                  <AuditDetailsButton row={row} onOpen={setDetailRow} />
                 </td>
               </tr>
             ))}
@@ -94,8 +94,85 @@ function Audit({ user }) {
           </tbody>
         </Table>
       </div>
+      <AuditDetailsModal row={detailRow} onClose={() => setDetailRow(null)} />
     </div>
   );
+}
+
+function AuditDetailsButton({ row, onOpen }) {
+  const preview = truncateValue(stringifyPayload(row));
+  const hasPayload = row.old_value != null || row.new_value != null;
+
+  if (!hasPayload) {
+    return <span className="tm-muted">-</span>;
+  }
+
+  return (
+    <button type="button" className="tm-audit-details-btn" onClick={() => onOpen(row)} title="View payload details">
+      <code className="tm-code-cell tm-audit-json">{preview}</code>
+      <span className="tm-audit-details-open">View</span>
+    </button>
+  );
+}
+
+function AuditDetailsModal({ row, onClose }) {
+  const isOpen = Boolean(row);
+
+  return (
+    <Modal isOpen={isOpen} toggle={onClose} size="lg" backdrop>
+      <ModalHeader toggle={onClose}>Audit details</ModalHeader>
+      <ModalBody>
+        {row && (
+          <div className="tm-audit-details-modal">
+            <dl className="tm-audit-details-meta">
+              <div><dt>Action</dt><dd>{row.action}</dd></div>
+              <div><dt>Entity</dt><dd>{row.entity_label || row.entity_id}</dd></div>
+              <div><dt>Changed by</dt><dd>{row.changed_by_label || '-'}</dd></div>
+            </dl>
+            <AuditPayloadSection title="Previous value" value={row.old_value} />
+            <AuditPayloadSection title="New value" value={row.new_value} />
+          </div>
+        )}
+      </ModalBody>
+      <ModalFooter>
+        <Button color="secondary" outline onClick={onClose}>Close</Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+function AuditPayloadSection({ title, value }) {
+  if (value === null || typeof value === 'undefined') {
+    return (
+      <section className="tm-audit-payload-section">
+        <h6>{title}</h6>
+        <p className="tm-muted">-</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="tm-audit-payload-section">
+      <h6>{title}</h6>
+      <div className="tm-audit-payload-json">
+        <ReactJson
+          src={value}
+          name={false}
+          displayDataTypes={false}
+          enableClipboard={false}
+          collapsed={1}
+          theme="monokai"
+        />
+      </div>
+    </section>
+  );
+}
+
+function stringifyPayload(row) {
+  const parts = [];
+  if (row.old_value != null) parts.push(`old: ${stringifyValue(row.old_value)}`);
+  if (row.new_value != null) parts.push(`new: ${stringifyValue(row.new_value)}`);
+  return parts.join(' · ') || '-';
 }
 
 function stringifyValue(value) {
@@ -107,7 +184,7 @@ function stringifyValue(value) {
   }
 }
 
-function truncateValue(value, length = 120) {
+function truncateValue(value, length = 80) {
   if (!value || value.length <= length) return value;
   return `${value.slice(0, length)}...`;
 }

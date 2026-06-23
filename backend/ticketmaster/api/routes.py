@@ -16,7 +16,6 @@ from ticketmaster.models.constants import PRIORITIES, RESOLVER_TEAMS, STATUSES, 
 from ticketmaster.models.entities import new_id
 from ticketmaster.schemas.serializers import (
     attachment_to_dict,
-    audit_to_dict,
     client_to_dict,
     comment_revision_to_dict,
     comment_to_dict,
@@ -26,6 +25,7 @@ from ticketmaster.schemas.serializers import (
 )
 from ticketmaster.services import account, admin, auth, gitlab, malware, notifications, ticket_activity, ticket_exports, tickets
 from ticketmaster.services.audit import audit
+from ticketmaster.services.audit_display import enrich_audit_rows
 from ticketmaster.services.errors import NotFoundError, PermissionDenied, ValidationError
 from ticketmaster.services.internal_roles import get_internal_roles, user_has_any_internal_role
 
@@ -966,7 +966,7 @@ def audit_list(db: DbSession, user: CurrentUser, entity_id: str | None = None) -
     if entity_id:
         stmt = stmt.where(AuditLog.entity_id == entity_id)
     stmt = stmt.order_by(AuditLog.changed_at.desc()).limit(200)
-    return [audit_to_dict(row) for row in db.scalars(stmt).all()]
+    return enrich_audit_rows(db, list(db.scalars(stmt).all()))
 
 
 @router.get("/gitlab/check")

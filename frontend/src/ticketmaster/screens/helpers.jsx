@@ -77,6 +77,11 @@ export function TimeCell({ value }) {
   return <span>{formatDateTime(value)}</span>;
 }
 
+export function AbsoluteTimeCell({ value }) {
+  if (!value) return <span className="tm-muted">-</span>;
+  return <span>{formatAbsoluteDateTime(value)}</span>;
+}
+
 export function MarkdownText({ content, className = '', emptyMessage = '' }) {
   const text = typeof content === 'string' ? content : '';
   const normalizedClassName = className.trim();
@@ -224,4 +229,23 @@ function formatDateTime(value) {
     hour: '2-digit',
     minute: '2-digit'
   }).format(date);
+}
+
+export function formatAbsoluteDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Prague',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).formatToParts(date);
+
+  const get = (type) => parts.find((part) => part.type === type)?.value ?? '';
+  return `${get('day')}.${get('month')}.${get('year')} ${get('hour')}:${get('minute')}:${get('second')}`;
 }
