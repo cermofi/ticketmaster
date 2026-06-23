@@ -47,6 +47,8 @@ def test_internal_user_can_create_ticket_to_partner_via_api(db, fixture_data):
     body = response.json()
     assert body["partner_id"] == fixture_data["partner_a"].id
     assert body["created_by_id"] == fixture_data["l1"].id
+    assert body["status"] == "Assigned"
+    assert body["assignee_id"] == fixture_data["l1"].id
 
 
 def test_partner_cannot_create_ticket_to_partner_via_api(db, fixture_data):
@@ -82,6 +84,25 @@ def test_internal_resolver_cannot_list_internal_users(db, fixture_data):
     assert kinds == {"partner"}
 
 
+def test_on_behalf_ticket_created_assigned_to_creator(db, fixture_data):
+    ticket = tickets.create_partner_ticket_on_behalf(
+        db,
+        actor=fixture_data["l1"],
+        partner_id=fixture_data["partner_a"].id,
+        owner_ref=fixture_data["responsible_a"].id,
+        ticket_type="Question",
+        priority="Normal",
+        title="Assigned to creator",
+        description="On-behalf ticket should start Assigned to internal creator",
+        client_id=fixture_data["client_a"].id,
+        source="test",
+    )
+
+    assert ticket.status == "Assigned"
+    assert ticket.assignee_id == fixture_data["l1"].id
+    assert ticket.created_by_id == fixture_data["l1"].id
+
+
 def test_on_behalf_ticket_allows_owner_duplicated_in_participant_ids(db, fixture_data):
     ticket = tickets.create_partner_ticket_on_behalf(
         db,
@@ -108,6 +129,8 @@ def test_on_behalf_ticket_allows_owner_duplicated_in_participant_ids(db, fixture
     )
     assert participant_count == 1
     assert ticket.owner_id == fixture_data["responsible_a"].id
+    assert ticket.status == "Assigned"
+    assert ticket.assignee_id == fixture_data["l1"].id
 
 
 def test_on_behalf_api_accepts_owner_duplicated_in_participant_ids(db, fixture_data):

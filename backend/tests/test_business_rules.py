@@ -638,6 +638,8 @@ def test_delivery_manager_can_create_partner_ticket_on_behalf(db, fixture_data):
     assert ticket.partner_id == fixture_data["partner_a"].id
     assert ticket.owner_id == fixture_data["responsible_a"].id
     assert ticket.created_by_id == fixture_data["dm"].id
+    assert ticket.status == "Assigned"
+    assert ticket.assignee_id == fixture_data["dm"].id
     assert tickets.can_view_ticket(db, fixture_data["responsible_a"], ticket)
     assert tickets.can_view_ticket(db, fixture_data["technical_a"], ticket)
     assert not tickets.can_view_ticket(db, fixture_data["responsible_b"], ticket)
@@ -662,6 +664,8 @@ def test_l1_can_create_partner_ticket_on_behalf(db, fixture_data):
     )
 
     assert ticket.created_by_id == fixture_data["l1"].id
+    assert ticket.status == "Assigned"
+    assert ticket.assignee_id == fixture_data["l1"].id
     assert tickets.can_view_ticket(db, fixture_data["l1"], ticket)
     assert ticket in tickets.list_visible_tickets(db, actor=fixture_data["l1"])
     assert tickets.can_view_ticket(db, fixture_data["responsible_a"], ticket)

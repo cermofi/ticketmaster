@@ -224,7 +224,8 @@ def create_partner_ticket_on_behalf(
         system=False,
         type=ticket_type,
         priority=actual_priority,
-        status="New",
+        status="Assigned",
+        assignee_id=actor.id,
         title=title,
         description=description,
     )
@@ -261,6 +262,7 @@ def create_partner_ticket_on_behalf(
             "owner_id": owner.id,
             "client_id": client.id if client else None,
             "created_by_id": actor.id,
+            "assignee_id": actor.id,
             "created_on_behalf": True,
         },
     )
