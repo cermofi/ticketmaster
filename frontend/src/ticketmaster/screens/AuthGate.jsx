@@ -10,12 +10,16 @@ import {
   FormGroup,
   Input,
   Label,
+  Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
   UncontrolledDropdown
 } from 'reactstrap';
 
 import api, { clearSession, currentUser, saveSession } from '../../api/client.js';
 import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
-import { Loading, formatInternalRoles, roleLabel } from './helpers.jsx';
+import { Loading, formatInternalRoles, hasAnyInternalRole, roleLabel } from './helpers.jsx';
 
 export function useSession() {
   const [user, setUserState] = useState(currentUser());
@@ -92,14 +96,16 @@ export default function AuthGate({ children }) {
   }
   return (
     <>
-      <HeaderSession user={session.user} onLogout={session.logout} />
+      <HeaderSession user={session.user} onLogout={session.logout} onSessionChange={session.setUser} />
       {children(session.user, session)}
     </>
   );
 }
 
-function HeaderSession({ user, onLogout }) {
+function HeaderSession({ user, onLogout, onSessionChange }) {
   const [headerNavList, setHeaderNavList] = useState(null);
+  const [partnerSignInOpen, setPartnerSignInOpen] = useState(false);
+  const canSignInAsPartner = user?.kind === 'internal' && hasAnyInternalRole(user, ['Admin', 'DeliveryManager']);
   const displayName = (user?.name || user?.email || 'User').trim();
   const role = user?.kind === 'internal'
     ? formatInternalRoles(user) || 'Not set'
@@ -144,35 +150,155 @@ function HeaderSession({ user, onLogout }) {
   };
 
   if (!headerNavList) return null;
-  return createPortal(
-    <li className="tm-header-session nav-item">
-      <UncontrolledDropdown className="tm-header-user-menu">
-        <DropdownToggle
-          tag="button"
-          type="button"
-          className="tm-header-user-toggle tm-header-avatar-toggle"
-          aria-label="Open user menu"
-          title="Account menu"
-        >
-          <span className="tm-header-avatar" aria-hidden="true">{initials}</span>
-        </DropdownToggle>
-        <DropdownMenu end className="tm-header-account-menu">
-          <div className="tm-header-account-head">
-            <strong className="tm-header-account-name">{displayName}</strong>
-            {role && <div className="tm-header-account-role">{role}</div>}
-            {email && <div className="tm-header-account-email">{email}</div>}
-          </div>
-          <DropdownItem onClick={openAccountSettings}>Account settings</DropdownItem>
-          <DropdownItem onClick={openChangePassword}>Change password</DropdownItem>
-          <DropdownItem onClick={openSettings}>Preferences</DropdownItem>
-          <DropdownItem divider />
-          <DropdownItem className="tm-header-logout-item" onClick={onLogout}>
-            Logout
-          </DropdownItem>
-        </DropdownMenu>
-      </UncontrolledDropdown>
-    </li>,
-    headerNavList
+  return (
+    <>
+      {createPortal(
+        <li className="tm-header-session nav-item">
+          <UncontrolledDropdown className="tm-header-user-menu">
+            <DropdownToggle
+              tag="button"
+              type="button"
+              className="tm-header-user-toggle tm-header-avatar-toggle"
+              aria-label="Open user menu"
+              title="Account menu"
+            >
+              <span className="tm-header-avatar" aria-hidden="true">{initials}</span>
+            </DropdownToggle>
+            <DropdownMenu end className="tm-header-account-menu">
+              <div className="tm-header-account-head">
+                <strong className="tm-header-account-name">{displayName}</strong>
+                {role && <div className="tm-header-account-role">{role}</div>}
+                {email && <div className="tm-header-account-email">{email}</div>}
+              </div>
+              {canSignInAsPartner && (
+                <DropdownItem onClick={() => setPartnerSignInOpen(true)}>
+                  Sign in as partner
+                </DropdownItem>
+              )}
+              <DropdownItem onClick={openAccountSettings}>Account settings</DropdownItem>
+              <DropdownItem onClick={openChangePassword}>Change password</DropdownItem>
+              <DropdownItem onClick={openSettings}>Preferences</DropdownItem>
+              <DropdownItem divider />
+              <DropdownItem className="tm-header-logout-item" onClick={onLogout}>
+                Logout
+              </DropdownItem>
+            </DropdownMenu>
+          </UncontrolledDropdown>
+        </li>,
+        headerNavList
+      )}
+      {canSignInAsPartner && (
+        <SignInAsPartnerModal
+          isOpen={partnerSignInOpen}
+          onClose={() => setPartnerSignInOpen(false)}
+          onSignedIn={(payload) => {
+            saveSession(payload);
+            onSessionChange(payload.user);
+            setPartnerSignInOpen(false);
+            window.location.hash = '#/';
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function SignInAsPartnerModal({ isOpen, onClose, onSignedIn }) {
+  const [partners, setPartners] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectedUserId('');
+      setError('');
+      return undefined;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+    Promise.all([api.get('/partners'), api.get('/users')])
+      .then(([partnersResponse, usersResponse]) => {
+        if (cancelled) return;
+        setPartners(Array.isArray(partnersResponse.data) ? partnersResponse.data : []);
+        setUsers(Array.isArray(usersResponse.data) ? usersResponse.data : []);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.response?.data?.detail || err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+
+  const partnerNames = new Map(partners.map((row) => [row.id, row.name]));
+  const partnerUsers = users
+    .filter((row) => row.kind === 'partner' && row.active)
+    .sort((left, right) => {
+      const leftPartner = partnerNames.get(left.partner_id) || '';
+      const rightPartner = partnerNames.get(right.partner_id) || '';
+      return leftPartner.localeCompare(rightPartner, 'cs-CZ')
+        || (left.name || left.email).localeCompare(right.name || right.email, 'cs-CZ');
+    });
+
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!selectedUserId) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const response = await api.post('/auth/sign-in-as-partner', { user_id: selectedUserId });
+      onSignedIn(response.data);
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} toggle={onClose}>
+      <Form onSubmit={submit}>
+        <ModalHeader toggle={onClose}>Sign in as partner</ModalHeader>
+        <ModalBody>
+          {error && <Alert color="danger">{error}</Alert>}
+          <FormGroup>
+            <Label for="tm-partner-sign-in-user">Partner account</Label>
+            <Input
+              id="tm-partner-sign-in-user"
+              type="select"
+              value={selectedUserId}
+              onChange={(event) => setSelectedUserId(event.target.value)}
+              disabled={loading || submitting || partnerUsers.length === 0}
+            >
+              <option value="">{loading ? 'Loading partner accounts...' : 'Select partner account'}</option>
+              {partnerUsers.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {(partnerNames.get(row.partner_id) || 'Partner')
+                    + ' — '
+                    + (row.name || row.email)
+                    + ' ('
+                    + (roleLabel(row.partner_role) || row.partner_role || 'partner')
+                    + ')'}
+                </option>
+              ))}
+            </Input>
+          </FormGroup>
+        </ModalBody>
+        <ModalFooter>
+          <Button color="secondary" outline onClick={onClose} disabled={submitting}>Cancel</Button>
+          <Button color="primary" type="submit" disabled={!selectedUserId || loading || submitting}>
+            {submitting ? 'Signing in...' : 'Sign in'}
+          </Button>
+        </ModalFooter>
+      </Form>
+    </Modal>
   );
 }
 

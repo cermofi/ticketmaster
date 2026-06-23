@@ -48,6 +48,10 @@ class ActivateBody(BaseModel):
     password: str
 
 
+class SignInAsPartnerBody(BaseModel):
+    user_id: str = Field(min_length=1)
+
+
 class PartnerBody(BaseModel):
     name: str = Field(min_length=1, max_length=200)
 
@@ -285,6 +289,28 @@ def activate(db: DbSession, request: Request, body: ActivateBody) -> dict:
 @router.get("/auth/me")
 def me(user: CurrentUser) -> dict:
     return user_to_dict(user)
+
+
+@router.post("/auth/sign-in-as-partner")
+def sign_in_as_partner(db: DbSession, user: CurrentUser, request: Request, body: SignInAsPartnerBody) -> dict:
+    partner_user, token = auth.sign_in_as_partner_user(db, actor=user, target_user_id=body.user_id)
+    audit(
+        db,
+        entity_type="Auth",
+        entity_id=partner_user.id,
+        action="auth.sign_in_as_partner",
+        actor=user,
+        source="ui",
+        new_value=_request_audit_info(
+            request,
+            method="sign_in_as_partner",
+            partner_user_id=partner_user.id,
+            partner_user_email=partner_user.email,
+            partner_id=partner_user.partner_id,
+        ),
+    )
+    db.commit()
+    return {"token": token, "user": user_to_dict(partner_user)}
 
 
 @router.get("/account/me")

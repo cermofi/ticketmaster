@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { useNavigate } from 'react-router';
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
-import { ErrorBanner, Loading, PageHeader, apiError, hasAnyInternalRole } from './helpers.jsx';
-import { InternalTicketForm, PartnerOnBehalfTicketForm, PartnerTicketForm } from './ticketForms.jsx';
+import { ErrorBanner, Loading, PageHeader, apiError } from './helpers.jsx';
+import { InternalTicketForm, PartnerTicketForm } from './ticketForms.jsx';
 
 export default function NewTicketScreen() {
   return (
@@ -16,14 +16,9 @@ export default function NewTicketScreen() {
 
 function NewTicket({ user }) {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const [meta, setMeta] = useState(null);
   const [clients, setClients] = useState([]);
-  const [partners, setPartners] = useState([]);
-  const [users, setUsers] = useState([]);
   const [error, setError] = useState('');
-  const canCreateOnBehalf = user.kind === 'internal' && hasAnyInternalRole(user, ['Admin', 'DeliveryManager']);
-  const onBehalfMode = canCreateOnBehalf && searchParams.get('mode') === 'partner';
   const handleCancel = () => navigate('/');
   const handleCreated = (ticket, failedUploads = []) => {
     const notice = buildUploadNotice(failedUploads);
@@ -33,38 +28,24 @@ function NewTicket({ user }) {
   useEffect(() => {
     Promise.all([
       api.get('/meta'),
-      api.get('/clients').catch(() => ({ data: [] })),
-      onBehalfMode ? api.get('/partners').catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
-      onBehalfMode ? api.get('/users').catch(() => ({ data: [] })) : Promise.resolve({ data: [] })
+      api.get('/clients').catch(() => ({ data: [] }))
     ])
-      .then(([metaResponse, clientsResponse, partnersResponse, usersResponse]) => {
+      .then(([metaResponse, clientsResponse]) => {
         setMeta(metaResponse.data);
         setClients(clientsResponse.data);
-        setPartners(partnersResponse.data);
-        setUsers(usersResponse.data);
       })
       .catch((err) => setError(apiError(err)));
-  }, [onBehalfMode]);
+  }, []);
 
   if (!meta && !error) return <Loading />;
 
   return (
     <div className="tm-screen">
-      <PageHeader title={onBehalfMode ? 'Create for partner' : 'Create ticket'} />
+      <PageHeader title="Create ticket" />
       <ErrorBanner error={error} />
       <section className="tm-new-ticket-page">
         {user.kind === 'partner' && <PartnerTicketForm meta={meta} clients={clients} onCreated={handleCreated} onCancel={handleCancel} />}
-        {user.kind === 'internal' && onBehalfMode && (
-          <PartnerOnBehalfTicketForm
-            meta={meta}
-            partners={partners}
-            clients={clients}
-            users={users}
-            onCreated={handleCreated}
-            onCancel={handleCancel}
-          />
-        )}
-        {user.kind === 'internal' && !onBehalfMode && <InternalTicketForm meta={meta} onCreated={handleCreated} onCancel={handleCancel} />}
+        {user.kind === 'internal' && <InternalTicketForm meta={meta} onCreated={handleCreated} onCancel={handleCancel} />}
       </section>
     </div>
   );

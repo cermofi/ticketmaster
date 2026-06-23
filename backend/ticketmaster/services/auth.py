@@ -50,6 +50,18 @@ def authenticate_dev_sso(db: Session, email: str) -> tuple[User, str]:
     return user, create_token({"sub": user.id, "sso": "dev"})
 
 
+def sign_in_as_partner_user(db: Session, *, actor: User, target_user_id: str) -> tuple[User, str]:
+    from ticketmaster.services import admin
+
+    admin.require_admin_or_dm(actor)
+    target = db.get(User, target_user_id)
+    if not target or target.kind != "partner":
+        raise PermissionDenied("Partner user account is required")
+    if not target.active:
+        raise PermissionDenied("Partner account is inactive")
+    return target, create_token({"sub": target.id})
+
+
 def activate_invitation(db: Session, token: str, password: str) -> tuple[User, str]:
     if len(password) < 8:
         raise ValidationError("Password must contain at least 8 characters")
