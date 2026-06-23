@@ -97,14 +97,31 @@ def can_comment(db: Session, user: User, ticket: Ticket) -> bool:
     return db.scalar(select(TicketParticipant).where(TicketParticipant.ticket_id == ticket.id, TicketParticipant.user_id == user.id)) is not None
 
 
+def _participant_exists(db: Session, ticket_id: str, user_id: str) -> bool:
+    for obj in db.new:
+        if isinstance(obj, TicketParticipant) and obj.ticket_id == ticket_id and obj.user_id == user_id:
+            return True
+    return (
+        db.scalar(select(TicketParticipant).where(TicketParticipant.ticket_id == ticket_id, TicketParticipant.user_id == user_id))
+        is not None
+    )
+
+
+def _watcher_exists(db: Session, ticket_id: str, user_id: str) -> bool:
+    for obj in db.new:
+        if isinstance(obj, TicketWatcher) and obj.ticket_id == ticket_id and obj.user_id == user_id:
+            return True
+    return db.scalar(select(TicketWatcher).where(TicketWatcher.ticket_id == ticket_id, TicketWatcher.user_id == user_id)) is not None
+
+
 def _add_participant_if_missing(db: Session, ticket_id: str, user_id: str) -> None:
-    if not db.scalar(select(TicketParticipant).where(TicketParticipant.ticket_id == ticket_id, TicketParticipant.user_id == user_id)):
+    if not _participant_exists(db, ticket_id, user_id):
         db.add(TicketParticipant(id=new_id(), ticket_id=ticket_id, user_id=user_id))
     _add_watcher_if_missing(db, ticket_id, user_id)
 
 
 def _add_watcher_if_missing(db: Session, ticket_id: str, user_id: str) -> None:
-    if not db.scalar(select(TicketWatcher).where(TicketWatcher.ticket_id == ticket_id, TicketWatcher.user_id == user_id)):
+    if not _watcher_exists(db, ticket_id, user_id):
         db.add(TicketWatcher(id=new_id(), ticket_id=ticket_id, user_id=user_id))
 
 
@@ -216,6 +233,8 @@ def create_partner_ticket_on_behalf(
     _add_participant_if_missing(db, ticket.id, owner.id)
     _add_watcher_if_missing(db, ticket.id, actor.id)
     for user_id in dict.fromkeys(participant_ids or []):
+        if user_id == owner.id:
+            continue
         user = db.get(User, user_id)
         if not user or user.kind != "partner" or user.partner_id != partner.id or not user.active:
             raise ValidationError("Participants must be active users from the selected partner")
