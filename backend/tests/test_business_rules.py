@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import csv
-import json
+import re
 import zipfile
 from dataclasses import replace
 from datetime import datetime, timezone
-from io import BytesIO, StringIO
+from io import BytesIO
 
 import pytest
 from fastapi.testclient import TestClient
@@ -702,6 +701,21 @@ def test_create_partner_ticket_on_behalf_rejects_invalid_roles_and_relationships
         )
 
 
+def _read_xlsx_sheet(content: bytes, sheet_index: int = 1) -> str:
+    with zipfile.ZipFile(BytesIO(content)) as archive:
+        return archive.read(f"xl/worksheets/sheet{sheet_index}.xml").decode("utf-8")
+
+
+def _xlsx_sheet_names(content: bytes) -> list[str]:
+    with zipfile.ZipFile(BytesIO(content)) as archive:
+        workbook = archive.read("xl/workbook.xml").decode("utf-8")
+    return re.findall(r'<sheet name="([^"]+)"', workbook)
+
+
+def _xlsx_column_widths(sheet_xml: str) -> list[float]:
+    return [float(match.group(1)) for match in re.finditer(r'<col min="\d+" max="\d+" width="([\d.]+)"', sheet_xml)]
+
+
 def test_ticket_export_hides_internal_data_from_partner_and_keeps_partner_isolation(db, fixture_data):
     ticket = create_partner_ticket(db, fixture_data)
     tickets.add_internal_note(db, ticket=ticket, actor=fixture_data["dm"], body="Internal only", source="test")
@@ -727,15 +741,17 @@ def test_ticket_export_hides_internal_data_from_partner_and_keeps_partner_isolat
     )
     db.commit()
 
-    result = ticket_exports.build_ticket_export(db, actor=fixture_data["responsible_a"], export_format="json", filters={})
-    payload = json.loads(result.content)
+    result = ticket_exports.build_ticket_export(db, actor=fixture_data["responsible_a"], export_format="xlsx", filters={})
 
-    assert len(payload["tickets"]) == 1
-    assert "internal_notes" not in payload
-    assert "audit" not in payload
-    assert "gitlab_link" not in payload["tickets"][0]
-    assert "web_url" not in payload["gitlab"][0]
-    assert payload["gitlab"][0]["gitlab_status"] == "Open"
+    assert result.media_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    sheet_names = _xlsx_sheet_names(result.content)
+    assert "Internal notes" not in sheet_names
+    assert "Audit" not in sheet_names
+    tickets_sheet = _read_xlsx_sheet(result.content)
+    assert tickets_sheet.count("<row ") == 2
+    assert "Internal only" not in tickets_sheet
+    assert "web_url" not in tickets_sheet
+    assert "Open" in tickets_sheet
 
 
 def test_internal_ticket_export_formats_include_allowed_internal_data(db, fixture_data):
@@ -754,28 +770,21 @@ def test_internal_ticket_export_formats_include_allowed_internal_data(db, fixtur
     )
     db.commit()
 
-    json_result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="json", filters={})
-    payload = json.loads(json_result.content)
-    assert payload["internal_notes"][0]["body"] == "Internal note"
-    assert payload["audit"]
-    assert list(payload["tickets"][0].keys()) == [label for _, label in ticket_exports.TICKET_EXPORT_COLUMNS]
-    assert payload["tickets"][0]["URL"].endswith(f"/#/tickets/{ticket.id}")
-
-    csv_result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="csv", filters={})
-    with zipfile.ZipFile(BytesIO(csv_result.content)) as archive:
-        assert {"tickets.csv", "internal_notes.csv", "audit.csv", "gitlab.csv"}.issubset(set(archive.namelist()))
-        tickets_csv = archive.read("tickets.csv").decode("utf-8")
-        header = next(csv.reader(StringIO(tickets_csv)))
-        assert header == [label for _, label in ticket_exports.TICKET_EXPORT_COLUMNS]
-        assert f"/#/tickets/{ticket.id}" in tickets_csv
-
     xlsx_result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="xlsx", filters={})
+    sheet_names = _xlsx_sheet_names(xlsx_result.content)
+    assert {"Tickets", "Internal notes", "Audit", "GitLab"}.issubset(set(sheet_names))
+
+    tickets_sheet = _read_xlsx_sheet(xlsx_result.content)
+    assert "Internal note" in tickets_sheet
+    assert "HYPERLINK" in tickets_sheet
+    assert f"/#/tickets/{ticket.id}" in tickets_sheet
+    header = next(re.finditer(r"<row r=\"1\">(.*?)</row>", tickets_sheet, re.DOTALL)).group(1)
+    for label in [label for _, label in ticket_exports.TICKET_EXPORT_COLUMNS]:
+        assert label in header
+
     with zipfile.ZipFile(BytesIO(xlsx_result.content)) as archive:
         assert "xl/workbook.xml" in archive.namelist()
         assert "xl/worksheets/sheet1.xml" in archive.namelist()
-        sheet1 = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
-        assert "HYPERLINK" in sheet1
-        assert f"/#/tickets/{ticket.id}" in sheet1
 
 
 def test_ticket_export_respects_filters_and_rejects_unknown_format(db, fixture_data):
@@ -792,13 +801,14 @@ def test_ticket_export_respects_filters_and_rejects_unknown_format(db, fixture_d
     )
     db.commit()
 
-    result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="json", filters={"priority": "High"})
-    payload = json.loads(result.content)
+    result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="xlsx", filters={"priority": "High"})
+    tickets_sheet = _read_xlsx_sheet(result.content)
     assert result.ticket_count == 1
-    assert payload["tickets"][0]["Priorita"] == "High"
+    assert "High" in tickets_sheet
 
-    with pytest.raises(ValidationError):
-        ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="pdf", filters={})
+    for unsupported_format in ("json", "csv", "pdf"):
+        with pytest.raises(ValidationError, match="Only Excel \\(xlsx\\) export is supported"):
+            ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format=unsupported_format, filters={})
 
 
 def test_format_ticket_export_datetime():
@@ -813,20 +823,9 @@ def test_ticket_export_formats_created_and_updated_as_czech_datetime(db, fixture
     ticket.updated_at = known
     db.commit()
 
-    json_result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="json", filters={})
-    payload = json.loads(json_result.content)
-    assert payload["tickets"][0]["Vytvořeno"] == "02.06.2026 13:11"
-    assert payload["tickets"][0]["Aktualizováno"] == "02.06.2026 13:11"
-
-    csv_result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="csv", filters={})
-    with zipfile.ZipFile(BytesIO(csv_result.content)) as archive:
-        tickets_csv = archive.read("tickets.csv").decode("utf-8")
-        assert "02.06.2026 13:11" in tickets_csv
-
     xlsx_result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="xlsx", filters={})
-    with zipfile.ZipFile(BytesIO(xlsx_result.content)) as archive:
-        sheet1 = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
-        assert "02.06.2026 13:11" in sheet1
+    tickets_sheet = _read_xlsx_sheet(xlsx_result.content)
+    assert "02.06.2026 13:11" in tickets_sheet
 
 
 def test_ticket_export_ticket_url_uses_app_base_url(db, fixture_data, monkeypatch):
@@ -837,10 +836,10 @@ def test_ticket_export_ticket_url_uses_app_base_url(db, fixture_data, monkeypatc
     )
     ticket = create_partner_ticket(db, fixture_data)
 
-    result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="json", filters={})
-    payload = json.loads(result.content)
+    result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="xlsx", filters={})
+    tickets_sheet = _read_xlsx_sheet(result.content)
 
-    assert payload["tickets"][0]["URL"] == f"https://tickets.example.test/#/tickets/{ticket.id}"
+    assert f"https://tickets.example.test/#/tickets/{ticket.id}" in tickets_sheet
 
 
 def test_ticket_export_ticket_url_uses_production_base_url(db, fixture_data, monkeypatch):
@@ -851,11 +850,11 @@ def test_ticket_export_ticket_url_uses_production_base_url(db, fixture_data, mon
     )
     ticket = create_partner_ticket(db, fixture_data)
 
-    result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="json", filters={})
-    payload = json.loads(result.content)
+    result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="xlsx", filters={})
+    tickets_sheet = _read_xlsx_sheet(result.content)
 
-    assert payload["tickets"][0]["URL"] == f"https://ticketmaster.cermofi.cz/#/tickets/{ticket.id}"
-    assert "localhost" not in payload["tickets"][0]["URL"]
+    assert f"https://ticketmaster.cermofi.cz/#/tickets/{ticket.id}" in tickets_sheet
+    assert "localhost" not in tickets_sheet
 
 
 def test_export_endpoint_audits_export_metadata(db, fixture_data):
@@ -867,13 +866,49 @@ def test_export_endpoint_audits_export_metadata(db, fixture_data):
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[current_user] = lambda: fixture_data["dm"]
     try:
-        response = TestClient(app).get("/api/tickets/export?format=json")
+        response = TestClient(app).get("/api/tickets/export?format=xlsx")
     finally:
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert response.headers["content-type"].startswith("application/json")
+    assert response.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     row = db.scalar(select(AuditLog).where(AuditLog.action == "tickets.export"))
     assert row
-    assert row.new_value["format"] == "json"
+    assert row.new_value["format"] == "xlsx"
     assert row.new_value["ticket_count"] == 1
+
+
+def test_export_endpoint_rejects_non_excel_formats(db, fixture_data):
+    create_partner_ticket(db, fixture_data)
+
+    def override_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[current_user] = lambda: fixture_data["dm"]
+    try:
+        for unsupported_format in ("json", "csv", "pdf"):
+            response = TestClient(app).get(f"/api/tickets/export?format={unsupported_format}")
+            assert response.status_code == 400
+            assert response.json()["detail"] == "Only Excel (xlsx) export is supported"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_xlsx_column_widths_are_autosized(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+    ticket.title = "Short"
+    db.commit()
+
+    short_result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="xlsx", filters={})
+    short_widths = _xlsx_column_widths(_read_xlsx_sheet(short_result.content))
+    assert len(short_widths) == len(ticket_exports.TICKET_EXPORT_COLUMNS)
+    assert all(ticket_exports.XLSX_MIN_COLUMN_WIDTH <= width <= ticket_exports.XLSX_MAX_COLUMN_WIDTH for width in short_widths)
+
+    ticket.title = "x" * 200
+    db.commit()
+    long_result = ticket_exports.build_ticket_export(db, actor=fixture_data["admin"], export_format="xlsx", filters={})
+    long_widths = _xlsx_column_widths(_read_xlsx_sheet(long_result.content))
+    title_index = [label for _, label in ticket_exports.TICKET_EXPORT_COLUMNS].index("Topic")
+    assert long_widths[title_index] == ticket_exports.XLSX_MAX_COLUMN_WIDTH
+    assert long_widths[title_index] > short_widths[title_index]

@@ -69,13 +69,13 @@ function Dashboard({ user }) {
     }
   }, []);
 
-  const exportTickets = async (format) => {
+  const exportTickets = async () => {
     setError('');
-    setExportLoading(format);
+    setExportLoading('xlsx');
     try {
       const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ''));
-      const response = await api.get('/tickets/export', { params: { ...params, format }, responseType: 'blob' });
-      downloadResponse(response, `ticketmaster_export.${format === 'csv' ? 'zip' : format}`);
+      const response = await api.get('/tickets/export', { params: { ...params, format: 'xlsx' }, responseType: 'blob' });
+      downloadResponse(response, 'ticketmaster_export.xlsx');
     } catch (err) {
       setError(await exportError(err));
     } finally {
@@ -174,14 +174,8 @@ function MoreActionsMenu({ isOpen, setOpen, canCreateOnBehalf, loading, onExport
             Create for partner
           </DropdownItem>
         )}
-        <DropdownItem disabled={Boolean(loading)} onClick={() => onExport('json')}>
-          {loading === 'json' ? 'Exporting JSON...' : 'Export tickets (JSON)'}
-        </DropdownItem>
-        <DropdownItem disabled={Boolean(loading)} onClick={() => onExport('xlsx')}>
-          {loading === 'xlsx' ? 'Exporting XLSX...' : 'Export tickets (XLSX)'}
-        </DropdownItem>
-        <DropdownItem disabled={Boolean(loading)} onClick={() => onExport('csv')}>
-          {loading === 'csv' ? 'Exporting CSV ZIP...' : 'Export tickets (CSV ZIP)'}
+        <DropdownItem disabled={Boolean(loading)} onClick={() => onExport()}>
+          {loading ? 'Exporting Excel...' : 'Export tickets (Excel)'}
         </DropdownItem>
       </DropdownMenu>
     </ButtonDropdown>

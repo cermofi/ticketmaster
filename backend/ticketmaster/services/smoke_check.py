@@ -73,7 +73,7 @@ def run_smoke_check(
         auth_headers = {"Authorization": f"Bearer {token}"}
         for name, path in [
             ("auth.me", "/api/auth/me"),
-            ("tickets.export", "/api/tickets/export?format=json&limit=1"),
+            ("tickets.export", "/api/tickets/export?format=xlsx&limit=1"),
         ]:
             try:
                 status, payload = _request("GET", f"{root}{path}", headers=auth_headers)

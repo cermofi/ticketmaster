@@ -602,7 +602,7 @@ def tickets_create_on_behalf(db: DbSession, user: CurrentUser, body: TicketOnBeh
 def tickets_export(
     db: DbSession,
     user: CurrentUser,
-    format: str = "json",
+    format: str = "xlsx",
     search: str | None = None,
     status: str | None = None,
     priority: str | None = None,

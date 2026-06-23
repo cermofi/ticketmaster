@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 import io
 import json
 import zipfile
@@ -51,6 +50,10 @@ class Sheet:
 
 TICKET_EXPORT_DATETIME_FORMAT = "%d.%m.%Y %H:%M"
 TICKET_EXPORT_DATETIME_TZ = ZoneInfo("Europe/Prague")
+XLSX_MIN_COLUMN_WIDTH = 8.0
+XLSX_MAX_COLUMN_WIDTH = 60.0
+XLSX_COLUMN_WIDTH_PADDING = 2.0
+SUPPORTED_EXPORT_FORMAT = "xlsx"
 
 TICKET_EXPORT_COLUMNS: tuple[tuple[str, str], ...] = (
     ("created_at", "Vytvořeno"),
@@ -78,9 +81,9 @@ def _ticket_detail_url(ticket_id: str) -> str:
 
 
 def build_ticket_export(db: Session, *, actor: User, export_format: str, filters: dict[str, Any]) -> ExportResult:
-    normalized_format = export_format.lower().strip()
-    if normalized_format not in {"json", "xlsx", "csv"}:
-        raise ValidationError("Unsupported export format")
+    normalized_format = export_format.lower().strip() or SUPPORTED_EXPORT_FORMAT
+    if normalized_format != SUPPORTED_EXPORT_FORMAT:
+        raise ValidationError("Only Excel (xlsx) export is supported")
 
     clean_filters = {key: value for key, value in filters.items() if value not in (None, "")}
     rows = tickets.list_visible_tickets(
@@ -99,28 +102,9 @@ def build_ticket_export(db: Session, *, actor: User, export_format: str, filters
 
     sheets = _build_sheets(db, actor=actor, ticket_rows=rows)
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
-    if normalized_format == "json":
-        payload = {
-            "export": {
-                "format": "json",
-                "ticket_count": len(rows),
-                "filters": clean_filters,
-                "generated_at": datetime.now(timezone.utc),
-                "viewer_kind": actor.kind,
-            },
-            **{sheet.key: sheet.rows for sheet in sheets},
-        }
-        content = json.dumps(_json_ready(payload), ensure_ascii=False, indent=2).encode("utf-8")
-        media_type = "application/json"
-        filename = f"ticketmaster_export_{timestamp}.json"
-    elif normalized_format == "xlsx":
-        content = _xlsx_bytes(sheets)
-        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        filename = f"ticketmaster_export_{timestamp}.xlsx"
-    else:
-        content = _csv_zip_bytes(sheets)
-        media_type = "application/zip"
-        filename = f"ticketmaster_export_{timestamp}.zip"
+    content = _xlsx_bytes(sheets)
+    media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    filename = f"ticketmaster_export_{timestamp}.xlsx"
     return ExportResult(content=content, media_type=media_type, filename=filename, ticket_count=len(rows), filters=clean_filters)
 
 
@@ -337,23 +321,6 @@ def _gitlab_by_ticket_id(db: Session, ticket_ids: list[str]) -> dict[str, GitLab
     }
 
 
-def _csv_zip_bytes(sheets: list[Sheet]) -> bytes:
-    output = io.BytesIO()
-    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
-        for sheet in sheets:
-            archive.writestr(sheet.filename, _csv_text(sheet))
-    return output.getvalue()
-
-
-def _csv_text(sheet: Sheet) -> str:
-    output = io.StringIO(newline="")
-    writer = csv.DictWriter(output, fieldnames=sheet.columns, extrasaction="ignore")
-    writer.writeheader()
-    for row in sheet.rows:
-        writer.writerow({column: _scalar_text(row.get(column)) for column in sheet.columns})
-    return output.getvalue()
-
-
 def _xlsx_bytes(sheets: list[Sheet]) -> bytes:
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -438,6 +405,26 @@ def _styles_xml() -> str:
     )
 
 
+def _column_widths(sheet: Sheet) -> list[float]:
+    widths: list[float] = []
+    for column in sheet.columns:
+        max_length = len(column)
+        for row in sheet.rows:
+            max_length = max(max_length, len(_scalar_text(row.get(column))))
+        width = max_length + XLSX_COLUMN_WIDTH_PADDING
+        width = max(XLSX_MIN_COLUMN_WIDTH, min(XLSX_MAX_COLUMN_WIDTH, width))
+        widths.append(width)
+    return widths
+
+
+def _cols_xml(widths: list[float]) -> str:
+    columns = [
+        f'<col min="{index}" max="{index}" width="{width:.2f}" customWidth="1"/>'
+        for index, width in enumerate(widths, start=1)
+    ]
+    return f"<cols>{''.join(columns)}</cols>"
+
+
 def _worksheet_xml(sheet: Sheet) -> str:
     hyperlink_indices = {index for index, column in enumerate(sheet.columns) if column == "URL"}
     rows = [_xlsx_row(1, sheet.columns)]
@@ -446,6 +433,7 @@ def _worksheet_xml(sheet: Sheet) -> str:
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f"{_cols_xml(_column_widths(sheet))}"
         f"<sheetData>{''.join(rows)}</sheetData>"
         "</worksheet>"
     )
