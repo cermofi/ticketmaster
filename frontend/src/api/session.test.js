@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { DEFAULT_POST_LOGIN_HASH, resolvePostLoginNavigation } from './session.js';
+import { DEFAULT_POST_LOGIN_HASH, resolvePostLoginNavigation } from './sessionNavigation.js';
 
 test('resolvePostLoginNavigation reloads when target hash matches current location', () => {
   assert.deepEqual(

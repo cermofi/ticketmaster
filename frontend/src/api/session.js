@@ -1,19 +1,7 @@
 import { saveSession } from './client.js';
+import { DEFAULT_POST_LOGIN_HASH, resolvePostLoginNavigation } from './sessionNavigation.js';
 
-export const DEFAULT_POST_LOGIN_HASH = '#/';
-
-export function resolvePostLoginNavigation(redirectTo, location = {}) {
-  const { pathname = '/', search = '', hash = '' } = location;
-  const normalizedHash = redirectTo.startsWith('#')
-    ? redirectTo
-    : `#${redirectTo.replace(/^\/?/, '/')}`;
-  const nextUrl = `${pathname}${search}${normalizedHash}`;
-  const currentUrl = `${pathname}${search}${hash || ''}`;
-  if (nextUrl === currentUrl) {
-    return { action: 'reload' };
-  }
-  return { action: 'navigate', url: nextUrl };
-}
+export { DEFAULT_POST_LOGIN_HASH, resolvePostLoginNavigation } from './sessionNavigation.js';
 
 export function finalizeSession(payload, { redirectTo = DEFAULT_POST_LOGIN_HASH } = {}) {
   saveSession(payload);
