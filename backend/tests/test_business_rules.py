@@ -751,7 +751,10 @@ def test_ticket_export_hides_internal_data_from_partner_and_keeps_partner_isolat
     assert tickets_sheet.count("<row ") == 2
     assert "Internal only" not in tickets_sheet
     assert "web_url" not in tickets_sheet
-    assert "Open" in tickets_sheet
+
+    gitlab_sheet_index = _xlsx_sheet_names(result.content).index("GitLab") + 1
+    gitlab_sheet = _read_xlsx_sheet(result.content, gitlab_sheet_index)
+    assert "Open" in gitlab_sheet
 
 
 def test_internal_ticket_export_formats_include_allowed_internal_data(db, fixture_data):
@@ -775,12 +778,15 @@ def test_internal_ticket_export_formats_include_allowed_internal_data(db, fixtur
     assert {"Tickets", "Internal notes", "Audit", "GitLab"}.issubset(set(sheet_names))
 
     tickets_sheet = _read_xlsx_sheet(xlsx_result.content)
-    assert "Internal note" in tickets_sheet
     assert "HYPERLINK" in tickets_sheet
     assert f"/#/tickets/{ticket.id}" in tickets_sheet
     header = next(re.finditer(r"<row r=\"1\">(.*?)</row>", tickets_sheet, re.DOTALL)).group(1)
     for label in [label for _, label in ticket_exports.TICKET_EXPORT_COLUMNS]:
         assert label in header
+
+    internal_notes_index = sheet_names.index("Internal notes") + 1
+    internal_notes_sheet = _read_xlsx_sheet(xlsx_result.content, internal_notes_index)
+    assert "Internal note" in internal_notes_sheet
 
     with zipfile.ZipFile(BytesIO(xlsx_result.content)) as archive:
         assert "xl/workbook.xml" in archive.namelist()
