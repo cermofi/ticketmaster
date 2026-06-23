@@ -892,6 +892,15 @@ def tickets_close(db: DbSession, user: CurrentUser, ticket_id: str) -> dict:
     return _ticket_detail(db, user, ticket)
 
 
+# TEMPORARY: admin-only ticket delete — remove this route when feature is retired.
+@router.delete("/tickets/{ticket_id}")
+def tickets_delete(db: DbSession, user: CurrentUser, ticket_id: str) -> dict:
+    ticket = tickets.get_ticket(db, ticket_id)
+    tickets.delete_ticket(db, ticket=ticket, actor=user)
+    db.commit()
+    return {"deleted": True, "id": ticket_id}
+
+
 @router.get("/tickets/{ticket_id}/attachments")
 def tickets_attachments_list(db: DbSession, user: CurrentUser, ticket_id: str) -> list[dict]:
     ticket = tickets.get_ticket(db, ticket_id)

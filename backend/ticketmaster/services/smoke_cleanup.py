@@ -144,7 +144,12 @@ def _client_has_tickets(db: Session, client_id: str) -> bool:
     return db.scalar(select(Ticket.id).where(Ticket.client_id == client_id).limit(1)) is not None
 
 
-def delete_tickets_cascade(db: Session, ticket_ids: list[str]) -> dict[str, int]:
+def delete_tickets_cascade(
+    db: Session,
+    ticket_ids: list[str],
+    *,
+    preserve_audit_actions: frozenset[str] | None = None,
+) -> dict[str, int]:
     if not ticket_ids:
         return {}
 
@@ -173,14 +178,15 @@ def delete_tickets_cascade(db: Session, ticket_ids: list[str]) -> dict[str, int]
     deleted["tickets"] = db.execute(delete(Ticket).where(Ticket.id.in_(ticket_ids))).rowcount or 0
 
     entity_ids = ticket_ids + comment_ids
-    deleted["audit_logs"] = db.execute(
-        delete(AuditLog).where(
-            or_(
-                AuditLog.entity_id.in_(entity_ids),
-                AuditLog.entity_id.in_(ticket_ids),
-            )
+    audit_stmt = delete(AuditLog).where(
+        or_(
+            AuditLog.entity_id.in_(entity_ids),
+            AuditLog.entity_id.in_(ticket_ids),
         )
-    ).rowcount or 0
+    )
+    if preserve_audit_actions:
+        audit_stmt = audit_stmt.where(AuditLog.action.notin_(preserve_audit_actions))
+    deleted["audit_logs"] = db.execute(audit_stmt).rowcount or 0
 
     db.flush()
     return deleted

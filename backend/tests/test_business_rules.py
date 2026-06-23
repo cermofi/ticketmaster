@@ -531,10 +531,12 @@ def test_need_more_info_without_resolver_team_returns_to_new(db, fixture_data):
     assert ticket.status == "New"
 
 
-def test_ticket_model_has_no_delete_flag(db, fixture_data):
-    create_partner_ticket(db, fixture_data)
-    assert db.scalar(select(Ticket)).status == "New"
-    assert not hasattr(tickets, "delete_ticket")
+def test_ticket_delete_is_admin_only_temporary(db, fixture_data):
+    ticket = create_partner_ticket(db, fixture_data)
+    assert hasattr(tickets, "delete_ticket")
+    tickets.delete_ticket(db, ticket=ticket, actor=fixture_data["admin"], source="test")
+    db.commit()
+    assert db.get(Ticket, ticket.id) is None
 
 
 def test_comment_edit_and_soft_delete_are_disabled(db, fixture_data):

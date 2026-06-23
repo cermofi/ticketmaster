@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.orm import Session
@@ -23,7 +24,8 @@ from ticketmaster.core.ticket_id import allocate_ticket_id
 from ticketmaster.models.entities import new_id
 from ticketmaster.services import gitlab, search as ticket_search
 from ticketmaster.services.audit import audit
-from ticketmaster.services.admin import resolve_client, resolve_partner, resolve_user
+from ticketmaster.services.admin import require_admin, resolve_client, resolve_partner, resolve_user
+from ticketmaster.services.smoke_cleanup import delete_tickets_cascade
 from ticketmaster.services.errors import ConflictError, NotFoundError, PermissionDenied, ValidationError
 from ticketmaster.services.internal_roles import (
     ADMIN_DM_ROLES,
@@ -693,6 +695,37 @@ def available_transitions(db: Session, *, ticket: Ticket, actor: User) -> list[s
             continue
         allowed.append(status)
     return allowed
+
+
+# TEMPORARY: admin-only hard delete — remove this function and its API/UI when feature is retired.
+def delete_ticket(db: Session, *, ticket: Ticket, actor: User, source: str = "ui") -> None:
+    require_admin(actor)
+    snapshot = {
+        "id": ticket.id,
+        "title": ticket.title,
+        "status": ticket.status,
+        "type": ticket.type,
+        "priority": ticket.priority,
+        "partner_id": ticket.partner_id,
+        "client_id": ticket.client_id,
+        "internal": ticket.internal,
+        "system": ticket.system,
+    }
+    attachments = db.scalars(select(Attachment).where(Attachment.ticket_id == ticket.id)).all()
+    for attachment in attachments:
+        path = Path(attachment.storage_path)
+        if path.is_file():
+            path.unlink()
+    audit(
+        db,
+        entity_type="Ticket",
+        entity_id=ticket.id,
+        action="ticket.delete",
+        actor=actor,
+        source=source,
+        old_value=snapshot,
+    )
+    delete_tickets_cascade(db, [ticket.id], preserve_audit_actions=frozenset({"ticket.delete"}))
 
 
 def close_ticket(db: Session, *, ticket: Ticket, actor: User | None, source: str = "ui") -> Ticket:

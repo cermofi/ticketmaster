@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useLocation, useParams } from 'react-router';
+import { useLocation, useNavigate, useParams } from 'react-router';
 import {
   Alert,
   Button,
@@ -32,6 +32,7 @@ export default function TicketDetailScreen() {
 function TicketDetail({ user }) {
   const { ticketId } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const [ticket, setTicket] = useState(null);
   const [comments, setComments] = useState([]);
   const [attachments, setAttachments] = useState([]);
@@ -51,6 +52,7 @@ function TicketDetail({ user }) {
   const [reassignOpen, setReassignOpen] = useState(false);
   const [setPriorityOpen, setSetPriorityOpen] = useState(false);
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const load = useCallback(async () => {
@@ -159,6 +161,7 @@ function TicketDetail({ user }) {
   const showChangeStatus = showPrimaryStatusActions;
   const showReassign = canAssignTicket;
   const showSetPriority = canEditTicketPriority;
+  const canDeleteTicket = user.kind === 'internal' && hasInternalRole(user, 'Admin');
 
   return (
     <div className="tm-screen">
@@ -287,6 +290,7 @@ function TicketDetail({ user }) {
             canEditTicketType={canEditTicketType}
             canTransferOwner={canTransferOwner}
             canReturnToQueue={canReturnToQueue}
+            canDeleteTicket={canDeleteTicket}
             participantId={participantId}
             setParticipantId={setParticipantId}
             uploadFile={uploadFile}
@@ -320,6 +324,25 @@ function TicketDetail({ user }) {
               await api.post(`/tickets/${ticket.id}/unassign`);
               setMoreActionsOpen(false);
             })}
+            onDeleteTicket={() => {
+              setMoreActionsOpen(false);
+              setDeleteConfirmOpen(true);
+            }}
+          />
+          <DeleteTicketConfirmModal
+            isOpen={deleteConfirmOpen}
+            onClose={() => setDeleteConfirmOpen(false)}
+            ticket={ticket}
+            onConfirm={async () => {
+              setError('');
+              try {
+                await api.delete(`/tickets/${ticket.id}`);
+                navigate('/', { state: { notice: `Ticket ${ticket.id} was deleted.` } });
+              } catch (err) {
+                setError(apiError(err));
+                setDeleteConfirmOpen(false);
+              }
+            }}
           />
           <TicketHistoryModal
             isOpen={historyOpen}
@@ -761,6 +784,7 @@ function MoreActionsModal({
   canEditTicketType,
   canTransferOwner,
   canReturnToQueue,
+  canDeleteTicket,
   participantId,
   setParticipantId,
   uploadFile,
@@ -777,7 +801,8 @@ function MoreActionsModal({
   onUploadAttachment,
   onSaveTicketType,
   onTransferOwner,
-  onReturnToQueue
+  onReturnToQueue,
+  onDeleteTicket
 }) {
   const [view, setView] = useState('menu');
 
@@ -848,6 +873,12 @@ function MoreActionsModal({
               <Button color="secondary" outline className="tm-more-action-btn" onClick={onReturnToQueue}>
                 <i className="bi bi-inbox" aria-hidden="true" />
                 Return to queue
+              </Button>
+            )}
+            {canDeleteTicket && (
+              <Button color="danger" outline className="tm-more-action-btn" onClick={onDeleteTicket}>
+                <i className="bi bi-trash" aria-hidden="true" />
+                Delete ticket
               </Button>
             )}
           </div>
@@ -961,6 +992,48 @@ function MoreActionsModal({
           <Button color="secondary" outline type="button" onClick={close}>Cancel</Button>
         </ModalFooter>
       )}
+    </Modal>
+  );
+}
+
+function DeleteTicketConfirmModal({ isOpen, onClose, ticket, onConfirm }) {
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSubmitting(false);
+    }
+  }, [isOpen]);
+
+  const handleConfirm = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await onConfirm();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} toggle={onClose} backdrop>
+      <ModalHeader toggle={onClose}>Delete ticket</ModalHeader>
+      <ModalBody>
+        <p className="tm-modal-lead">
+          Permanently delete ticket <strong>{ticket?.id}</strong> — <strong>{ticket?.title}</strong>?
+        </p>
+        <p className="tm-muted">
+          This removes the ticket, comments, attachments, and related data. This action cannot be undone.
+        </p>
+      </ModalBody>
+      <ModalFooter>
+        <Button color="secondary" outline type="button" onClick={onClose} disabled={submitting}>
+          Cancel
+        </Button>
+        <Button color="danger" type="button" onClick={handleConfirm} disabled={submitting}>
+          {submitting ? 'Deleting…' : 'Delete ticket'}
+        </Button>
+      </ModalFooter>
     </Modal>
   );
 }
