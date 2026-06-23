@@ -218,6 +218,37 @@ def cmd_ticket_close(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ticket_delete(args: argparse.Namespace) -> int:
+    if not args.dry_run and not args.confirm:
+        print("error: pass --confirm to delete a ticket (or use --dry-run to preview)", file=sys.stderr)
+        return 1
+    with session_scope() as db:
+        actor = cli_actor(db)
+        ticket = tickets.get_ticket(db, args.id)
+        preview = {
+            "id": ticket.id,
+            "title": ticket.title,
+            "status": ticket.status,
+            "type": ticket.type,
+            "priority": ticket.priority,
+            "partner_id": ticket.partner_id,
+            "client_id": ticket.client_id,
+            "internal": ticket.internal,
+            "system": ticket.system,
+        }
+        if args.dry_run:
+            print_json({"dry_run": True, "would_delete": preview, "actor": user_to_dict(actor)})
+            return 0
+        print(
+            f"ticket.delete actor={actor.email} actor_id={actor.id} ticket_id={ticket.id} title={ticket.title!r}",
+            file=sys.stderr,
+        )
+        ticket_id = ticket.id
+        tickets.delete_ticket(db, ticket=ticket, actor=actor, source="cli")
+        print_json({"deleted": True, "id": ticket_id, "actor": user_to_dict(actor), "preview": preview})
+    return 0
+
+
 def cmd_ticket_create_internal(args: argparse.Namespace) -> int:
     with session_scope() as db:
         actor = cli_actor(db)
@@ -378,6 +409,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--assignee")
     p = _command(ticket_sub, "close", cmd_ticket_close)
     p.add_argument("--id", required=True)
+    p = _command(ticket_sub, "delete", cmd_ticket_delete)
+    p.add_argument("--id", required=True)
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--confirm", action="store_true")
     p = _command(ticket_sub, "create-internal", cmd_ticket_create_internal)
     p.add_argument("--type", required=True)
     p.add_argument("--priority", required=True, choices=["Low", "Normal", "High", "Critical"])

@@ -14,6 +14,25 @@ api.interceptors.request.use((config) => {
 
 const RETURN_TOKEN_KEY = 'ticketmaster.return_token';
 export const SESSION_CHANGE_EVENT = 'tm:session-change';
+export const SESSION_FINALIZED_EVENT = 'tm:session-finalized';
+
+const sessionCacheInvalidators = new Set();
+
+export function registerSessionCacheInvalidator(invalidator) {
+  sessionCacheInvalidators.add(invalidator);
+  return () => sessionCacheInvalidators.delete(invalidator);
+}
+
+export function invalidateSessionCaches() {
+  sessionCacheInvalidators.forEach((invalidator) => {
+    try {
+      invalidator();
+    } catch {
+      // Cache invalidation must not block session changes.
+    }
+  });
+  notifySessionChange();
+}
 
 export function notifySessionChange() {
   window.dispatchEvent(new Event(SESSION_CHANGE_EVENT));
@@ -27,14 +46,13 @@ export function saveSession(payload) {
   } else {
     localStorage.removeItem(RETURN_TOKEN_KEY);
   }
-  notifySessionChange();
 }
 
 export function clearSession() {
   localStorage.removeItem('ticketmaster.token');
   localStorage.removeItem('ticketmaster.user');
   localStorage.removeItem(RETURN_TOKEN_KEY);
-  notifySessionChange();
+  invalidateSessionCaches();
 }
 
 export function hasReturnToAdmin() {

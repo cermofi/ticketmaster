@@ -10,7 +10,10 @@ from ticketmaster.api.main import app
 from ticketmaster.core.config import settings
 from ticketmaster.models import AuditLog
 from ticketmaster.services import admin, audit as audit_service, tickets
-from ticketmaster.services.audit_context import SMOKE_REQUEST_HEADERS, suppress_audit
+from ticketmaster.services.audit_context import suppress_audit
+
+# Legacy smoke header — must not suppress audit on public API requests.
+SMOKE_REQUEST_HEADERS = {"x-ticketmaster-smoke": "1"}
 
 
 @contextmanager
@@ -87,7 +90,7 @@ def test_normal_login_still_audits(db, fixture_data):
     assert _audit_count(db) == before + 1
 
 
-def test_smoke_header_skips_login_audit(db, fixture_data):
+def test_smoke_header_does_not_skip_login_audit(db, fixture_data):
     admin.ensure_dev_login_password(fixture_data["admin"])
     db.commit()
     before = _audit_count(db)
@@ -100,17 +103,17 @@ def test_smoke_header_skips_login_audit(db, fixture_data):
         )
 
     assert response.status_code == 200
-    assert _audit_count(db) == before
+    assert _audit_count(db) == before + 1
 
 
-def test_smoke_header_skips_export_audit(db, fixture_data):
+def test_smoke_header_does_not_skip_export_audit(db, fixture_data):
     before = _audit_count(db)
 
     with api_client(db, fixture_data["admin"]) as client:
         response = client.get("/api/tickets/export?format=xlsx&limit=1", headers=SMOKE_REQUEST_HEADERS)
 
     assert response.status_code == 200
-    assert _audit_count(db) == before
+    assert _audit_count(db) == before + 1
 
 
 def test_normal_export_still_audits(db, fixture_data):

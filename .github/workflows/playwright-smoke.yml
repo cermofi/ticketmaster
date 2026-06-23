@@ -1,0 +1,30 @@
+name: Playwright smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: App base URL (no trailing slash)
+        required: true
+        default: http://127.0.0.1:3006
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install frontend + Playwright
+        working-directory: frontend
+        run: |
+          npm install
+          npx playwright install chromium --with-deps
+      - name: Run smoke specs
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ github.event.inputs.base_url }}
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+        run: npm run test:e2e

@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { DEFAULT_POST_LOGIN_HASH, resolvePostLoginNavigation } from './sessionNavigation.js';
 
-test('resolvePostLoginNavigation reloads when target hash matches current location', () => {
+test('resolvePostLoginNavigation soft-finalizes when target hash matches current location', () => {
   assert.deepEqual(
     resolvePostLoginNavigation(DEFAULT_POST_LOGIN_HASH, {
       pathname: '/',

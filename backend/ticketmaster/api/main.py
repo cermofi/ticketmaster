@@ -17,7 +17,6 @@ from ticketmaster.api.error_handlers import (
 )
 from ticketmaster.api.routes import router
 from ticketmaster.core.config import settings
-from ticketmaster.services.audit_context import request_is_smoke_check, suppress_audit
 from ticketmaster.services.errors import TicketMasterError
 
 
@@ -47,11 +46,7 @@ async def request_context_middleware(request: Request, call_next):
     request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
     request.state.request_id = request_id
     start = time.perf_counter()
-    if request_is_smoke_check(request):
-        with suppress_audit():
-            response = await call_next(request)
-    else:
-        response = await call_next(request)
+    response = await call_next(request)
     duration_ms = round((time.perf_counter() - start) * 1000, 2)
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Content-Type-Options"] = "nosniff"

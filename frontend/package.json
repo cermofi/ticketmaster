@@ -7,7 +7,9 @@
     "start": "vite --host 0.0.0.0 --port 3000",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
-    "test": "node --test src/api/session.test.js src/ticketmaster/criticalFlows.test.js src/ticketmaster/auditLoad.test.js"
+    "test": "node --test src/api/session.test.js src/ticketmaster/criticalFlows.test.js src/ticketmaster/auditLoad.test.js",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium"
   },
   "dependencies": {
     "@babel/runtime": "^7.26.0",
@@ -30,5 +32,8 @@
     "remark-gfm": "^4.0.1",
     "sass": "^1.83.0",
     "vite": "^6.0.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.0"
   }
 }

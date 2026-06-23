@@ -17,24 +17,30 @@ import {
   UncontrolledDropdown
 } from 'reactstrap';
 
-import api, { clearSession, currentUser, getReturnToken, hasReturnToAdmin } from '../../api/client.js';
-import { finalizeSession } from '../../api/session.js';
+import api, {
+  SESSION_FINALIZED_EVENT,
+  clearSession,
+  currentUser,
+  getReturnToken,
+  hasReturnToAdmin
+} from '../../api/client.js';
+import { applySessionUser, finalizeSession, readStoredSessionUser } from '../../api/session.js';
 import { resolveLoginErrorMessage, isLoginFormSubmittable, loginSubmitLabel, normalizeLoginIdentifier } from '../loginFlow.js';
 import { canReturnToAdmin, canSignInAsPartner } from '../sessionControls.js';
 import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
 import { Loading, formatInternalRoles, hasAnyInternalRole, roleLabel } from './helpers.jsx';
 
 export function useSession() {
-  const [user, setUserState] = useState(currentUser());
+  const [user, setUserState] = useState(() => readStoredSessionUser());
   const [loading, setLoading] = useState(true);
 
-  const setUser = (nextUser) => {
+  const setUser = useCallback((nextUser) => {
     if (nextUser) {
-      localStorage.setItem('ticketmaster.user', JSON.stringify(nextUser));
+      applySessionUser(nextUser);
     }
     setUserState(nextUser);
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
     const isPartnerSession = user?.kind === 'partner';
@@ -63,11 +69,20 @@ export function useSession() {
       .finally(() => {
         setLoading(false);
       });
-  }, []);
+  }, [setUser]);
 
   useEffect(() => {
     refreshUser();
   }, [refreshUser]);
+
+  useEffect(() => {
+    const syncFromStore = () => {
+      setUserState(readStoredSessionUser());
+      setLoading(false);
+    };
+    window.addEventListener(SESSION_FINALIZED_EVENT, syncFromStore);
+    return () => window.removeEventListener(SESSION_FINALIZED_EVENT, syncFromStore);
+  }, []);
 
   useRefetchOnFocus(refreshUser);
 

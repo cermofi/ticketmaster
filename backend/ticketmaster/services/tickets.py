@@ -67,11 +67,17 @@ def can_view_ticket(db: Session, user: User, ticket: Ticket) -> bool:
     if user.kind == "internal":
         if user_has_any_internal_role(user, ADMIN_DM_ROLES):
             return True
-        if ticket.created_by_id == user.id:
-            return True
         resolver_teams = get_user_resolver_teams(user)
         if resolver_teams:
-            return ticket.resolver_team in resolver_teams
+            if ticket.internal:
+                return ticket.resolver_team in resolver_teams
+            return (
+                ticket.resolver_team in resolver_teams
+                or ticket.assignee_id == user.id
+                or ticket.created_by_id == user.id
+            )
+        if ticket.created_by_id == user.id:
+            return True
         return False
     if ticket.internal:
         return False
@@ -455,10 +461,21 @@ def _visible_ticket_stmt(
         stmt = stmt.where(Ticket.internal.is_(False), Ticket.partner_id == actor.partner_id)
     elif not user_has_any_internal_role(actor, ADMIN_DM_ROLES):
         resolver_teams = get_user_resolver_teams(actor)
-        visibility = [Ticket.created_by_id == actor.id]
         if resolver_teams:
-            visibility.append(Ticket.resolver_team.in_(resolver_teams))
-        stmt = stmt.where(or_(*visibility)) if visibility else stmt.where(false())
+            internal_rule = Ticket.resolver_team.in_(resolver_teams)
+            external_rule = or_(
+                Ticket.resolver_team.in_(resolver_teams),
+                Ticket.assignee_id == actor.id,
+                Ticket.created_by_id == actor.id,
+            )
+            stmt = stmt.where(
+                or_(
+                    and_(Ticket.internal.is_(True), internal_rule),
+                    and_(Ticket.internal.is_(False), external_rule),
+                )
+            )
+        else:
+            stmt = stmt.where(Ticket.created_by_id == actor.id)
     if search:
         search_ids = ticket_search.find_ticket_ids(search)
         if search_ids is not None:

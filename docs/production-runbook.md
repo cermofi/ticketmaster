@@ -4,11 +4,21 @@ Krátký provozní postup pro nasazení na VPS. Detailní dokumentace: https://t
 
 ## Deploy
 
+Preferovaný postup na VPS:
+
+```bash
+cd /home/new-ticketmaster
+./scripts/deploy.sh
+```
+
+Ruční kroky (ekvivalent skriptu):
+
 ```bash
 cd /home/new-ticketmaster
 git pull origin main
 docker compose up -d --build
 docker compose exec api ticketmaster-cli db migrate
+./scripts/post-deploy-smoke.sh
 ```
 
 Po deployu ověřte health a spusťte smoke check.
@@ -30,7 +40,8 @@ docker compose logs --tail=100 api frontend docs
 
 ## Post-deploy smoke check (read-only)
 
-Smoke check **nevytváří** produkční data a **nezapisuje audit** (hlavička `x-ticketmaster-smoke: 1`).
+Smoke check **nevytváří** produkční data. Audit se u HTTP požadavků **vždy zapisuje**
+(potlačení auditu je jen u interních CLI cest přes `suppress_audit()`).
 
 Defaultně volá jen veřejné GET endpointy (`/api/health`, `/api/ready`, `/api/meta`).
 
