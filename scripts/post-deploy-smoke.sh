@@ -12,6 +12,14 @@ if [[ -z "${SMOKE_ALLOW_AUTH:-}" ]]; then
 fi
 
 cd "${ROOT}/backend"
-ticketmaster-cli smoke check
+if command -v ticketmaster-cli >/dev/null 2>&1; then
+  ticketmaster-cli smoke check
+elif command -v docker >/dev/null 2>&1 && docker compose -f "${ROOT}/docker-compose.yml" ps -q api >/dev/null 2>&1; then
+  docker compose -f "${ROOT}/docker-compose.yml" exec -T \
+    -e SMOKE_CHECK_BASE_URL="${SMOKE_CHECK_BASE_URL}" \
+    api ticketmaster-cli smoke check
+else
+  python -m ticketmaster.cli.main smoke check
+fi
 
 echo "Smoke check passed."
