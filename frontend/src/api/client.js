@@ -12,14 +12,30 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+const RETURN_TOKEN_KEY = 'ticketmaster.return_token';
+
 export function saveSession(payload) {
   localStorage.setItem('ticketmaster.token', payload.token);
   localStorage.setItem('ticketmaster.user', JSON.stringify(payload.user));
+  if (payload.return_token) {
+    localStorage.setItem(RETURN_TOKEN_KEY, payload.return_token);
+  } else {
+    localStorage.removeItem(RETURN_TOKEN_KEY);
+  }
 }
 
 export function clearSession() {
   localStorage.removeItem('ticketmaster.token');
   localStorage.removeItem('ticketmaster.user');
+  localStorage.removeItem(RETURN_TOKEN_KEY);
+}
+
+export function hasReturnToAdmin() {
+  return Boolean(localStorage.getItem(RETURN_TOKEN_KEY));
+}
+
+export function getReturnToken() {
+  return localStorage.getItem(RETURN_TOKEN_KEY);
 }
 
 export function currentUser() {

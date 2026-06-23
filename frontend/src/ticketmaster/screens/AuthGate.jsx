@@ -17,7 +17,7 @@ import {
   UncontrolledDropdown
 } from 'reactstrap';
 
-import api, { clearSession, currentUser, saveSession } from '../../api/client.js';
+import api, { clearSession, currentUser, getReturnToken, hasReturnToAdmin, saveSession } from '../../api/client.js';
 import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
 import { Loading, formatInternalRoles, hasAnyInternalRole, roleLabel } from './helpers.jsx';
 
@@ -105,7 +105,9 @@ export default function AuthGate({ children }) {
 function HeaderSession({ user, onLogout, onSessionChange }) {
   const [headerNavList, setHeaderNavList] = useState(null);
   const [partnerSignInOpen, setPartnerSignInOpen] = useState(false);
+  const [returningToAdmin, setReturningToAdmin] = useState(false);
   const canSignInAsPartner = user?.kind === 'internal' && hasAnyInternalRole(user, ['Admin', 'DeliveryManager']);
+  const canReturnToAdmin = user?.kind === 'partner' && hasReturnToAdmin();
   const displayName = (user?.name || user?.email || 'User').trim();
   const role = user?.kind === 'internal'
     ? formatInternalRoles(user) || 'Not set'
@@ -148,6 +150,22 @@ function HeaderSession({ user, onLogout, onSessionChange }) {
     event.preventDefault();
     window.location.hash = '#/account/password';
   };
+  const returnToAdmin = async (event) => {
+    event.preventDefault();
+    const returnToken = getReturnToken();
+    if (!returnToken || returningToAdmin) return;
+    setReturningToAdmin(true);
+    try {
+      const response = await api.post('/auth/back-to-admin', { return_token: returnToken });
+      saveSession(response.data);
+      onSessionChange(response.data.user);
+      window.location.hash = '#/';
+    } catch (err) {
+      window.alert(err.response?.data?.detail || err.message || 'Unable to return to admin session');
+    } finally {
+      setReturningToAdmin(false);
+    }
+  };
 
   if (!headerNavList) return null;
   return (
@@ -170,6 +188,11 @@ function HeaderSession({ user, onLogout, onSessionChange }) {
                 {role && <div className="tm-header-account-role">{role}</div>}
                 {email && <div className="tm-header-account-email">{email}</div>}
               </div>
+              {canReturnToAdmin && (
+                <DropdownItem onClick={returnToAdmin} disabled={returningToAdmin}>
+                  {returningToAdmin ? 'Returning to admin...' : 'Back to admin'}
+                </DropdownItem>
+              )}
               {canSignInAsPartner && (
                 <DropdownItem onClick={() => setPartnerSignInOpen(true)}>
                   Sign in as partner

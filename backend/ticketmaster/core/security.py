@@ -61,3 +61,45 @@ def decode_token(token: str) -> dict[str, Any]:
     if int(payload.get("exp", 0)) < int(time.time()):
         raise ValueError("Bearer token expired")
     return payload
+
+
+RETURN_TOKEN_TYP = "return_admin"
+_consumed_return_jtis: dict[str, float] = {}
+
+
+def _purge_consumed_return_jtis() -> None:
+    now = time.time()
+    for jti, expires_at in list(_consumed_return_jtis.items()):
+        if expires_at < now:
+            del _consumed_return_jtis[jti]
+
+
+def create_return_token(*, impersonator_id: str, partner_user_id: str, ttl_seconds: int = 12 * 60 * 60) -> str:
+    jti = _b64(os.urandom(16))
+    return create_token(
+        {
+            "typ": RETURN_TOKEN_TYP,
+            "imp": impersonator_id,
+            "sub": partner_user_id,
+            "jti": jti,
+        },
+        ttl_seconds=ttl_seconds,
+    )
+
+
+def decode_and_consume_return_token(token: str) -> dict[str, Any]:
+    payload = decode_token(token)
+    if payload.get("typ") != RETURN_TOKEN_TYP:
+        raise ValueError("Invalid return token type")
+    jti = payload.get("jti")
+    if not jti or not isinstance(jti, str):
+        raise ValueError("Invalid return token")
+    impersonator_id = payload.get("imp")
+    partner_user_id = payload.get("sub")
+    if not impersonator_id or not partner_user_id:
+        raise ValueError("Invalid return token")
+    _purge_consumed_return_jtis()
+    if jti in _consumed_return_jtis:
+        raise ValueError("Return token already used")
+    _consumed_return_jtis[jti] = float(payload["exp"])
+    return payload

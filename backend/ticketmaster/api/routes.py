@@ -52,6 +52,10 @@ class SignInAsPartnerBody(BaseModel):
     user_id: str = Field(min_length=1)
 
 
+class BackToAdminBody(BaseModel):
+    return_token: str = Field(min_length=1)
+
+
 class PartnerBody(BaseModel):
     name: str = Field(min_length=1, max_length=200)
 
@@ -293,7 +297,7 @@ def me(user: CurrentUser) -> dict:
 
 @router.post("/auth/sign-in-as-partner")
 def sign_in_as_partner(db: DbSession, user: CurrentUser, request: Request, body: SignInAsPartnerBody) -> dict:
-    partner_user, token = auth.sign_in_as_partner_user(db, actor=user, target_user_id=body.user_id)
+    partner_user, token, return_token = auth.sign_in_as_partner_user(db, actor=user, target_user_id=body.user_id)
     audit(
         db,
         entity_type="Auth",
@@ -310,7 +314,30 @@ def sign_in_as_partner(db: DbSession, user: CurrentUser, request: Request, body:
         ),
     )
     db.commit()
-    return {"token": token, "user": user_to_dict(partner_user)}
+    return {"token": token, "user": user_to_dict(partner_user), "return_token": return_token}
+
+
+@router.post("/auth/back-to-admin")
+def back_to_admin(db: DbSession, user: CurrentUser, request: Request, body: BackToAdminBody) -> dict:
+    internal_user, token = auth.return_to_admin_user(db, actor=user, return_token=body.return_token)
+    audit(
+        db,
+        entity_type="Auth",
+        entity_id=internal_user.id,
+        action="auth.back_to_admin",
+        actor=user,
+        source="ui",
+        new_value=_request_audit_info(
+            request,
+            method="back_to_admin",
+            internal_user_id=internal_user.id,
+            internal_user_email=internal_user.email,
+            partner_user_id=user.id,
+            partner_user_email=user.email,
+        ),
+    )
+    db.commit()
+    return {"token": token, "user": user_to_dict(internal_user)}
 
 
 @router.get("/account/me")
