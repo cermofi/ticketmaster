@@ -34,6 +34,7 @@ export function clearSession() {
   localStorage.removeItem('ticketmaster.token');
   localStorage.removeItem('ticketmaster.user');
   localStorage.removeItem(RETURN_TOKEN_KEY);
+  notifySessionChange();
 }
 
 export function hasReturnToAdmin() {

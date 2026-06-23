@@ -4,13 +4,19 @@ import logging
 import time
 import uuid
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from ticketmaster.core.config import settings
+from ticketmaster.api.error_handlers import (
+    http_exception_handler,
+    ticketmaster_error_handler,
+    unhandled_exception_handler,
+    validation_exception_handler,
+)
 from ticketmaster.api.routes import router
+from ticketmaster.core.config import settings
 from ticketmaster.services.errors import TicketMasterError
 
 
@@ -38,6 +44,7 @@ app.add_middleware(
 @app.middleware("http")
 async def request_context_middleware(request: Request, call_next):
     request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+    request.state.request_id = request_id
     start = time.perf_counter()
     response = await call_next(request)
     duration_ms = round((time.perf_counter() - start) * 1000, 2)
@@ -57,9 +64,9 @@ async def request_context_middleware(request: Request, call_next):
     return response
 
 
-@app.exception_handler(TicketMasterError)
-async def ticketmaster_error_handler(_: Request, exc: TicketMasterError) -> JSONResponse:
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.message})
-
+app.add_exception_handler(TicketMasterError, ticketmaster_error_handler)
+app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(Exception, unhandled_exception_handler)
 
 app.include_router(router, prefix="/api")

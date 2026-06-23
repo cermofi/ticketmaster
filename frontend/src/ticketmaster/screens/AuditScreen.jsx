@@ -5,7 +5,8 @@ import { Button, Form, FormGroup, Input, Label, Modal, ModalBody, ModalFooter, M
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
 import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
-import { AbsoluteTimeCell, EmptyRow, ErrorBanner, PageHeader, apiError, hasAnyInternalRole } from './helpers.jsx';
+import { useUrlFilters } from '../hooks/useUrlFilters.js';
+import { AbsoluteTimeCell, EmptyRow, ErrorBanner, Loading, PageHeader, apiError, hasAnyInternalRole } from './helpers.jsx';
 
 const EMPTY_FILTERS = {
   search: '',
@@ -18,8 +19,8 @@ const EMPTY_FILTERS = {
   changed_by: '',
   has_details: false,
 };
+const FILTER_KEYS = Object.keys(EMPTY_FILTERS);
 const FILTER_DEBOUNCE_MS = 400;
-const TEXT_FILTER_KEYS = ['search', 'entity_id', 'changed_by', 'action'];
 
 export default function AuditScreen() {
   return (
@@ -31,23 +32,36 @@ export default function AuditScreen() {
 
 function Audit({ user }) {
   const [rows, setRows] = useState([]);
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const { filters, syncFiltersToUrl, resetFilters: resetUrlFilters } = useUrlFilters(
+    EMPTY_FILTERS,
+    FILTER_KEYS,
+    { booleanKeys: ['has_details'] },
+  );
   const [options, setOptions] = useState({ actions: [], sources: [], entity_types: [] });
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
   const [detailRow, setDetailRow] = useState(null);
   const skipDebouncedReload = useRef(true);
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
 
+  const setFilters = useCallback((next) => {
+    const merged = typeof next === 'function' ? next(filtersRef.current) : next;
+    syncFiltersToUrl(merged);
+  }, [syncFiltersToUrl]);
+
   const load = useCallback(async (nextFilters) => {
     const activeFilters = nextFilters ?? filtersRef.current;
     setError('');
+    setLoading(true);
     try {
       const params = buildAuditParams(activeFilters);
       const response = await api.get('/audit', { params });
       setRows(response.data);
     } catch (err) {
       setError(apiError(err));
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -61,23 +75,20 @@ function Audit({ user }) {
   }, []);
 
   useEffect(() => {
-    load();
     loadOptions();
-  }, [load, loadOptions]);
+  }, [loadOptions]);
 
-  const debouncedTextFilters = useMemo(
-    () => TEXT_FILTER_KEYS.map((key) => filters[key]).join('\0'),
-    [filters],
-  );
+  const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
 
   useEffect(() => {
     if (skipDebouncedReload.current) {
       skipDebouncedReload.current = false;
+      load(filters);
       return undefined;
     }
-    const handle = window.setTimeout(() => load(), FILTER_DEBOUNCE_MS);
+    const handle = window.setTimeout(() => load(filters), FILTER_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
-  }, [debouncedTextFilters, load]);
+  }, [filtersKey, load, filters]);
 
   useRefetchOnFocus(load);
 
@@ -91,8 +102,8 @@ function Audit({ user }) {
 
   const resetFilters = () => {
     skipDebouncedReload.current = true;
-    setFilters(EMPTY_FILTERS);
-    load(EMPTY_FILTERS);
+    const cleared = resetUrlFilters();
+    load(cleared);
   };
 
   if (user.kind !== 'internal' || !hasAnyInternalRole(user, ['Admin', 'DeliveryManager'])) {
@@ -110,6 +121,7 @@ function Audit({ user }) {
         onApply={updateAndApply}
         onReset={resetFilters}
       />
+      {loading ? <Loading /> : (
       <div className="tm-table-wrap tm-audit-table-wrap">
         <Table hover className="tm-table tm-audit-table">
           <colgroup>
@@ -147,6 +159,7 @@ function Audit({ user }) {
           </tbody>
         </Table>
       </div>
+      )}
       <AuditDetailsModal row={detailRow} onClose={() => setDetailRow(null)} />
     </div>
   );

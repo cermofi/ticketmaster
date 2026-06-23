@@ -59,6 +59,13 @@ class Settings:
     trusted_hosts: tuple[str, ...] = tuple(host.strip() for host in os.getenv("TRUSTED_HOSTS", "*").split(",") if host.strip())
     login_rate_limit_attempts: int = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "10"))
     login_rate_limit_window_seconds: int = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
+    auth_rate_limit_attempts: int = int(
+        os.getenv("AUTH_RATE_LIMIT_ATTEMPTS", os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "10"))
+    )
+    auth_rate_limit_window_seconds: int = int(
+        os.getenv("AUTH_RATE_LIMIT_WINDOW_SECONDS", os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
+    )
+    app_debug: bool = _bool("APP_DEBUG", False)
     ticket_page_default_limit: int = int(os.getenv("TICKET_PAGE_DEFAULT_LIMIT", "50"))
     ticket_page_max_limit: int = int(os.getenv("TICKET_PAGE_MAX_LIMIT", "200"))
     export_ticket_max_count: int = int(os.getenv("EXPORT_TICKET_MAX_COUNT", "2000"))

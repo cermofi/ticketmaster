@@ -61,8 +61,8 @@ def run_smoke_check(
                 f"{root}/api/auth/login",
                 body={"email": login_email, "password": login_password},
             )
-            ok = status == 200 and isinstance(payload, dict) and bool(payload.get("access_token"))
-            token = payload.get("access_token") if isinstance(payload, dict) else None
+            ok = status == 200 and isinstance(payload, dict) and bool(payload.get("token"))
+            token = payload.get("token") if isinstance(payload, dict) else None
             _record(checks, "auth.login", ok, {"status": status, "authenticated": ok})
         except (HTTPError, URLError, TimeoutError) as exc:
             _record(checks, "auth.login", False, {"error": str(exc)})

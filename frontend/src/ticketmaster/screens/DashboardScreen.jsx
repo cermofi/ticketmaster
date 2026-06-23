@@ -16,9 +16,11 @@ import {
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
 import { usePolling, useRefetchOnFocus, useRefetchOnSessionChange } from '../hooks/useLiveRefresh.js';
+import { useUrlFilters } from '../hooks/useUrlFilters.js';
 import { EmptyRow, ErrorBanner, Loading, PageHeader, StatusPill, TimeCell, apiError, asArray, downloadResponse, exportError, labelValue } from './helpers.jsx';
 
 const EMPTY_FILTERS = { search: '', status: '', priority: '', type: '', resolver_team: '', internal: '' };
+const FILTER_KEYS = Object.keys(EMPTY_FILTERS);
 const TICKETS_POLL_MS = 30000;
 const SEARCH_DEBOUNCE_MS = 320;
 const DEFAULT_SORT = { key: 'updated', direction: 'desc' };
@@ -40,15 +42,19 @@ export default function DashboardScreen() {
 function Dashboard({ user }) {
   const [meta, setMeta] = useState(null);
   const [tickets, setTickets] = useState([]);
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const { filters, syncFiltersToUrl, resetFilters: resetUrlFilters } = useUrlFilters(EMPTY_FILTERS, FILTER_KEYS);
   const [sortConfig, setSortConfig] = useState(DEFAULT_SORT);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [moreOpen, setMoreOpen] = useState(false);
   const [exportLoading, setExportLoading] = useState('');
   const filtersRef = useRef(filters);
-  const isInitialSearchSync = useRef(true);
   filtersRef.current = filters;
+
+  const setFilters = useCallback((next) => {
+    const merged = typeof next === 'function' ? next(filtersRef.current) : next;
+    syncFiltersToUrl(merged);
+  }, [syncFiltersToUrl]);
 
   const load = useCallback(async (nextFilters) => {
     const activeFilters = nextFilters ?? filtersRef.current;
@@ -83,20 +89,15 @@ function Dashboard({ user }) {
     }
   };
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
 
   useEffect(() => {
-    if (isInitialSearchSync.current) {
-      isInitialSearchSync.current = false;
-      return undefined;
-    }
+    const delay = filters.search ? SEARCH_DEBOUNCE_MS : 0;
     const timeout = window.setTimeout(() => {
-      load();
-    }, SEARCH_DEBOUNCE_MS);
+      load(filters);
+    }, delay);
     return () => window.clearTimeout(timeout);
-  }, [filters.search, load]);
+  }, [filtersKey, load, filters.search]);
 
   useRefetchOnFocus(load);
   useRefetchOnSessionChange(load);
@@ -160,8 +161,8 @@ function Dashboard({ user }) {
             user={user}
             onApply={load}
             onReset={() => {
-              setFilters(EMPTY_FILTERS);
-              load(EMPTY_FILTERS);
+              const cleared = resetUrlFilters();
+              load(cleared);
             }}
           />
           <TicketTable tickets={sortedTickets} sortConfig={sortConfig} onSortChange={onSortChange} />

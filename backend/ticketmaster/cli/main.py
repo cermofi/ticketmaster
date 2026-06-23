@@ -17,6 +17,7 @@ from ticketmaster.schemas.serializers import client_to_dict, partner_to_dict, ti
 from ticketmaster.services import admin, gitlab, migrations, notifications, search, seed, smoke_check, smoke_cleanup, tickets
 from ticketmaster.services.errors import TicketMasterError
 from ticketmaster.services.internal_roles import set_internal_roles
+from ticketmaster.services.rate_limit import list_rate_limit_keys, reset_rate_limits
 
 
 @contextmanager
@@ -280,6 +281,20 @@ def cmd_smoke_check(args: argparse.Namespace) -> int:
     return 0 if result["status"] == "ok" else 1
 
 
+def cmd_rate_limit_reset(args: argparse.Namespace) -> int:
+    if not args.ip and not args.identifier and not args.scope:
+        print("error: provide at least one of --ip, --identifier, or --scope", file=sys.stderr)
+        return 1
+    removed = reset_rate_limits(ip=args.ip, identifier=args.identifier, scope=args.scope)
+    print_json({"removed": removed, "status": "ok"})
+    return 0
+
+
+def cmd_rate_limit_list(_: argparse.Namespace) -> int:
+    print_json({"keys": list_rate_limit_keys()})
+    return 0
+
+
 def cmd_smoke_cleanup(args: argparse.Namespace) -> int:
     if not args.dry_run and not args.confirm:
         print("error: pass --confirm to delete smoke artifacts (or use --dry-run to preview)", file=sys.stderr)
@@ -403,6 +418,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Also remove known seed-dev demo entities (acme partner/client, @example.test users)",
     )
+
+    rate_limit = sub.add_parser("rate-limit")
+    rate_limit_sub = rate_limit.add_subparsers(dest="subcommand", required=True)
+    p = _command(rate_limit_sub, "reset", cmd_rate_limit_reset)
+    p.add_argument("--ip", help="Client IP part of the rate-limit key")
+    p.add_argument("--identifier", help="E-mail (login) or user id (auth flows)")
+    p.add_argument("--scope", choices=["login", "sign-in-as-partner", "back-to-admin"])
+    _command(rate_limit_sub, "list", cmd_rate_limit_list)
     return parser
 
 

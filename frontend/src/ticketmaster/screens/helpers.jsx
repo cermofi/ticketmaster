@@ -130,7 +130,11 @@ export function formatInternalRoles(user) {
 }
 
 export function apiError(err) {
-  return err.response?.data?.detail || err.message || 'Unexpected error';
+  const data = err?.response?.data;
+  if (typeof data?.message === 'string' && data.message) return data.message;
+  if (typeof data?.detail === 'string' && data.detail) return data.detail;
+  if (Array.isArray(data?.detail)) return 'Request validation failed';
+  return err?.message || 'Unexpected error';
 }
 
 export function normalizeApiPath(path) {
@@ -158,12 +162,22 @@ export async function exportError(err) {
   if (err.response?.data instanceof Blob) {
     const text = await err.response.data.text();
     try {
-      return JSON.parse(text).detail || text;
+      const parsed = JSON.parse(text);
+      return parsed.message || parsed.detail || text;
     } catch {
       return text || 'Export could not be created.';
     }
   }
   return apiError(err);
+}
+
+export function ScreenBody({ loading, error, loadingFallback = null, children }) {
+  return (
+    <>
+      <ErrorBanner error={error} />
+      {loading ? (loadingFallback || <Loading />) : children}
+    </>
+  );
 }
 
 export function formatAttachmentSize(size) {

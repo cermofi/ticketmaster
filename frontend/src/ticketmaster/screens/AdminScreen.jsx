@@ -15,7 +15,7 @@ import {
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
 import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
-import { asArray, EmptyRow, ErrorBanner, PageHeader, apiError, formatInternalRoles, getInternalRoles, hasAnyInternalRole, hasInternalRole, roleLabel } from './helpers.jsx';
+import { asArray, EmptyRow, ErrorBanner, Loading, PageHeader, apiError, formatInternalRoles, getInternalRoles, hasAnyInternalRole, hasInternalRole, roleLabel } from './helpers.jsx';
 
 function sanitizeUserRows(rows) {
   return asArray(rows).filter((row) => row?.kind);
@@ -39,6 +39,7 @@ export default function AdminScreen() {
 }
 
 function Admin({ user }) {
+  const [loading, setLoading] = useState(true);
   const [partners, setPartners] = useState([]);
   const [clients, setClients] = useState([]);
   const [users, setUsers] = useState([]);
@@ -63,6 +64,7 @@ function Admin({ user }) {
 
   const load = useCallback(async () => {
     setError('');
+    setLoading(true);
     try {
       const [partnersResponse, clientsResponse, usersResponse] = await Promise.all([
         api.get('/partners'),
@@ -74,6 +76,8 @@ function Admin({ user }) {
       setUsers(sanitizeUserRows(usersResponse.data));
     } catch (err) {
       setError(apiError(err));
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -124,6 +128,15 @@ function Admin({ user }) {
 
   if (!user?.kind || user.kind !== 'internal' || !hasAnyInternalRole(user, ['Admin', 'DeliveryManager'])) {
     return <div className="tm-screen"><ErrorBanner error="Admin section is available only to Admin and Delivery Manager users." /></div>;
+  }
+
+  if (loading && partners.length === 0 && clients.length === 0 && users.length === 0) {
+    return (
+      <div className="tm-screen">
+        <PageHeader title="Admin" />
+        <Loading />
+      </div>
+    );
   }
 
   const submit = async (fn) => {

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import time
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, Response, UploadFile
@@ -28,11 +27,11 @@ from ticketmaster.services.audit import audit
 from ticketmaster.services.audit_list import audit_filter_options, list_audit_logs, parse_audit_filter_datetime
 from ticketmaster.services.audit_display import enrich_audit_rows
 from ticketmaster.services.errors import NotFoundError, PermissionDenied, ValidationError
+from ticketmaster.services.rate_limit import auth_rate_limit_key, check_rate_limit, clear_rate_limit
 from ticketmaster.services.internal_roles import get_internal_roles, user_has_any_internal_role
 
 
 router = APIRouter()
-_login_attempts: dict[str, list[float]] = {}
 
 
 class LoginBody(BaseModel):
@@ -211,10 +210,6 @@ def _client_ip(request: Request) -> str:
     return forwarded or (request.client.host if request.client else "unknown")
 
 
-def _login_rate_limit_key(request: Request, email: str) -> str:
-    return f"{_client_ip(request)}:{email.lower()}"
-
-
 def _ticket_detail(db: DbSession, user: User, ticket: Ticket) -> dict:
     data = ticket_to_dict(db, ticket, viewer=user, include_detail=True)
     data["available_transitions"] = tickets.available_transitions(db, ticket=ticket, actor=user)
@@ -222,19 +217,12 @@ def _ticket_detail(db: DbSession, user: User, ticket: Ticket) -> dict:
     return data
 
 
-def _check_login_rate_limit(request: Request, email: str) -> None:
-    key = _login_rate_limit_key(request, email)
-    now = time.time()
-    window_start = now - settings.login_rate_limit_window_seconds
-    attempts = [stamp for stamp in _login_attempts.get(key, []) if stamp >= window_start]
-    if len(attempts) >= settings.login_rate_limit_attempts:
-        raise HTTPException(status_code=429, detail="Too many login attempts")
-    attempts.append(now)
-    _login_attempts[key] = attempts
+def _check_auth_rate_limit(request: Request, scope: str, identifier: str) -> None:
+    check_rate_limit(auth_rate_limit_key(scope, _client_ip(request), identifier))
 
 
-def _clear_login_rate_limit(request: Request, email: str) -> None:
-    _login_attempts.pop(_login_rate_limit_key(request, email), None)
+def _clear_auth_rate_limit(request: Request, scope: str, identifier: str) -> None:
+    clear_rate_limit(auth_rate_limit_key(scope, _client_ip(request), identifier))
 
 
 def _require_partner_api_access(user: User, partner_id: str, *, create: bool) -> None:
@@ -255,14 +243,14 @@ def ready(db: DbSession) -> dict:
 
 @router.post("/auth/login")
 def login(db: DbSession, request: Request, body: LoginBody) -> dict:
-    _check_login_rate_limit(request, body.email)
+    _check_auth_rate_limit(request, "login", body.email)
     try:
         user, token = auth.authenticate_email_password(db, body.email, body.password)
     except PermissionDenied:
         audit(db, entity_type="Auth", entity_id=body.email.lower(), action="auth.login_failed", source="ui", new_value=_request_audit_info(request, method="password", email=body.email.lower()))
         db.commit()
         raise
-    _clear_login_rate_limit(request, body.email)
+    _clear_auth_rate_limit(request, "login", body.email)
     audit(db, entity_type="Auth", entity_id=user.id, action="auth.login", actor=user, source="ui", new_value=_request_audit_info(request, method="password", email=user.email))
     db.commit()
     return {"token": token, "user": user_to_dict(user)}
@@ -270,14 +258,14 @@ def login(db: DbSession, request: Request, body: LoginBody) -> dict:
 
 @router.post("/auth/dev-sso")
 def dev_sso(db: DbSession, request: Request, body: DevSsoBody) -> dict:
-    _check_login_rate_limit(request, body.email)
+    _check_auth_rate_limit(request, "login", body.email)
     try:
         user, token = auth.authenticate_dev_sso(db, body.email)
     except PermissionDenied:
         audit(db, entity_type="Auth", entity_id=body.email.lower(), action="auth.login_failed", source="ui", new_value=_request_audit_info(request, method="dev_sso", email=body.email.lower()))
         db.commit()
         raise
-    _clear_login_rate_limit(request, body.email)
+    _clear_auth_rate_limit(request, "login", body.email)
     audit(db, entity_type="Auth", entity_id=user.id, action="auth.login", actor=user, source="ui", new_value=_request_audit_info(request, method="dev_sso", email=user.email))
     db.commit()
     return {"token": token, "user": user_to_dict(user)}
@@ -298,7 +286,9 @@ def me(user: CurrentUser) -> dict:
 
 @router.post("/auth/sign-in-as-partner")
 def sign_in_as_partner(db: DbSession, user: CurrentUser, request: Request, body: SignInAsPartnerBody) -> dict:
+    _check_auth_rate_limit(request, "sign-in-as-partner", user.id)
     partner_user, token, return_token = auth.sign_in_as_partner_user(db, actor=user, target_user_id=body.user_id)
+    _clear_auth_rate_limit(request, "sign-in-as-partner", user.id)
     audit(
         db,
         entity_type="Auth",
@@ -320,7 +310,9 @@ def sign_in_as_partner(db: DbSession, user: CurrentUser, request: Request, body:
 
 @router.post("/auth/back-to-admin")
 def back_to_admin(db: DbSession, user: CurrentUser, request: Request, body: BackToAdminBody) -> dict:
+    _check_auth_rate_limit(request, "back-to-admin", user.id)
     internal_user, token = auth.return_to_admin_user(db, actor=user, return_token=body.return_token)
+    _clear_auth_rate_limit(request, "back-to-admin", user.id)
     audit(
         db,
         entity_type="Auth",

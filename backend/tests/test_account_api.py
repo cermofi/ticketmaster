@@ -67,7 +67,7 @@ def test_account_update_rejects_email_change(db, fixture_data):
         response = client.patch("/api/account/me", json={"email": "new@example.test"})
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "E-mail is used as login identity and cannot be changed here."
+    assert response.json()["message"] == "E-mail is used as login identity and cannot be changed here."
 
 
 def test_account_change_password_success(db, fixture_data):
@@ -106,7 +106,7 @@ def test_account_change_password_wrong_current_password(db, fixture_data):
         )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "Current password is invalid"
+    assert response.json()["message"] == "Current password is invalid"
 
 
 def test_account_change_password_rejects_mismatch(db, fixture_data):
@@ -124,7 +124,7 @@ def test_account_change_password_rejects_mismatch(db, fixture_data):
         )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "New password and confirmation do not match"
+    assert response.json()["message"] == "New password and confirmation do not match"
 
 
 def test_account_change_password_rejects_weak_password(db, fixture_data):
@@ -142,7 +142,7 @@ def test_account_change_password_rejects_weak_password(db, fixture_data):
         )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Password must contain at least one number"
+    assert response.json()["message"] == "Password must contain at least one number"
 
 
 def test_account_endpoints_require_authentication(db):

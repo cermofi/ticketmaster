@@ -83,7 +83,7 @@ def test_back_to_admin_rejects_reused_return_token(db, fixture_data):
             headers={"Authorization": f"Bearer {partner_token}"},
         )
     assert second.status_code == 403
-    assert "already used" in second.json()["detail"].lower()
+    assert "already used" in second.json()["message"].lower()
 
 
 def test_back_to_admin_rejects_forged_return_token(db, fixture_data):
@@ -97,7 +97,7 @@ def test_back_to_admin_rejects_forged_return_token(db, fixture_data):
             headers={"Authorization": f"Bearer {partner_token}"},
         )
     assert response.status_code == 403
-    assert "signature" in response.json()["detail"].lower()
+    assert "signature" in response.json()["message"].lower()
 
 
 def test_back_to_admin_rejects_expired_return_token(db, fixture_data):
@@ -117,7 +117,7 @@ def test_back_to_admin_rejects_expired_return_token(db, fixture_data):
             headers={"Authorization": f"Bearer {partner_token}"},
         )
     assert response.status_code == 403
-    assert "expired" in response.json()["detail"].lower()
+    assert "expired" in response.json()["message"].lower()
 
 
 def test_back_to_admin_rejects_partner_context_mismatch(db, fixture_data):
@@ -134,7 +134,7 @@ def test_back_to_admin_rejects_partner_context_mismatch(db, fixture_data):
             headers={"Authorization": f"Bearer {partner_token_b}"},
         )
     assert response.status_code == 403
-    assert "does not match" in response.json()["detail"].lower()
+    assert "does not match" in response.json()["message"].lower()
 
 
 def test_back_to_admin_rejects_normal_partner_without_valid_return_token(db, fixture_data):
@@ -161,7 +161,7 @@ def test_back_to_admin_rejects_internal_actor(db, fixture_data):
             headers={"Authorization": f"Bearer {internal_token}"},
         )
     assert response.status_code == 403
-    assert "partner session" in response.json()["detail"].lower()
+    assert "partner session" in response.json()["message"].lower()
 
 
 def test_back_to_admin_rejects_ineligible_original_account(db, fixture_data):
@@ -176,7 +176,7 @@ def test_back_to_admin_rejects_ineligible_original_account(db, fixture_data):
             headers={"Authorization": f"Bearer {partner_token}"},
         )
     assert response.status_code == 403
-    assert "unavailable" in response.json()["detail"].lower()
+    assert "unavailable" in response.json()["message"].lower()
 
 
 def test_sign_in_as_partner_includes_return_token(db, fixture_data):

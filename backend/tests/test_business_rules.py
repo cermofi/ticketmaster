@@ -904,7 +904,7 @@ def test_export_endpoint_rejects_non_excel_formats(db, fixture_data):
         for unsupported_format in ("json", "csv", "pdf"):
             response = TestClient(app).get(f"/api/tickets/export?format={unsupported_format}")
             assert response.status_code == 400
-            assert response.json()["detail"] == "Only Excel (xlsx) export is supported"
+            assert response.json()["message"] == "Only Excel (xlsx) export is supported"
     finally:
         app.dependency_overrides.clear()
 

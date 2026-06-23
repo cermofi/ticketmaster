@@ -19,6 +19,8 @@ import {
 
 import api, { clearSession, currentUser, getReturnToken, hasReturnToAdmin } from '../../api/client.js';
 import { finalizeSession } from '../../api/session.js';
+import { resolveLoginErrorMessage, isLoginFormSubmittable, loginSubmitLabel, normalizeLoginIdentifier } from '../loginFlow.js';
+import { canReturnToAdmin, canSignInAsPartner } from '../sessionControls.js';
 import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
 import { Loading, formatInternalRoles, hasAnyInternalRole, roleLabel } from './helpers.jsx';
 
@@ -107,8 +109,8 @@ function HeaderSession({ user, onLogout }) {
   const [headerNavList, setHeaderNavList] = useState(null);
   const [partnerSignInOpen, setPartnerSignInOpen] = useState(false);
   const [returningToAdmin, setReturningToAdmin] = useState(false);
-  const canSignInAsPartner = user?.kind === 'internal' && hasAnyInternalRole(user, ['Admin', 'DeliveryManager']);
-  const canReturnToAdmin = user?.kind === 'partner' && hasReturnToAdmin();
+  const canSignInAsPartnerUser = canSignInAsPartner(user);
+  const canReturnToAdminUser = canReturnToAdmin(user, hasReturnToAdmin());
   const displayName = (user?.name || user?.email || 'User').trim();
   const role = user?.kind === 'internal'
     ? formatInternalRoles(user) || 'Not set'
@@ -160,7 +162,7 @@ function HeaderSession({ user, onLogout }) {
       const response = await api.post('/auth/back-to-admin', { return_token: returnToken });
       finalizeSession(response.data);
     } catch (err) {
-      window.alert(err.response?.data?.detail || err.message || 'Unable to return to admin session');
+      window.alert(resolveLoginErrorMessage(err));
     } finally {
       setReturningToAdmin(false);
     }
@@ -187,12 +189,12 @@ function HeaderSession({ user, onLogout }) {
                 {role && <div className="tm-header-account-role">{role}</div>}
                 {email && <div className="tm-header-account-email">{email}</div>}
               </div>
-              {canReturnToAdmin && (
+              {canReturnToAdminUser && (
                 <DropdownItem onClick={returnToAdmin} disabled={returningToAdmin}>
                   {returningToAdmin ? 'Returning to admin...' : 'Back to admin'}
                 </DropdownItem>
               )}
-              {canSignInAsPartner && (
+              {canSignInAsPartnerUser && (
                 <DropdownItem onClick={() => setPartnerSignInOpen(true)}>
                   Sign in as partner
                 </DropdownItem>
@@ -209,7 +211,7 @@ function HeaderSession({ user, onLogout }) {
         </li>,
         headerNavList
       )}
-      {canSignInAsPartner && (
+      {canSignInAsPartnerUser && (
         <SignInAsPartnerModal
           isOpen={partnerSignInOpen}
           onClose={() => setPartnerSignInOpen(false)}
@@ -247,7 +249,7 @@ function SignInAsPartnerModal({ isOpen, onClose, onSignedIn }) {
         setUsers(Array.isArray(usersResponse.data) ? usersResponse.data : []);
       })
       .catch((err) => {
-        if (!cancelled) setError(err.response?.data?.detail || err.message);
+        if (!cancelled) setError(resolveLoginErrorMessage(err));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -276,7 +278,7 @@ function SignInAsPartnerModal({ isOpen, onClose, onSignedIn }) {
       const response = await api.post('/auth/sign-in-as-partner', { user_id: selectedUserId });
       onSignedIn(response.data);
     } catch (err) {
-      setError(err.response?.data?.detail || err.message);
+      setError(resolveLoginErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -352,16 +354,22 @@ function LoginScreen() {
   const [activationToken, setActivationToken] = useState(initialToken);
   const [error, setError] = useState('');
 
+  const [submitting, setSubmitting] = useState(false);
+
   const submit = async (event) => {
     event.preventDefault();
+    if (!isLoginFormSubmittable({ identifier, password, activationToken, submitting })) return;
     setError('');
+    setSubmitting(true);
     try {
       const response = activationToken
         ? await api.post('/auth/activate', { token: activationToken, password })
-        : await api.post('/auth/login', { email: identifier, password });
+        : await api.post('/auth/login', { email: normalizeLoginIdentifier(identifier), password });
       finalizeSession(response.data);
     } catch (err) {
-      setError(err.response?.data?.detail || err.message);
+      setError(resolveLoginErrorMessage(err));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -393,8 +401,8 @@ function LoginScreen() {
             </FormGroup>
           </>
         )}
-        <Button color="primary" type="submit" className="w-100">
-          {activationToken ? 'Set password' : 'Sign in'}
+        <Button color="primary" type="submit" className="w-100" disabled={!isLoginFormSubmittable({ identifier, password, activationToken, submitting })}>
+          {submitting ? 'Please wait…' : loginSubmitLabel(activationToken)}
         </Button>
       </Form>
     </div>

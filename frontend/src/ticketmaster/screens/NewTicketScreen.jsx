@@ -4,6 +4,7 @@ import { Button } from 'reactstrap';
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
+import { isNewTicketModeVisible, resolveNewTicketInitialMode } from '../newTicketMode.js';
 import { ErrorBanner, Loading, PageHeader, apiError } from './helpers.jsx';
 import { InternalTicketForm, PartnerOnBehalfTicketForm, PartnerTicketForm } from './ticketForms.jsx';
 
@@ -18,8 +19,8 @@ export default function NewTicketScreen() {
 function NewTicket({ user }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const initialMode = searchParams.get('target') === 'partner' ? 'partner' : 'internal';
-  const [mode, setMode] = useState(user.kind === 'internal' ? initialMode : 'partner');
+  const initialMode = resolveNewTicketInitialMode(user, searchParams.get('target'));
+  const [mode, setMode] = useState(initialMode);
   const [meta, setMeta] = useState(null);
   const [clients, setClients] = useState([]);
   const [partners, setPartners] = useState([]);
@@ -30,6 +31,10 @@ function NewTicket({ user }) {
     const notice = buildUploadNotice(failedUploads);
     navigate(`/tickets/${ticket.id}`, notice ? { state: { notice } } : undefined);
   };
+
+  useEffect(() => {
+    setMode(resolveNewTicketInitialMode(user, searchParams.get('target')));
+  }, [user.kind, searchParams]);
 
   useEffect(() => {
     const requests = [api.get('/meta')];
@@ -69,6 +74,7 @@ function NewTicket({ user }) {
       <section className="tm-new-ticket-page">
         {user.kind === 'internal' && (
           <div className="tm-segmented tm-new-ticket-mode" aria-label="Ticket target">
+            {isNewTicketModeVisible(user, 'internal') && (
             <Button
               color={mode === 'internal' ? 'primary' : 'secondary'}
               outline={mode !== 'internal'}
@@ -77,6 +83,8 @@ function NewTicket({ user }) {
             >
               Internal
             </Button>
+            )}
+            {isNewTicketModeVisible(user, 'partner') && (
             <Button
               color={mode === 'partner' ? 'primary' : 'secondary'}
               outline={mode !== 'partner'}
@@ -85,6 +93,7 @@ function NewTicket({ user }) {
             >
               To partner
             </Button>
+            )}
           </div>
         )}
         {user.kind === 'partner' && (
