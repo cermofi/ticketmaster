@@ -1,0 +1,109 @@
+---
+title: Audit log
+description: Kdo vidí audit, filtry, význam polí a zdroje událostí
+---
+
+Audit log zaznamenává důležité změny a auth události. Slouží pro dohledatelnost a compliance.
+
+## Přístup
+
+| Kde | Kdo |
+| --- | --- |
+| UI `#/audit` | Admin, Delivery Manager |
+| `GET /api/audit` | Admin, Delivery Manager |
+| `GET /api/audit/options` | Admin, Delivery Manager (číselníky filtrů) |
+
+Ostatní role audit nevidí (`403 permission_denied`).
+
+## API filtry
+
+Query parametry pro `GET /api/audit`:
+
+| Parametr | Typ | Popis |
+| --- | --- | --- |
+| `from` | datetime | Od (ISO 8601 nebo `DD.MM.YYYY HH:MM:SS` v TZ Europe/Prague) |
+| `to` | datetime | Do (stejný formát) |
+| `action` | string | Částečná shoda v názvu akce |
+| `source` | string | Přesná shoda zdroje |
+| `entity_type` | string | Typ entity (`Ticket`, `User`, `Auth`, …) |
+| `entity_id` | string | ID entity |
+| `changed_by` | string | Jméno nebo e-mail autora změny |
+| `search` | string | Fulltext v action, entity, source, JSON hodnotách |
+| `has_details` | bool | `true` = jen záznamy s `old_value` nebo `new_value` |
+| `limit` | int | Max záznamů (default 200, max 200) |
+| `offset` | int | Stránkování |
+
+Seřazení: `changed_at` sestupně (nejnovější první).
+
+### Příklad
+
+```bash
+curl -sS "http://localhost:3006/api/audit?entity_type=Ticket&action=ticket.status&limit=50" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+## Význam polí v odpovědi
+
+| Pole | Význam |
+| --- | --- |
+| `id` | UUID záznamu |
+| `entity_type` | Typ entity (`Ticket`, `User`, `Partner`, `Auth`, `Attachment`, `TicketExport`, …) |
+| `entity_id` | ID dotčené entity |
+| `entity_label` | Lidsky čitelný popis (např. „Ticket abc123 · Nadpis…“) |
+| `action` | Kód akce (např. `ticket.status_change`, `auth.login`) |
+| `old_value` | JSON stav před změnou (může být `null`) |
+| `new_value` | JSON stav po změně / detail události |
+| `changed_by_user_id` | ID uživatele, který akci provedl |
+| `changed_by_label` | Jméno/e-mail autora, nebo label zdroje |
+| `source` | Kanál původu (viz tabulka níže) |
+| `changed_at` | UTC timestamp |
+| `changed_at_display` | Formátovaný čas (`DD.MM.YYYY HH:MM:SS`, Europe/Prague) |
+
+## Zdroje (`source`)
+
+| Hodnota | Label v UI | Kdy |
+| --- | --- | --- |
+| `ui` | UI | Akce z webového rozhraní |
+| `cli` | System | Příkaz `ticketmaster-cli` |
+| `system` | System | Automatické procesy |
+| `partner_api` | Partner API | `/api/partner-api/...` |
+| `gitlab` | GitLab | Ruční GitLab operace |
+| `gitlab_webhook` | GitLab | Inbound webhook |
+
+## Typické akce
+
+| Akce | Popis |
+| --- | --- |
+| `auth.login` / `auth.login_failed` | Přihlášení |
+| `auth.sign_in_as_partner` | Impersonace partnera |
+| `auth.back_to_admin` | Návrat admina |
+| `ticket.status_change` | Změna stavu |
+| `ticket.type_change` | Změna typu/priority |
+| `ticket.assign` | Přiřazení |
+| `gitlab.create_issue` | Vytvoření GitLab issue |
+| `gitlab.webhook_inbound.*` | Webhook sync |
+| `tickets.export` | Export Excel |
+| `attachment.upload` | Upload přílohy |
+
+## UI obrazovka Audit
+
+- Filtry synchronizované do URL (hash query).
+- Debounce 400 ms u textových filtrů.
+- Modal s JSON detailem `old_value` / `new_value` (ReactJson).
+- Dropdowny pro `action`, `source`, `entity_type` z `/api/audit/options`.
+
+## Audit suppression (smoke check)
+
+Požadavky s hlavičkou **`x-ticketmaster-smoke: 1`** nezapisují audit — používá je post-deploy smoke check, aby neznečišťoval produkční log.
+
+CLI příkaz `smoke cleanup` také běží s `suppress_audit()`.
+
+Normální uživatelské akce audit **zapisují** (testy v `backend/tests/test_audit_suppression.py`).
+
+## Indexy DB
+
+Migrace `009_audit_ticket_query_indexes.sql` přidává indexy pro filtry audit logu a dashboard ticketů — viz [Databáze](/docs/databaze).
+
+## Export audit dat
+
+Admin/DM vidí list `Audit` v Excel exportu ticketů — viz [Export](/docs/export).

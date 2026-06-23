@@ -1,0 +1,98 @@
+---
+title: Architektura
+description: Struktura repozitáře, služby Docker Compose a hlavní vstupní body
+---
+
+## Přehled repozitáře
+
+```
+new-ticketmaster/
+├── backend/
+│   ├── ticketmaster/          # Python balíček
+│   │   ├── api/               # FastAPI routes, middleware
+│   │   ├── cli/               # ticketmaster-cli
+│   │   ├── core/              # config, DB, security
+│   │   ├── models/            # SQLAlchemy entity + constants
+│   │   ├── schemas/           # serializace do JSON
+│   │   └── services/          # business logika
+│   ├── migrations/            # SQL migrace (*.sql)
+│   └── tests/                 # pytest
+├── frontend/
+│   └── src/ticketmaster/      # React obrazovky a modul
+├── docs-site/                 # Fumadocs dokumentace (Next.js)
+├── docs/                      # production-runbook.md
+├── scripts/                   # post-deploy-smoke.sh
+└── docker-compose.yml
+```
+
+## Backend
+
+| Vstup | Popis |
+| --- | --- |
+| `ticketmaster.api.main:app` | FastAPI aplikace, prefix `/api` |
+| `ticketmaster-cli` | CLI (`ticketmaster.cli.main`) |
+| `backend/migrations/*.sql` | Migrace DB, runner `ticketmaster.services.migrations` |
+
+Middleware: request ID, CORS, trusted hosts, **audit suppression** pro smoke požadavky (`x-ticketmaster-smoke: 1`).
+
+## Frontend
+
+| Vstup | Popis |
+| --- | --- |
+| `frontend/src/main.jsx` | ASAB `Application` + `TicketMasterModule` |
+| `frontend/src/api/client.js` | Axios klient na `/api/*` |
+
+**Hash routing** (cesty v URL hash):
+
+| Cesta | Obrazovka |
+| --- | --- |
+| `#/` | Dashboard — seznam ticketů |
+| `#/tickets/new` | Nový ticket |
+| `#/tickets/:id` | Detail ticketu |
+| `#/admin` | Správa partnerů/klientů/uživatelů |
+| `#/audit` | Audit log (Admin, DM) |
+| `#/settings` | Nastavení |
+| `#/account` | Vlastní účet |
+
+Session: JWT v `localStorage` (`ticketmaster.token`), profil v `ticketmaster.user`. Impersonace partnera ukládá `return_token` pro návrat admina.
+
+## Docs-site
+
+Samostatná Next.js aplikace s Fumadocs. V produkci běží jako služba `docs` s `basePath=/docs`. Interaktivní API reference (Scalar) na `/docs/api`.
+
+Proč odděleně: produkční frontend je statický Vite build — docs by zbytečně komplikovaly image.
+
+## Docker služby
+
+| Služba | Image / build | Port (host) | Účel |
+| --- | --- | --- | --- |
+| `db` | postgres:16-alpine | interní | PostgreSQL |
+| `api` | backend/Dockerfile | interní :8000 | FastAPI + migrace při startu |
+| `docs` | docs-site/Dockerfile | interní :3000 | Fumadocs |
+| `frontend` | frontend/Dockerfile | 127.0.0.1:3006 | nginx + statický build |
+| `mailpit` | axllent/mailpit | interní | Dev SMTP |
+
+Volumes: `postgres_data`, `uploads`, `api_logs`.
+
+## Tok požadavku (produkce)
+
+```
+Prohlížeč → frontend nginx (:3006)
+              ├─ /api/*     → api:8000
+              ├─ /docs/*    → docs:3000  (jen RFC1918 + loopback)
+              └─ /*         → statický React build
+```
+
+## Datový model (stručně)
+
+Hlavní entity: `Partner`, `Client`, `User`, `Ticket`, `Comment`, `Attachment`, `AuditLog`, `GitLabLink`, `GitLabSyncEvent`.
+
+Tickety mají flagy `internal` (interní ticket) a `system` (system ticket pro partnera). Uživatelé mají `kind`: `internal` nebo `partner`.
+
+Interní uživatelé mohou mít **až 3 role** v poli `internal_roles` (JSONB, migrace `008`).
+
+## Související dokumentace
+
+- [Role a workflow](/docs/role-a-workflow) — business pravidla
+- [Databáze](/docs/databaze) — migrace a indexy
+- [Docker](/docs/docker) — proměnné a healthchecky

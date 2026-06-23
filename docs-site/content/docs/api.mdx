@@ -4,9 +4,9 @@ description: OpenAPI reference, autentizace, konvence a praktické příklady vo
 full: true
 ---
 
-Backend je **FastAPI** s prefixem **`/api`**. OpenAPI specifikace je generovaná automaticky z kódu (jediný zdroj pravdy) a publikovaná na **`/api/openapi.json`**.
+Backend je **FastAPI** s prefixem **`/api`**. OpenAPI specifikace: **`/api/openapi.json`**.
 
-Interaktivní reference (Scalar) je na této stránce. V produkci jsou **`/docs/*`** i **`/api/openapi.json`** dostupné jen z interní sítě (RFC1918 + loopback) — viz [Provoz](/docs/provoz).
+Interaktivní reference (Scalar) je na této stránce. V produkci jsou **`/docs/*`** i **`/api/openapi.json`** dostupné jen z interní sítě — viz [Provoz](/docs/provoz).
 
 <ScalarApiReference />
 
@@ -14,7 +14,7 @@ Interaktivní reference (Scalar) je na této stránce. V produkci jsou **`/docs/
 
 | Položka | Hodnota |
 | --- | --- |
-| Base URL (dev) | `http://localhost:3006` |
+| Base URL (dev Docker) | `http://localhost:3006` |
 | API prefix | `/api` |
 | OpenAPI JSON | `/api/openapi.json` |
 | Formát těla | `application/json` (kromě uploadu příloh) |
@@ -22,277 +22,164 @@ Interaktivní reference (Scalar) je na této stránce. V produkci jsou **`/docs/
 
 Veřejné endpointy bez tokenu: `GET /api/health`, `GET /api/ready`, `GET /api/meta`.
 
-## Autentizace
+Webhook bez JWT: `POST /api/gitlab/webhook` (autentizace přes `X-Gitlab-Token`).
 
-### Tok přihlášení (partner)
+## Autentizace a tokeny
 
-1. Klient pošle `POST /api/auth/login` s e-mailem a heslem.
-2. API vrátí `{ "token": "<JWT>", "user": { ... } }`.
-3. Další požadavky posílají hlavičku `Authorization: Bearer <JWT>`.
-4. Profil aktuálního uživatele: `GET /api/auth/me`.
-
-### Tok přihlášení (interní, dev)
-
-V dev prostředí lze pro interní uživatele (`kind=internal`) použít `POST /api/auth/dev-sso` s e-mailem — uživatel musí existovat v DB.
-
-### Aktivace pozvánky
-
-Pozvaný uživatel volá `POST /api/auth/activate` s `token` z invite a novým `password`. Odpověď obsahuje JWT stejně jako login.
-
-### Rate limiting loginu
-
-Login (`/api/auth/login`, `/api/auth/dev-sso`) je rate-limited podle IP + e-mailu (`LOGIN_RATE_LIMIT_ATTEMPTS`, `LOGIN_RATE_LIMIT_WINDOW_SECONDS`).
-
-| Situace | HTTP |
-| --- | --- |
-| Špatné heslo / neoprávněný uživatel | `403` |
-| Příliš mnoho pokusů | `429` |
-
-### Příklad: login a profil
+Detailní popis login flow, impersonace a rate limitu: [Autentizace](/docs/autentizace).
 
 ```bash
 BASE=http://localhost:3006
 
-# Přihlášení partnera
+# Partner login
 curl -sS -X POST "$BASE/api/auth/login" \
   -H 'Content-Type: application/json' \
   -d '{"email":"partner@example.test","password":"ChangeMe123!"}'
 
-# Uložte token z odpovědi
 TOKEN="<jwt-z-loginu>"
 
-# Profil přihlášeného uživatele
-curl -sS "$BASE/api/auth/me" \
-  -H "Authorization: Bearer $TOKEN"
+curl -sS "$BASE/api/auth/me" -H "Authorization: Bearer $TOKEN"
 ```
 
-## Konvence požadavků a odpovědí
+## Chybové odpovědi
 
-### Hlavičky
-
-| Hlavička | Směr | Popis |
-| --- | --- | --- |
-| `Authorization` | Request | `Bearer <JWT>` u chráněných endpointů |
-| `Content-Type` | Request | `application/json` (kromě multipart uploadu) |
-| `X-Request-ID` | Response | UUID pro korelaci s logy API |
-
-### Chybové odpovědi
-
-Aplikační chyby vrací JSON:
-
-```json
-{ "detail": "Popis chyby" }
-```
-
-| HTTP | Význam | Typické příčiny |
-| --- | --- | --- |
-| `400` | Validační / business chyba | Neplatná data, unsupported attachment |
-| `403` | Zakázáno | Chybí token, špatná role, neplatný login |
-| `404` | Nenalezeno | Ticket, komentář, příloha neexistuje |
-| `409` | Konflikt | Business rule conflict |
-| `422` | Nevalidní tělo požadavku | Pydantic validace (FastAPI) |
-| `429` | Rate limit | Příliš mnoho login pokusů |
-
-### Stránkování a filtry (`GET /api/tickets`)
-
-Query parametry:
-
-| Parametr | Typ | Popis |
-| --- | --- | --- |
-| `search` | string | Fulltext v titulku / popisu |
-| `status` | string | Filtr stavu |
-| `priority` | string | Filtr priority |
-| `type` | string | Filtr typu ticketu |
-| `resolver_team` | string | Filtr týmu řešitelů |
-| `partner_id` | string | Filtr partnera (interní) |
-| `internal` | bool | `true` / `false` — interní vs. partnerské tickety |
-| `limit` | int | Počet záznamů (default z `TICKET_PAGE_DEFAULT_LIMIT`, max `TICKET_PAGE_MAX_LIMIT`) |
-| `offset` | int | Offset pro stránkování (default `0`) |
-
-Odpověď:
+Unified JSON tvar:
 
 ```json
 {
-  "items": [ /* ticket objekty */ ],
-  "total": 123,
-  "limit": 50,
-  "offset": 0
+  "code": "permission_denied",
+  "message": "Invalid e-mail or password",
+  "details": null,
+  "request_id": "uuid"
 }
 ```
 
-Seznam je seřazen podle `created_at` sestupně (nejnovější první). Řazení jiným polem API nepodporuje.
+| HTTP | Kód | Typické příčiny |
+| --- | --- | --- |
+| `400` | `bad_request` / business kód | Validační chyba, nepodporovaný export |
+| `403` | `permission_denied` | Chybí token, špatná role |
+| `404` | `not_found` | Ticket, příloha neexistuje |
+| `409` | `conflict` | Business konflikt |
+| `422` | `validation_error` | Pydantic validace |
+| `429` | `rate_limit_exceeded` | Příliš mnoho auth pokusů |
+| `503` | `service_unavailable` | Webhook není nakonfigurován |
 
-### Číselníky
+Response obsahuje hlavičku **`X-Request-ID`** (= `request_id` v JSON).
 
-`GET /api/meta` vrací platné hodnoty pro `ticket_types`, `priorities`, `statuses`, `resolver_teams` — použijte je při vytváření ticketů.
+## Stránkování ticketů
+
+`GET /api/tickets`:
+
+| Parametr | Popis |
+| --- | --- |
+| `search`, `status`, `priority`, `type`, `resolver_team`, `partner_id`, `internal` | Filtry |
+| `limit` | Default `TICKET_PAGE_DEFAULT_LIMIT` (50), max `TICKET_PAGE_MAX_LIMIT` (200) |
+| `offset` | Default `0` |
+
+Odpověď: `{ "items": [...], "total": N, "limit": L, "offset": O }`. Řazení: `created_at DESC`.
 
 ## Skupiny endpointů
 
-### Veřejné / bez tokenu
-
-| Metoda | Endpoint | Popis |
-| --- | --- | --- |
-| `GET` | `/api/health` | Liveness — `{ "status": "ok", "service": "ticketmaster-api" }` |
-| `GET` | `/api/ready` | Readiness — kontrola DB |
-| `GET` | `/api/meta` | Číselníky pro UI a integrace |
-
 ### Autentizace
 
-| Metoda | Endpoint | Kdo | Výsledek |
-| --- | --- | --- | --- |
-| `POST` | `/api/auth/login` | Partner | `{ token, user }` |
-| `POST` | `/api/auth/dev-sso` | Interní (dev) | `{ token, user }` |
-| `POST` | `/api/auth/activate` | Pozvaný uživatel | `{ token, user }` |
-| `GET` | `/api/auth/me` | Přihlášený | Profil aktuálního uživatele |
+| Metoda | Endpoint | Popis |
+| --- | --- | --- |
+| `POST` | `/api/auth/login` | E-mail + heslo |
+| `POST` | `/api/auth/dev-sso` | Dev SSO (interní) |
+| `POST` | `/api/auth/activate` | Aktivace invite |
+| `POST` | `/api/auth/sign-in-as-partner` | Impersonace (Admin/DM) |
+| `POST` | `/api/auth/back-to-admin` | Návrat z impersonace |
+| `GET` | `/api/auth/me` | Profil |
 
-### Účet (`/api/account/*`)
+### Tickety (výběr)
 
 | Metoda | Endpoint | Popis |
 | --- | --- | --- |
-| `GET` | `/api/account/me` | Vlastní profil |
-| `PATCH` | `/api/account/me` | Úprava jména / e-mailu |
-| `POST` | `/api/account/change-password` | Změna hesla |
-
-### Admin — partneři, klienti, uživatelé
-
-Vyžaduje interní roli **Admin** nebo **DeliveryManager** (mazání partnera jen Admin).
-
-| Skupina | Endpointy |
-| --- | --- |
-| Partneři | `GET/POST /api/partners`, `DELETE /api/partners/{id}` |
-| Klienti | `GET/POST /api/clients`, `PATCH/DELETE /api/clients/{id}` |
-| Přiřazení klientů | `GET/POST /api/client-assignments`, `DELETE /api/client-assignments/{id}` |
-| Uživatelé | `GET /api/users`, `POST /api/users/internal`, `POST /api/users/partner`, `PATCH/DELETE /api/users/{id}`, `POST /api/users/{id}/password-reset`, `POST /api/users/{email}/deactivate` |
-
-Partner vidí jen své klienty a uživatele (`GET /api/users`, `GET /api/clients` filtrované podle `partner_id`).
-
-### Partner dashboard
-
-| Metoda | Endpoint | Popis |
-| --- | --- | --- |
-| `GET` | `/api/partner-dashboard` | Klienti, responsible/technical uživatelé — jen partner |
-
-### Tickety
-
-| Metoda | Endpoint | Popis |
-| --- | --- | --- |
-| `GET` | `/api/tickets` | Seznam s filtry a stránkováním |
-| `POST` | `/api/tickets` | Nový partner ticket |
+| `GET` | `/api/tickets` | Seznam |
+| `POST` | `/api/tickets` | Partner ticket |
 | `POST` | `/api/tickets/internal` | Interní ticket |
-| `POST` | `/api/tickets/on-behalf` | Ticket za partnera (Admin/DM) |
-| `GET` | `/api/tickets/export` | Export (`format=json` nebo `csv`) |
+| `POST` | `/api/tickets/on-behalf` | Za partnera (Admin/DM) |
+| `GET` | `/api/tickets/export?format=xlsx` | Excel export |
 | `GET` | `/api/tickets/{id}` | Detail + `available_transitions` |
-| `POST` | `/api/tickets/{id}/comments` | Veřejný komentář |
-| `POST` | `/api/tickets/{id}/internal-notes` | Interní poznámka |
-| `GET` | `/api/tickets/{id}/comments` | Seznam komentářů |
-| `POST` | `/api/tickets/{id}/participants` | Přidat účastníka |
-| `DELETE` | `/api/tickets/{id}/participants/{user_id}` | Odebrat účastníka |
-| `POST` | `/api/tickets/{id}/assign` | Přiřadit tým / řešitele |
-| `POST` | `/api/tickets/{id}/unassign` | Zrušit přiřazení |
 | `POST` | `/api/tickets/{id}/transition` | Změna stavu |
-| `POST` | `/api/tickets/{id}/type` | Změna typu |
-| `POST` | `/api/tickets/{id}/transfer-owner` | Převod vlastníka |
-| `POST` | `/api/tickets/{id}/close` | Uzavření |
+| `POST` | `/api/tickets/{id}/close` | Uzavření (Admin/DM) |
+| `POST` | `/api/tickets/{id}/comments` | Komentář |
+| `POST` | `/api/tickets/{id}/internal-notes` | Interní poznámka |
+| `POST` | `/api/tickets/{id}/assign` | Přiřazení |
+| `POST` | `/api/tickets/{id}/attachments` | Upload (max 25 MB) |
 
-Úprava a mazání komentářů přes API je zakázáno (`403`).
+Úprava/mazání komentářů: `403`.
 
-### Partner API (system tickety)
-
-| Metoda | Endpoint | Popis |
-| --- | --- | --- |
-| `GET` | `/api/partner-api/partners/{partner_id}/tickets` | Seznam ticketů partnera |
-| `POST` | `/api/partner-api/partners/{partner_id}/tickets` | Vytvoření system ticketu |
-
-Přístup: interní Admin/DM, nebo partner uživatel stejného `partner_id` (POST jen role `responsible`).
-
-### Přílohy
-
-| Metoda | Endpoint | Popis |
-| --- | --- | --- |
-| `GET` | `/api/tickets/{id}/attachments` | Seznam |
-| `POST` | `/api/tickets/{id}/attachments` | Upload (`multipart/form-data`, max 25 MB) |
-| `GET` | `/api/attachments/{id}/download` | Stažení souboru |
-
-Povolené přípony: `.png`, `.jpg`, `.jpeg`, `.pdf`, `.txt`, `.log`, `.zip`.
-
-### Audit, GitLab, notifikace
+### Admin, audit, GitLab
 
 | Metoda | Endpoint | Kdo |
 | --- | --- | --- |
-| `GET` | `/api/audit` | Admin, DeliveryManager |
+| `GET` | `/api/audit` | Admin, DM |
+| `GET` | `/api/audit/options` | Admin, DM |
+| `GET/POST` | `/api/partners`, `/api/clients`, `/api/users/...` | Admin, DM |
 | `GET` | `/api/gitlab/check` | Interní |
 | `POST` | `/api/tickets/{id}/gitlab/create-issue` | Interní |
 | `POST` | `/api/tickets/{id}/gitlab/sync-status` | Interní |
-| `POST` | `/api/email/test` | Admin, DeliveryManager |
-| `POST` | `/api/notifications/retry-failed` | Admin, DeliveryManager (MVP: vždy `403`) |
+| `POST` | `/api/gitlab/webhook` | GitLab (token header) |
 
-## Praktické curl příklady
+### Partner API
 
-Následující příklady předpokládají běžící stack na `http://localhost:3006` a platný JWT v proměnné `TOKEN`.
+`GET/POST /api/partner-api/partners/{partner_id}/tickets` — system tickety. Přístup: Admin/DM nebo partner stejného `partner_id` (POST jen `responsible`).
+
+## Praktické příklady
 
 ### Meta a health
 
 ```bash
-BASE=http://localhost:3006
-
 curl -sS "$BASE/api/health"
 curl -sS "$BASE/api/ready"
 curl -sS "$BASE/api/meta"
 ```
 
-### Seznam ticketů
-
-```bash
-curl -sS "$BASE/api/tickets?status=open&limit=10&offset=0" \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-### Detail ticketu
-
-```bash
-TICKET_ID="<uuid-ticketu>"
-
-curl -sS "$BASE/api/tickets/$TICKET_ID" \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Odpověď obsahuje detail ticketu včetně `available_transitions` — seznam stavů, do kterých může aktuální uživatel ticket převést.
-
 ### Vytvoření ticketu (partner)
 
-Nejdříve získejte platné hodnoty z `/api/meta` a volitelně `client_id` z `/api/clients`.
+Použijte hodnoty z `/api/meta`:
 
 ```bash
 curl -sS -X POST "$BASE/api/tickets" \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
-    "type": "incident",
-    "priority": "medium",
-    "title": "Problém s přihlášením",
-    "description": "Uživatel se nemůže přihlásit od 9:00.",
+    "type": "Question",
+    "priority": "Normal",
+    "title": "Dotaz k integraci",
+    "description": "Potřebujeme upřesnit API endpoint.",
     "client_id": null,
     "participant_ids": []
   }'
 ```
 
-### Komentář k ticketu
+### Změna stavu
 
 ```bash
-curl -sS -X POST "$BASE/api/tickets/$TICKET_ID/comments" \
+TICKET_ID="<uuid>"
+
+curl -sS -X POST "$BASE/api/tickets/$TICKET_ID/transition" \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"body":"Doplňující informace od partnera."}'
+  -d '{"status":"In progress"}'
 ```
 
-### Seznam komentářů
+Používejte jen stavy z `available_transitions` v detailu.
+
+### Export Excel
 
 ```bash
-curl -sS "$BASE/api/tickets/$TICKET_ID/comments" \
+curl -fsS -o export.xlsx \
+  "$BASE/api/tickets/export?format=xlsx&status=New" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
+Detail: [Export](/docs/export).
+
 ### Upload přílohy
+
+Povolené přípony: `.png`, `.jpg`, `.jpeg`, `.pdf`, `.txt`, `.log`, `.zip`.
 
 ```bash
 curl -sS -X POST "$BASE/api/tickets/$TICKET_ID/attachments" \
@@ -300,32 +187,8 @@ curl -sS -X POST "$BASE/api/tickets/$TICKET_ID/attachments" \
   -F "file=@/path/to/logfile.txt"
 ```
 
-Volitelně lze připojit ke komentáři: `-F "comment_id=<uuid-komentare>"`.
+## Poznámky
 
-### Stažení přílohy
-
-```bash
-ATTACHMENT_ID="<uuid-prilohy>"
-
-curl -sS -L "$BASE/api/attachments/$ATTACHMENT_ID/download" \
-  -H "Authorization: Bearer $TOKEN" \
-  -o downloaded-file.txt
-```
-
-### Změna stavu ticketu
-
-```bash
-curl -sS -X POST "$BASE/api/tickets/$TICKET_ID/transition" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"status":"in_progress"}'
-```
-
-Používejte pouze stavy z `available_transitions` v detailu ticketu.
-
-## Poznámky k integraci
-
-- **OpenAPI vs. tato stránka:** Scalar zobrazuje kompletní specifikaci včetně schémat request/response. Tato stránka doplňuje provozní kontext, příklady a pravidla oprávnění.
-- **Swagger UI na API kontejneru** je vypnuté (`docs_url=None`) — dokumentace je centralizovaná na `/docs/api`.
-- **Partner API** (`/api/partner-api/...`) je určené pro automatizované vytváření system ticketů; běžný partnerský workflow používá `/api/tickets`.
-- Každá odpověď obsahuje `X-Request-ID` — při hlášení problému uveďte tuto hodnotu spolu s časem požadavku.
+- Swagger UI na API kontejneru je vypnuté — dokumentace je na `/docs/api`.
+- Smoke check posílá `x-ticketmaster-smoke: 1` — audit se nezapisuje.
+- Partner workflow používá `/api/tickets`; Partner API je pro automatizaci system ticketů.

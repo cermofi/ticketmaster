@@ -1,0 +1,129 @@
+---
+title: Řešení problémů
+description: Typické incidenty, diagnostika a rychlé opravy
+---
+
+## Rychlá diagnostika
+
+```bash
+docker compose ps
+docker compose logs --tail=200 api
+docker compose logs --tail=100 frontend docs
+docker compose exec api ticketmaster-cli health
+docker compose exec api ticketmaster-cli config check
+curl -fsS http://127.0.0.1:3006/api/health
+curl -fsS http://127.0.0.1:3006/api/ready
+```
+
+Při hlášení bugu uveďte **`X-Request-ID`** z odpovědi API a čas požadavku.
+
+## API neběží / 502
+
+| Příčina | Kontrola | Oprava |
+| --- | --- | --- |
+| API kontejner down | `docker compose ps api` | `docker compose up -d api` |
+| DB nedostupná | `/api/ready` → 503 | `docker compose logs db`, restart `db` |
+| Migrace selhala | logy API při startu | Opravit SQL/chybu, `ticketmaster-cli db migrate` |
+
+## Přihlášení nefunguje / 429
+
+1. Ověřte e-mail a heslo (neaktivní účet → `403`).
+2. Rate limit: `docker compose exec api ticketmaster-cli rate-limit list`
+3. Reset: `rate-limit reset --scope login --ip <IP> --identifier <email>`
+4. Při více uvicorn workerech: `docker compose restart api`
+
+Viz [Autentizace](/docs/autentizace).
+
+## Docs / OpenAPI 403
+
+`/docs/` a `/api/openapi.json` jsou v produkci **jen z interní sítě** (RFC1918 + loopback). Z veřejného internetu vrací nginx `403` — to je záměr.
+
+Přístup: VPN, SSH tunel, nebo prohlížeč na serveru:
+
+```bash
+curl -fsS http://127.0.0.1:3006/docs/ | head
+```
+
+## GitLab sync nefunguje
+
+```bash
+docker compose exec api ticketmaster-cli gitlab check
+```
+
+| Symptom | Možná příčina |
+| --- | --- |
+| Issue se nevytvoří | `GITLAB_TOKEN` chybí, `GITLAB_DRY_RUN=true` |
+| Webhook nic nedělá | špatný secret, ticket není L3, link neexistuje |
+| Conflict v auditu | GitLab stav vyžaduje nepovolený workflow přechod |
+
+Detail: [GitLab](/docs/gitlab).
+
+## Export selže
+
+- „Only Excel (xlsx) export is supported“ — použijte `format=xlsx`.
+- „too many tickets“ — zúžte filtry nebo zvyšte `EXPORT_TICKET_MAX_COUNT` (opatrně).
+
+## E-mail neodchází
+
+- Dev: ověřte Mailpit (`SMTP_HOST=mailpit`).
+- `MAIL_SUPPRESS_SEND=true` — fronta bez odeslání.
+- Retry: `docker compose exec api ticketmaster-cli notifications retry-failed`.
+
+## Seed / migrace
+
+```bash
+docker compose exec api ticketmaster-cli db migrate
+docker compose exec api ticketmaster-cli db seed-dev   # jen pokud ALLOW_SEED_DEV
+```
+
+Seed na produkci je defaultně **zakázán** (pokud `APP_BASE_URL` neobsahuje localhost).
+
+## Smoke check selže
+
+```bash
+./scripts/post-deploy-smoke.sh
+docker compose exec api ticketmaster-cli smoke check --base-url https://ticketmaster.cermofi.cz
+```
+
+Volitelný auth test vyžaduje `SMOKE_ALLOW_AUTH=1` + credentials.
+
+Smoke **nepíše audit** — pokud v auditu vidíte auth z smoke, chybí hlavička `x-ticketmaster-smoke`.
+
+## Úklid smoke artefaktů
+
+Pokud někdo omylem vytvořil testovací tickety s `[SMOKE]` v titulku:
+
+```bash
+docker compose exec api ticketmaster-cli smoke cleanup --dry-run
+docker compose exec api ticketmaster-cli smoke cleanup --confirm
+```
+
+`--include-seed-artifacts` maže i seed-dev demo data — používejte opatrně.
+
+## Rollback nasazení
+
+```bash
+cd /home/new-ticketmaster
+git log --oneline -5
+git checkout <predchozi-commit>
+docker compose up -d --build
+docker compose exec api ticketmaster-cli db migrate
+curl -fsS https://ticketmaster.cermofi.cz/api/ready
+```
+
+Migrace jsou dopředné — rollback DB vyžaduje obnovu ze zálohy.
+
+## DB záloha / obnova
+
+```bash
+docker compose exec -T db pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > backup-$(date +%F).sql
+# obnova (destruktivní):
+docker compose exec -T db psql -U "$POSTGRES_USER" "$POSTGRES_DB" < backup-YYYY-MM-DD.sql
+```
+
+Volume: `postgres_data`. Viz [Databáze](/docs/databaze).
+
+## Kde hledat dál
+
+- [Provoz](/docs/provoz) — health, nasazení, runbook
+- [`docs/production-runbook.md`](https://github.com/cermofi/new-ticketmaster/blob/main/docs/production-runbook.md) — stručný provozní list

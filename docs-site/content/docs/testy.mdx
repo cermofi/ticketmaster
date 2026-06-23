@@ -1,6 +1,6 @@
 ---
 title: Testy
-description: Jak spouštět pytest a CI
+description: Pytest, frontend build, docs build a CI
 ---
 
 ## Backend (pytest)
@@ -11,35 +11,44 @@ pip install -e ".[test]"
 pytest
 ```
 
-Nebo v běžícím API kontejneru:
+V běžícím API kontejneru:
 
 ```bash
 docker compose exec api python -m pytest -q
 ```
 
-### Co se testuje
+### Co se testuje (výběr)
 
-| Soubor | Zaměření |
+| Soubor / oblast | Zaměření |
 | --- | --- |
-| `test_business_rules.py` | RBAC, workflow, partner izolace, exporty |
-| `test_account_api.py` | Účet a API |
-| `test_cli.py` | Parsování CLI příkazů |
-| `test_slug.py` | Generování klíčů (diakritika) |
+| `test_business_rules.py` | RBAC, workflow, partner izolace, export |
+| `test_auth_partner_sign_in.py` | Sign in as partner |
+| `test_auth_back_to_admin.py` | Návrat admina |
+| `test_audit_api.py` | Audit API a filtry |
+| `test_audit_suppression.py` | Smoke header nezapisuje audit |
+| `test_gitlab_status_sync.py` | GitLab sync a webhook |
+| `test_api_hardening.py` | Security, error formát |
+| `test_account_api.py` | Účet |
+| `test_cli.py` | CLI parsování |
+| `test_smoke_cleanup.py` | Úklid [SMOKE] ticketů |
 
-Fixtures: `db` (SQLite), `fixture_data` (uživatelé, partneři, klienti).
+Fixtures: `db` (SQLite in-memory), `fixture_data` (uživatelé, partneři, klienti).
 
-## CI
+## Frontend
 
-GitHub Actions workflow `.github/workflows/ci.yml`:
-
-- trigger: `push`, `pull_request`
-- job `backend-tests`: Python 3.12, `pip install -e ".[test]"`, `pytest`
-
-Frontend nemá v CI samostatný build job — ověření frontendu lokálně:
+Lokální build:
 
 ```bash
 cd frontend && npm install && npm run build
 ```
+
+Unit testy (kde existují):
+
+```bash
+cd frontend && npm test
+```
+
+CI zatím nemá samostatný frontend job — build ověřte lokálně.
 
 ## Docs-site
 
@@ -50,3 +59,19 @@ npm run build
 ```
 
 Build ověřuje TypeScript a MDX obsah.
+
+## CI (GitHub Actions)
+
+`.github/workflows/ci.yml`:
+
+- trigger: `push`, `pull_request`
+- job `backend-tests`: Python 3.12, `pytest`
+
+`.github/workflows/post-deploy-smoke.yml`:
+
+- manual + po změně smoke skriptu
+
+## Související
+
+- [Rychlý start](/docs/spusteni)
+- [Provoz](/docs/provoz) — smoke check

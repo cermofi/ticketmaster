@@ -1,0 +1,141 @@
+---
+title: Role a workflow
+description: Uživatelé, oprávnění, typy ticketů, stavy a klíčová business pravidla
+---
+
+## Typy uživatelů
+
+### Interní (`kind=internal`)
+
+Role (max **3** na uživatele, pole `internal_roles`):
+
+| Role | Typické oprávnění |
+| --- | --- |
+| `Admin` | Plná správa, uzavírání ticketů, audit |
+| `DeliveryManager` | Správa partnerů/klientů, uzavírání, audit |
+| `L1`, `L2`, `L3` | Řešení ticketů přiřazených danému týmu |
+
+Admin a DM vidí **všechny** tickety. Resolver (L1/L2/L3) vidí tickety svého `resolver_team`. Tvůrce interního ticketu vidí svůj ticket.
+
+### Partner (`kind=partner`)
+
+| Role | Oprávnění |
+| --- | --- |
+| `responsible` | Vytváření ticketů, správa účastníků u system ticketů |
+| `technical` | Sledování a komentáře — **nemůže** vytvářet tickety |
+
+Neaktivní uživatelé se nemohou přihlásit ani pracovat s tickety.
+
+## Typy ticketů
+
+### Partner ticket
+
+- Vytváří partner (`responsible`) nebo Admin/DM jménem partnera.
+- Vlastník (`owner_id`) je partner user.
+- Vazba na klienta (`client_id`) volitelná.
+- Partner vidí jen tickety svého `partner_id`.
+
+### Interní ticket (`internal=true`)
+
+- Vytváří interní uživatel.
+- Partner ho **nevidí**.
+- Tvůrce je automaticky owner.
+
+### System ticket (`system=true`)
+
+- Vytváří Admin/DM nebo partner API (`responsible`).
+- Přiřazení týmu L1/L2/L3.
+- Účastníky spravuje `responsible` partner user.
+
+## Číselníky
+
+Definice v `backend/ticketmaster/models/constants.py`:
+
+| Pole | Hodnoty |
+| --- | --- |
+| Typ | `Question`, `Problem`, `Change Request`, `New Feature`, `Configuration`, `Integration`, `Security Issue`, `Operational Request` |
+| Priorita | `Low`, `Normal`, `High`, `Critical` |
+| Stav | `New`, `Queued`, `Need more info`, `Assigned`, `In progress`, `Resolved`, `Closed`, `Rejected`, `Duplicate`, `Cancelled` |
+| Tým | `L1`, `L2`, `L3` |
+
+`GET /api/meta` vrací platné hodnoty pro UI a integrace.
+
+**Speciální pravidlo:** změna typu na `Security Issue` s prioritou `Normal` automaticky zvedne prioritu na `Critical`.
+
+## Workflow stavů
+
+Povolené přechody (`WORKFLOW_TRANSITIONS`):
+
+| Ze stavu | Do stavů |
+| --- | --- |
+| `New` | `Need more info`, `Assigned`, `Rejected`, `Duplicate`, `Cancelled` |
+| `Queued` | `Assigned`, `Need more info`, `Rejected`, `Cancelled` |
+| `Need more info` | `New`, `Queued`, `Assigned`, `Rejected`, `Cancelled` |
+| `Assigned` | `In progress`, `Need more info`, `Cancelled` |
+| `In progress` | `Resolved`, `Need more info`, `Assigned` |
+| `Resolved`, `Rejected`, `Duplicate`, `Cancelled` | `Closed` |
+| `Closed` | — (konečný) |
+
+API vrací `available_transitions` v detailu ticketu podle stavu a role.
+
+### Automatika při přiřazení
+
+- Nový ticket + tým bez assignee → stav `Queued`
+- Nový ticket + assignee → stav `Assigned`
+- `Queued` + přiřazení assignee → `Assigned`
+
+### Kdo může měnit stav
+
+- **Admin / DM** — libovolný povolený přechod.
+- **Resolver (L1/L2/L3)** — jen u ticketů svého týmu a jen stavy: `In progress`, `Resolved`, `Need more info`, `Assigned`, `Queued`.
+- **Partner** — nemění stav (MVP).
+
+### Další omezení
+
+- `In progress` a `Assigned` vyžadují assignee.
+- **L3 + In progress** vyžaduje existující GitLab issue (viz [GitLab](/docs/gitlab)).
+- Uzavřít ticket (`Closed`) může jen **Admin nebo DM**.
+- U `Assigned` ticketu nelze měnit `resolver_team` (jen assignee v rámci týmu).
+- DM může vrátit `Assigned` ticket do `Queued`; resolver ne.
+
+## Tabulka oprávnění
+
+| Akce | Kdo |
+| --- | --- |
+| Vytvořit partner ticket | `responsible` partner |
+| Vytvořit interní ticket | interní uživatel |
+| Ticket jménem partnera | Admin nebo DM |
+| Přiřadit tým / assignee | interní (dle role) |
+| Změnit typ / prioritu | Admin nebo DM |
+| Uzavřít ticket | Admin nebo DM |
+| Interní poznámka | interní, kdo ticket vidí |
+| Veřejný komentář | účastník komunikace |
+| Editace / mazání komentářů | zakázáno |
+| Audit log | Admin nebo DM |
+| Export | kdokoli, kdo vidí filtrované tickety |
+
+## Komentáře a účastníci
+
+- Komentář vyžaduje být **účastníkem** ticketu.
+- Po veřejném komentáři partnera u stavu `Need more info` se ticket vrátí do řešení (`New` nebo `Queued` dle týmu).
+- Vlastník ticketu může odebrat účastníka (kromě sebe).
+- Převod vlastníka vyžaduje stejného partnera a přiřazení klienta.
+
+## Izolace partnerů
+
+Partner vidí jen tickety svého `partner_id` (kromě interních). Test: `test_partner_isolation` v `backend/tests/test_business_rules.py`.
+
+## Mazání
+
+- Partner a klient: **hard delete zakázán** (API vrací chybu).
+- Ticket: **bez soft delete** — ticket se nemazá, jen uzavírá.
+- Uživatel: deaktivace (`active=false`).
+
+## UI obrazovky vs. role
+
+| Obrazovka | Přístup |
+| --- | --- |
+| Dashboard | všichni přihlášení (filtrovaný seznam) |
+| Admin | Admin, DM (+ omezená správa pro partnera) |
+| Audit | Admin, DM |
+| Sign in as partner | Admin, DM (viz [Autentizace](/docs/autentizace)) |

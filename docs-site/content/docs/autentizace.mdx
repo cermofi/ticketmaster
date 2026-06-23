@@ -1,0 +1,145 @@
+---
+title: Autentizace
+description: Přihlášení, JWT tokeny, dev SSO, impersonace partnera a návrat admina
+---
+
+## Přehled režimů
+
+| Režim | Endpoint | Kdo | Použití |
+| --- | --- | --- | --- |
+| E-mail + heslo | `POST /api/auth/login` | Partner (i interní s heslem) | Produkční přihlášení partnerů |
+| Dev SSO | `POST /api/auth/dev-sso` | Interní uživatel | Vývoj — bez hesla, jen e-mail |
+| Aktivace invite | `POST /api/auth/activate` | Pozvaný uživatel | Nastavení hesla z pozvánky |
+| Sign in as partner | `POST /api/auth/sign-in-as-partner` | Admin / DM | Impersonace partner usera |
+| Back to admin | `POST /api/auth/back-to-admin` | Partner session s return tokenem | Návrat z impersonace |
+
+Profil přihlášeného: `GET /api/auth/me`.
+
+## JWT token
+
+- Vydává se při úspěšném loginu / aktivaci / impersonaci.
+- Klient posílá hlavičku: `Authorization: Bearer <JWT>`.
+- Frontend ukládá token do `localStorage` (`ticketmaster.token`).
+
+## E-mail + heslo
+
+```bash
+curl -sS -X POST http://localhost:3006/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"partner@example.test","password":"ChangeMe123!"}'
+```
+
+Odpověď: `{ "token": "...", "user": { ... } }`.
+
+Login akceptuje e-mail nebo **jednoznačné** jméno uživatele. Více shod podle jména → chyba „use e-mail instead“.
+
+## Dev SSO (interní)
+
+Pouze pro interní uživatele existující v DB:
+
+```bash
+curl -sS -X POST http://localhost:3006/api/auth/dev-sso \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.test"}'
+```
+
+V produkci používejte reálné heslo přes `/api/auth/login` (pokud je nastaveno).
+
+## Aktivace pozvánky
+
+Admin/DM nebo CLI pozve partner usera → e-mail s tokenem. Uživatel volá:
+
+```bash
+curl -sS -X POST http://localhost:3006/api/auth/activate \
+  -H 'Content-Type: application/json' \
+  -d '{"token":"<invite-token>","password":"NoveHeslo123!"}'
+```
+
+Heslo min. 8 znaků. Odpověď obsahuje JWT jako u loginu.
+
+## Sign in as partner (impersonace)
+
+**Kdo:** Admin nebo Delivery Manager.
+
+**Účel:** Prohlížet aplikaci očima konkrétního partner usera (support, ověření oprávnění).
+
+```bash
+# Admin token v $ADMIN_TOKEN
+curl -sS -X POST http://localhost:3006/api/auth/sign-in-as-partner \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"user_id":"<partner-user-uuid>"}'
+```
+
+Odpověď:
+
+```json
+{
+  "token": "<partner-jwt>",
+  "user": { "kind": "partner", ... },
+  "return_token": "<one-time-return-token>"
+}
+```
+
+Frontend uloží `return_token` do `localStorage` (`ticketmaster.return_token`) a zobrazí banner partner session.
+
+## Back to admin (návrat)
+
+**Kdy:** Uživatel je přihlášen jako partner **a** má platný `return_token`.
+
+```bash
+curl -sS -X POST http://localhost:3006/api/auth/back-to-admin \
+  -H "Authorization: Bearer $PARTNER_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"return_token":"<return-token>"}'
+```
+
+Odpověď: `{ "token": "<admin-jwt>", "user": { "kind": "internal", ... } }`.
+
+Return token je **jednorázový** a musí odpovídat aktuální partner session. Po použití se zneplatní.
+
+## Rate limiting
+
+Chráněné endpointy:
+
+- `/api/auth/login`, `/api/auth/dev-sso` — scope `login`, identifier = e-mail
+- `/api/auth/sign-in-as-partner` — scope `sign-in-as-partner`, identifier = user id volajícího
+- `/api/auth/back-to-admin` — scope `back-to-admin`, identifier = user id partner session
+
+| Proměnná | Význam | Default |
+| --- | --- | --- |
+| `AUTH_RATE_LIMIT_ATTEMPTS` | Max pokusů ve window | `10` |
+| `AUTH_RATE_LIMIT_WINDOW_SECONDS` | Délka okna (s) | `300` |
+| `LOGIN_RATE_LIMIT_*` | Alias (zpětná kompatibilita) | stejné |
+
+Při překročení: HTTP `429`, kód `rate_limit_exceeded`.
+
+Reset (v API kontejneru):
+
+```bash
+docker compose exec api ticketmaster-cli rate-limit reset --scope login --ip <IP> --identifier user@example.com
+docker compose exec api ticketmaster-cli rate-limit list
+```
+
+Limit je **in-memory** na worker — při `WEB_CONCURRENCY>1` resetujte všechny workery nebo restartujte API.
+
+## Audit auth událostí
+
+Úspěšné/neúspěšné přihlášení, aktivace, impersonace a návrat se zapisují do audit logu (`entity_type=Auth`).
+
+**Výjimka:** požadavky se hlavičkou `x-ticketmaster-smoke: 1` (smoke check) audit **nezapisují** — viz [Provoz](/docs/provoz).
+
+## Chybové odpovědi
+
+Unified JSON tvar (viz [API](/docs/api)):
+
+```json
+{
+  "code": "permission_denied",
+  "message": "Invalid e-mail or password",
+  "details": null,
+  "request_id": "uuid"
+}
+```
+
+Typické HTTP kódy: `403` (špatné údaje), `429` (rate limit).

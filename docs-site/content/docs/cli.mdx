@@ -3,25 +3,34 @@ title: CLI
 description: Příkazy ticketmaster-cli pro operace a správu
 ---
 
-CLI je nainstalované s backend balíčkem (`pip install -e .`). V Dockeru:
+CLI je součástí backend balíčku. V Dockeru:
 
 ```bash
 docker compose exec api ticketmaster-cli <příkaz>
 ```
+
+Lokálně (po `pip install -e .` v `backend/`):
+
+```bash
+ticketmaster-cli <příkaz>
+```
+
+Chyby business logiky: exit code `1`, text `error: …` na stderr.
 
 ## Základ
 
 | Příkaz | Popis |
 | --- | --- |
 | `health` | Ping DB (`SELECT 1`) |
-| `config check` | Výpis konfigurace (citlivé hodnoty redigované) |
+| `config check` | Konfigurace (citlivé hodnoty redigované) |
 | `db migrate` | Aplikuje chybějící SQL z `backend/migrations/` |
-| `db seed-dev` | Migrace + demo data |
+| `db seed-dev` | Migrace + demo data (vyžaduje `ALLOW_SEED_DEV`) |
 
 ## Uživatelé a struktura
 
 ```bash
 ticketmaster-cli user create-internal --email u@example.test --name "Uživatel" --role Admin
+ticketmaster-cli user create-internal --email u@example.test --name "Uživatel" --roles Admin L2
 ticketmaster-cli user list
 ticketmaster-cli user deactivate --email u@example.test
 
@@ -33,32 +42,59 @@ ticketmaster-cli client list --partner <partner-id-nebo-key>
 ticketmaster-cli client assign-responsible --client <id> --user <email>
 
 ticketmaster-cli partner-user invite --partner <id> --email p@example.test --name "Partner" --role responsible
+ticketmaster-cli partner-user deactivate --email p@example.test
 ```
 
-Role interní: `Admin`, `DeliveryManager`, `L1`, `L2`, `L3`.  
-Role partner: `responsible`, `technical`.
+Interní role: `Admin`, `DeliveryManager`, `L1`, `L2`, `L3` (max 3 na uživatele).  
+Partner role: `responsible`, `technical`.
 
 ## Tickety
 
 ```bash
-ticketmaster-cli ticket create-internal --type Question --priority Normal --title "Titulek" --description "Text"
+ticketmaster-cli ticket create-internal --type Question --priority Normal --title "Titulek" --description "Text" --team L2
 ticketmaster-cli ticket show --id <uuid>
 ticketmaster-cli ticket assign --id <uuid> --team L2 --assignee l2@example.test
 ticketmaster-cli ticket transfer-owner --id <uuid> --new-owner responsible@acme.example
 ticketmaster-cli ticket close --id <uuid>
 ```
 
-## GitLab, e-mail, search
+## GitLab
 
 ```bash
 ticketmaster-cli gitlab check
 ticketmaster-cli gitlab create-issue --ticket <uuid>
 ticketmaster-cli gitlab sync-status --ticket <uuid>
+```
 
+## E-mail a search
+
+```bash
 ticketmaster-cli email test --to ops@example.test
 ticketmaster-cli notifications retry-failed
-
 ticketmaster-cli search reindex-tickets
 ```
 
-Chyby business logiky končí exit code `1` a textem `error: …` na stderr.
+## Smoke a rate limit
+
+```bash
+# read-only kontrola (posílá x-ticketmaster-smoke, nezapisuje audit)
+ticketmaster-cli smoke check
+ticketmaster-cli smoke check --base-url https://ticketmaster.cermofi.cz --email user@example.test --password '...'
+
+# úklid testovacích ticketů [SMOKE]
+ticketmaster-cli smoke cleanup --dry-run
+ticketmaster-cli smoke cleanup --confirm
+
+# rate limit reset
+ticketmaster-cli rate-limit list
+ticketmaster-cli rate-limit reset --scope login --ip 1.2.3.4 --identifier user@example.com
+ticketmaster-cli rate-limit reset --scope sign-in-as-partner --ip 1.2.3.4 --identifier <USER_ID>
+```
+
+Scope hodnoty: `login`, `sign-in-as-partner`, `back-to-admin`.
+
+## Související
+
+- [Provoz](/docs/provoz) — smoke po deployi
+- [GitLab](/docs/gitlab) — integrace
+- [Autentizace](/docs/autentizace) — rate limit

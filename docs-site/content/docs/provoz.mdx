@@ -1,6 +1,6 @@
 ---
 title: Provoz
-description: Health endpointy, logy, integrace a běžné postupy
+description: Nasazení, health, smoke check, logy a produkční runbook
 ---
 
 ## Health endpointy
@@ -12,50 +12,117 @@ description: Health endpointy, logy, integrace a běžné postupy
 
 Docker healthcheck API používá `/api/ready`. Frontend kontroluje nginx na `/`.
 
-## Logy
-
-- API loguje každý request (method, path, status, duration, `X-Request-ID`).
-- Logy v kontejneru: volume `api_logs` → `/app/logs` (pokud aplikace zapisuje do souboru).
-
 ```bash
-docker compose logs -f api frontend
+curl -fsS https://ticketmaster.cermofi.cz/api/health
+curl -fsS https://ticketmaster.cermofi.cz/api/ready
+docker compose ps
 ```
 
-## E-mail
+## Nasazení na VPS
 
-- Dev: Mailpit (`SMTP_HOST=mailpit`, port 1025).
-- `MAIL_SUPPRESS_SEND=true` — fronta bez odeslání.
-- Retry fronty: `ticketmaster-cli notifications retry-failed`.
-
-## GitLab
-
-- Konfigurace přes `GITLAB_BASE_URL`, `GITLAB_PROJECT_ID`, `GITLAB_TOKEN`.
-- Default `GITLAB_DRY_RUN=true` — bez reálných volání API.
-- Kontrola: `ticketmaster-cli gitlab check`.
-
-## Bezpečnost (provozní minimum)
-
-- Změňte `APP_SECRET` a DB hesla mimo dev.
-- `CORS_ORIGINS` a `TRUSTED_HOSTS` nastavte na reálné domény (ne `*`).
-- Login rate limit: `LOGIN_RATE_LIMIT_ATTEMPTS`, `LOGIN_RATE_LIMIT_WINDOW_SECONDS`.
-- API přidává security hlavičky (`X-Content-Type-Options`, `X-Frame-Options`, …).
-
-## Nasazení na server
-
-Typický postup (VPS s klonem repozitáře):
+Typický postup (klon v `/home/new-ticketmaster`):
 
 ```bash
 cd /home/new-ticketmaster
 git pull origin main
 docker compose up -d --build
+docker compose exec api ticketmaster-cli db migrate
+```
+
+Ověření:
+
+```bash
 curl -fsS http://127.0.0.1:3006/api/ready
 curl -fsS http://127.0.0.1:3006/docs/ | head
+./scripts/post-deploy-smoke.sh
 ```
+
+Přístup na server: uživatel `cermofi`, pak `su -` pro root operace (bez sudo).
+
+## Post-deploy smoke check
+
+Smoke check je **read-only** — nevytváří produkční data.
+
+Defaultně volá veřejné GET: `/api/health`, `/api/ready`, `/api/meta`.
+
+```bash
+./scripts/post-deploy-smoke.sh
+# nebo:
+docker compose exec api ticketmaster-cli smoke check
+```
+
+Volitelně autentizované kontroly (login + `/api/auth/me` + export s `limit=1`):
+
+```bash
+SMOKE_ALLOW_AUTH=1 SMOKE_CHECK_EMAIL=... SMOKE_CHECK_PASSWORD=... ./scripts/post-deploy-smoke.sh
+```
+
+### Audit a smoke
+
+Všechny smoke požadavky posílají hlavičku **`x-ticketmaster-smoke: 1`**. API middleware potlačí zápis audit logu — smoke ** neznečišťuje** audit.
+
+GitHub Actions: `.github/workflows/post-deploy-smoke.yml`.
 
 ## Dokumentace na serveru
 
-Docs jsou součástí produkčního stacku — nginx na portu **3006** proxyuje **`/docs/`** na službu `docs` (Next.js + Fumadocs).
+- Docs: **`/docs/`** (Fumadocs, služba `docs`)
+- API reference: **`/docs/api`** (Scalar)
+- OpenAPI: **`/api/openapi.json`**
 
-- Interaktivní API reference: **`/docs/api`** (Scalar + OpenAPI z FastAPI).
-- OpenAPI JSON: **`/api/openapi.json`** (generováno z kódu backendu).
-- V produkci jsou **`/docs/*`** a **`/api/openapi.json`** dostupné jen z interní sítě (loopback + RFC1918). Veřejné zůstávají `/`, `/api/health`, `/api/ready` a ostatní API endpointy pro aplikaci.
+V produkci jsou `/docs/*` a `/api/openapi.json` dostupné **jen z interní sítě** (loopback + RFC1918). Veřejně zůstávají UI, `/api/health`, `/api/ready` a běžné API pro aplikaci.
+
+## Logy
+
+API loguje každý request (method, path, status, duration, `X-Request-ID`).
+
+```bash
+docker compose logs -f api frontend docs
+```
+
+Volume `api_logs` → `/app/logs` (pokud aplikace zapisuje do souboru).
+
+## E-mail
+
+- Dev: Mailpit.
+- `MAIL_SUPPRESS_SEND=true` — fronta bez odeslání.
+- Retry: `ticketmaster-cli notifications retry-failed`.
+
+## Rate limit (provoz)
+
+Reset po false positive:
+
+```bash
+docker compose exec api ticketmaster-cli rate-limit list
+docker compose exec api ticketmaster-cli rate-limit reset --scope login --ip <IP> --identifier user@example.com
+```
+
+Při `WEB_CONCURRENCY>1`: restart API nebo reset pro každý worker.
+
+Detail: [Autentizace](/docs/autentizace).
+
+## Bezpečnost (minimum)
+
+- Změňte `APP_SECRET` a DB hesla mimo dev.
+- `CORS_ORIGINS` a `TRUSTED_HOSTS` na reálné domény.
+- API přidává security hlavičky (`X-Content-Type-Options`, `X-Frame-Options`, …).
+
+## Rollback
+
+```bash
+git checkout <predchozi-commit>
+docker compose up -d --build
+docker compose exec api ticketmaster-cli db migrate
+curl -fsS https://ticketmaster.cermofi.cz/api/ready
+```
+
+Migrace jsou dopředné — rollback DB ze zálohy.
+
+## Produkční runbook
+
+Stručný cheat sheet v repozitáři: **`docs/production-runbook.md`** — deploy, health, smoke, rollback, backup, rate limit, incident triage.
+
+## Související
+
+- [Řešení problémů](/docs/reseni-problemu)
+- [Docker](/docs/docker)
+- [CLI](/docs/cli)

@@ -1,11 +1,12 @@
 ---
 title: Docker
-description: Compose služby, proměnné a healthchecky
+description: Compose služby, proměnné, healthchecky a rebuild
 ---
 
 ## Spuštění
 
 ```bash
+cp .env.example .env
 docker compose up -d --build
 docker compose ps
 ```
@@ -21,48 +22,49 @@ docker compose ps
 ### `api`
 
 - Build: `backend/Dockerfile`
-- Při startu: `ticketmaster-cli db migrate` + uvicorn s `${WEB_CONCURRENCY}` workery
+- Start: `ticketmaster-cli db migrate` + uvicorn (`WEB_CONCURRENCY` workerů)
 - Healthcheck: `GET http://127.0.0.1:8000/api/ready`
 - Volumes: `uploads`, `api_logs`
+- Expose: `:8000` (jen interní síť Compose)
 
 ### `docs`
 
 - Build: `docs-site/Dockerfile` (Next.js standalone, `basePath=/docs`)
-- Port: interně `3000`, přes frontend nginx na **`/docs/`**
-- Healthcheck: `GET http://127.0.0.1:3000/docs/`
+- Healthcheck: `GET http://127.0.0.1:3000/docs`
+- Expose: `:3000`
 
 ### `frontend`
 
 - Multi-stage: Node 22 build → nginx 1.27
-- Port: **127.0.0.1:3006:80** (pouze localhost na hostu)
-- Proxy `/api/` → `api:8000`, `/docs/` → `docs:3000` (`frontend/nginx.conf`)
+- Port host: **127.0.0.1:3006:80**
+- Proxy: `/api/` → `api:8000`, `/docs/` → `docs:3000`
+- Interní geo filtr pro `/docs` a `/api/openapi.json` (viz `frontend/nginx.conf`)
 
 ### `mailpit`
 
-- SMTP pro dev (`SMTP_HOST=mailpit`, port 1025)
-- Web UI není vystavený na host port (jen `expose` v compose)
+- Dev SMTP (`SMTP_HOST=mailpit`, port 1025)
+- Web UI není mapovaný na host port
+
+## Diagram
+
+```
+Host :3006 → frontend nginx
+               ├─ /api/*  → api:8000
+               ├─ /docs/* → docs:3000
+               └─ /*      → React static
+api → db:5432
+```
 
 ## Proměnné prostředí
 
-Vzor v `.env.example`. Společný blok `x-app-environment` v `docker-compose.yml` nastavuje:
+Společný blok `x-app-environment` — kompletní seznam v [Konfigurace](/docs/konfiguracni-minimum).
 
-| Proměnná | Význam |
-| --- | --- |
-| `DATABASE_URL` | PostgreSQL connection string |
-| `APP_SECRET` | JWT / kryptografie |
-| `APP_BASE_URL` | Veřejná URL aplikace (odkazy v e-mailech) |
-| `TICKETMASTER_DEV_PASSWORD` | Dev heslo pro partner seed / invite |
-| `SMTP_*` | Odchozí mail |
-| `GITLAB_*` | GitLab integrace (`GITLAB_DRY_RUN=true` default) |
-| `CORS_ORIGINS`, `TRUSTED_HOSTS` | Default `*` |
-| `LOGIN_RATE_LIMIT_*` | Rate limit login endpointu |
-
-Nikdy necommitujte reálný `.env` — jen `.env.example`.
+Poznámka: pokud `.env` chybí, Compose default pro `GITLAB_DRY_RUN` je `false`; `.env.example` má `true` pro bezpečný dev.
 
 ## Logy a restart
 
 ```bash
-docker compose logs -f api
+docker compose logs -f api frontend docs
 docker compose restart api
 docker compose exec api ticketmaster-cli health
 ```
@@ -70,8 +72,25 @@ docker compose exec api ticketmaster-cli health
 ## Rebuild po změně kódu
 
 ```bash
-docker compose build api frontend
-docker compose up -d
+# jen API
+docker compose build api && docker compose up -d api
+
+# frontend + docs
+docker compose build frontend docs && docker compose up -d frontend docs
+
+# vše
+docker compose up -d --build
 ```
 
-Docs (`docs-site/`) běží jako samostatná služba `docs` v Compose a nginx je servíruje na `/docs/`.
+## CLI uvnitř kontejneru
+
+```bash
+docker compose exec api ticketmaster-cli <příkaz>
+```
+
+Příklady: [CLI](/docs/cli).
+
+## Související
+
+- [Rychlý start](/docs/spusteni)
+- [Provoz](/docs/provoz) — produkční nasazení

@@ -1,0 +1,97 @@
+---
+title: Export ticketů
+description: Excel (xlsx) export, filtry, listy a limity
+---
+
+Export stáhne tickety viditelné pro přihlášeného uživatele ve formátu **Excel (.xlsx)**.
+
+Jiné formáty (CSV, JSON) API **nepodporuje**.
+
+## API
+
+```
+GET /api/tickets/export?format=xlsx&[filtry]
+Authorization: Bearer <JWT>
+```
+
+| Parametr | Popis |
+| --- | --- |
+| `format` | Musí být `xlsx` (default) |
+| `search` | Fulltext v titulku / popisu |
+| `status`, `priority`, `type` | Filtry |
+| `resolver_team` | Tým L1/L2/L3 |
+| `partner_id` | Filtr partnera (interní) |
+| `internal` | `true` / `false` |
+
+Odpověď: binární `.xlsx` soubor, hlavička `Content-Disposition: attachment`.
+
+### Příklad
+
+```bash
+curl -fsS -o export.xlsx \
+  "http://localhost:3006/api/tickets/export?format=xlsx&status=In%20progress" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+## Limity
+
+| Proměnná | Default | Význam |
+| --- | --- | --- |
+| `EXPORT_TICKET_MAX_COUNT` | `2000` | Max ticketů v jednom exportu |
+
+Při překročení: HTTP `400`, message „Export contains too many tickets…“.
+
+## Listy v Excelu
+
+Soubor obsahuje více listů (sheetů):
+
+| List | Obsah | Kdo vidí |
+| --- | --- | --- |
+| Tickets | Hlavní přehled ticketů | všichni |
+| Comments | Veřejné komentáře | všichni (partner nevidí internal) |
+| Internal notes | Interní poznámky | jen interní |
+| Participants | Účastníci | interní vidí vše; partner jen partner usery |
+| Watchers | Sledující | stejně jako Participants |
+| Attachments | Přílohy + download URL | všichni |
+| Audit | Audit záznamy ticketů | Admin, DM |
+| GitLab | GitLab link a status | interní vidí detail; partner jen status |
+
+### Sloupce listu Tickets
+
+| Sloupec | Pole |
+| --- | --- |
+| Vytvořeno / Aktualizováno | `created_at`, `updated_at` (formát `DD.MM.YYYY HH:MM`, TZ Europe/Prague) |
+| Partner, Klient | názvy |
+| Typ požadavku, Priorita, Status | enum hodnoty |
+| Resolver team, Asignee | tým a jméno |
+| Topic | titulek |
+| URL | odkaz na detail ticketu v UI (`APP_BASE_URL/#/tickets/{id}`) |
+
+Sloupec URL obsahuje Excel HYPERLINK formuli.
+
+## Oprávnění
+
+Export respektuje stejná pravidla viditelnosti jako seznam ticketů:
+
+- Partner exportuje jen své tickety.
+- Resolver jen tickety svého týmu.
+- Admin/DM vše.
+
+## Audit exportu
+
+Každý běžný export zapíše audit záznam:
+
+- `entity_type`: `TicketExport`
+- `action`: `tickets.export`
+- `new_value`: formát, počet ticketů, filtry, role vieweru
+
+**Smoke check** (`x-ticketmaster-smoke: 1`) audit exportu **nezapisuje**.
+
+## UI
+
+Tlačítko Export na dashboardu stáhne soubor s aktuálními filtry seznamu.
+
+## Související
+
+- [API](/docs/api) — endpoint reference
+- [Audit](/docs/audit) — logování exportů

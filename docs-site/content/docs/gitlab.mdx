@@ -1,0 +1,126 @@
+---
+title: GitLab integrace
+description: L3 tickety, vytvoření issue, synchronizace stavu a webhook z GitLabu
+---
+
+Integrace propojuje tickety s týmem **L3** s GitLab issue. Ostatní týmy (L1, L2) GitLab nepoužívají.
+
+## Konfigurace
+
+| Proměnná | Význam |
+| --- | --- |
+| `GITLAB_BASE_URL` | URL GitLab instance (např. `https://gitlab.teskalabs.int`) |
+| `GITLAB_PROJECT_ID` | ID nebo URL-encoded cesta projektu |
+| `GITLAB_TOKEN` | Personal/project access token s API přístupem |
+| `GITLAB_DRY_RUN` | `true` = simulace bez reálných volání (default v `.env.example`) |
+| `GITLAB_WEBHOOK_SECRET` | Sdílené tajemství pro inbound webhook |
+
+Kontrola konfigurace:
+
+```bash
+docker compose exec api ticketmaster-cli gitlab check
+# nebo autentizovaně:
+curl -H "Authorization: Bearer $TOKEN" http://localhost:3006/api/gitlab/check
+```
+
+## Mapování stavů
+
+### GitLab → Ticket (inbound webhook)
+
+| GitLab status | Ticket status |
+| --- | --- |
+| `Open`, `To Do` | `Queued` |
+| `In Progress` | `In progress` |
+| `Done` | `Resolved` |
+| `Closed` | `Closed` |
+
+GitLab status se odvozuje z `issue.state` a labelů boardu: `To Do`, `In Progress`, `Done`.
+
+### Ticket → GitLab (outbound push)
+
+| Ticket status | GitLab issue state | Board label |
+| --- | --- | --- |
+| `Queued`, `Assigned`, `Need more info` | opened | `To Do` |
+| `In progress` | opened | `In Progress` |
+| `Resolved` | opened | `Done` |
+| `Closed` | closed | — |
+
+Outbound push probíhá při změně stavu ticketu (kromě změn z webhooku — zamezení smyčky).
+
+## Vytvoření GitLab issue
+
+Automaticky při přechodu L3 ticketu do stavu, který vyžaduje issue (např. `In progress`), nebo ručně:
+
+```bash
+docker compose exec api ticketmaster-cli gitlab create-issue --ticket <uuid>
+```
+
+API: `POST /api/tickets/{id}/gitlab/create-issue` (interní uživatel).
+
+Issue je **idempotentní** — pokud main link existuje, vrátí existující.
+
+Popis issue obsahuje ID ticketu, URL, typ, prioritu a tým.
+
+## Ruční sync stavu z GitLabu
+
+```bash
+docker compose exec api ticketmaster-cli gitlab sync-status --ticket <uuid>
+```
+
+API: `POST /api/tickets/{id}/gitlab/sync-status`.
+
+Načte aktuální stav issue z GitLab API a aktualizuje `GitLabLink`.
+
+## Inbound webhook
+
+**Endpoint:** `POST /api/gitlab/webhook`
+
+**Autentizace:** hlavička `X-Gitlab-Token` musí odpovídat `GITLAB_WEBHOOK_SECRET`.
+
+Bez nastaveného secretu endpoint vrací `503`.
+
+### Co webhook zpracuje
+
+1. Pouze eventy `object_kind=issue`.
+2. Najde `GitLabLink` podle `project_id` + `issue_iid`.
+3. **Jen tickety s `resolver_team=L3`** — ostatní ignoruje (`not_l3_ticket`).
+4. Aktualizuje GitLab link (status, labels, issue state).
+5. Pokud se liší ticket status a přechod je povolen ve workflow → změní stav ticketu.
+6. Pokud přechod není povolen → zaloguje conflict, stav ticketu **nemění**.
+
+### Nastavení v GitLabu
+
+V projektu GitLab → Settings → Webhooks:
+
+- URL: `https://<váš-host>/api/gitlab/webhook`
+- Secret token: hodnota `GITLAB_WEBHOOK_SECRET`
+- Trigger: **Issues events**
+
+## Business pravidla L3
+
+- Přechod do `In progress` u L3 ticketu **vyžaduje** existující GitLab issue (nebo ho vytvoří).
+- Webhook sync respektuje `WORKFLOW_TRANSITIONS` — neplatný přechod se přeskočí s audit záznamem `gitlab.webhook_inbound.conflict`.
+- Sync eventy se ukládají do tabulky `gitlab_sync_events`.
+
+## Dry-run režim
+
+Při `GITLAB_DRY_RUN=true`:
+
+- Issue se nevytváří v GitLabu — generuje se fiktivní link (`dry-<ticket-id>`).
+- Push/sync jen aktualizuje lokální `GitLabLink`.
+- Vhodné pro dev a testování bez API tokenu.
+
+## Audit a logy
+
+Typické audit akce: `gitlab.create_issue`, `gitlab.sync_status`, `gitlab.push_status`, `gitlab.webhook_inbound.*`, `ticket.status_change` (source `gitlab_webhook`).
+
+Logger: `ticketmaster.gitlab`.
+
+## UI
+
+V detailu L3 ticketu interní uživatel vidí GitLab status, odkaz na issue a tlačítka pro vytvoření/sync (pokud je nakonfigurováno).
+
+## Související
+
+- [Role a workflow](/docs/role-a-workflow) — L3 pravidla pro `In progress`
+- [Konfigurace](/docs/konfiguracni-minimum) — proměnné GitLab

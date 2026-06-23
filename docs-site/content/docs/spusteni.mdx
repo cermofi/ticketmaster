@@ -1,14 +1,14 @@
 ---
-title: Spuštění
-description: Jak aplikaci spustit, zastavit a ověřit zdraví
+title: Rychlý start
+description: První spuštění aplikace, seed dat a ověření zdraví
 ---
 
 ## Požadavky
 
 - Docker a Docker Compose
-- Volitelně: Node.js 22+ pro lokální docs (`docs-site/`)
+- Volitelně: Node.js 20+ pro lokální vývoj docs (`docs-site/`)
 
-## Aplikace (Docker Compose)
+## 1. Spuštění aplikace
 
 V kořeni repozitáře:
 
@@ -17,39 +17,49 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-### Ověření
+API při startu automaticky spustí migrace (`ticketmaster-cli db migrate` v Dockerfile CMD).
+
+## 2. Ověření
 
 | Co | URL / příkaz |
 | --- | --- |
 | Web UI | http://localhost:3006 |
 | API health | http://localhost:3006/api/health |
 | API ready (DB) | http://localhost:3006/api/ready |
-
-Frontend nginx proxuje `/api/` na kontejner `api:8000`.
-
-### Zastavení
+| Docs | http://localhost:3006/docs/ |
 
 ```bash
-docker compose down
+curl -fsS http://localhost:3006/api/health
+curl -fsS http://localhost:3006/api/ready
+docker compose ps
 ```
 
-Data v PostgreSQL zůstanou ve volume `postgres_data`. Pro smazání dat:
-
-```bash
-docker compose down -v
-```
-
-## Vývojový seed
-
-Po prvním startu API automaticky spustí migrace (`ticketmaster-cli db migrate` v Dockerfile CMD).
-
-Pro demo data uvnitř běžícího API kontejneru:
+## 3. Demo data (volitelné)
 
 ```bash
 docker compose exec api ticketmaster-cli db seed-dev
 ```
 
-Seed vytvoří interní uživatele, partnera Acme, klienta a ukázkové tickety. Heslo partnerů z dev prostředí odpovídá proměnné `TICKETMASTER_DEV_PASSWORD` (výchozí `ChangeMe123!`).
+Vytvoří interní uživatele, partnera Acme, klienta a ukázkové tickety. Heslo partnerů odpovídá `TICKETMASTER_DEV_PASSWORD` (výchozí `ChangeMe123!`).
+
+Seed je povolen, pokud `APP_BASE_URL` obsahuje `localhost`, nebo pokud nastavíte `ALLOW_SEED_DEV=true`.
+
+## 4. Přihlášení
+
+| Typ uživatele | Jak se přihlásit |
+| --- | --- |
+| Partner | E-mail + heslo → `POST /api/auth/login` nebo formulář v UI |
+| Interní (dev) | E-mail bez hesla → `POST /api/auth/dev-sso` nebo dev SSO v UI |
+| Pozvaný uživatel | Odkaz z invite → aktivace hesla → `POST /api/auth/activate` |
+
+Detailní popis: [Autentizace](/docs/autentizace).
+
+## Zastavení
+
+```bash
+docker compose down          # data v DB zůstanou
+docker compose down -v       # smaže volume postgres_data
+```
 
 ## Lokální vývoj bez Dockeru (volitelné)
 
@@ -67,17 +77,31 @@ uvicorn ticketmaster.api.main:app --reload --port 8000
 ```bash
 cd frontend
 npm install
-npm start
+npm start    # port 3000
 ```
 
-Vite běží na portu **3000** (ne 3006).
-
-## Dokumentace (Fumadocs)
+**Docs** (samostatně):
 
 ```bash
 cd docs-site
 npm install
-npm run dev
+npm run dev  # http://localhost:3007/docs
 ```
 
-Docs: http://localhost:3007/docs
+## Post-deploy smoke check
+
+Read-only kontrola po nasazení — **nevytváří data** a **nezapisuje audit** (hlavička `x-ticketmaster-smoke: 1`):
+
+```bash
+./scripts/post-deploy-smoke.sh
+# nebo:
+docker compose exec api ticketmaster-cli smoke check
+```
+
+Volitelně autentizované kontroly (read-only):
+
+```bash
+SMOKE_ALLOW_AUTH=1 SMOKE_CHECK_EMAIL=... SMOKE_CHECK_PASSWORD=... ./scripts/post-deploy-smoke.sh
+```
+
+Více: [Provoz](/docs/provoz).

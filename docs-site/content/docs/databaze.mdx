@@ -1,37 +1,59 @@
 ---
-title: Databáze a migrace
-description: PostgreSQL, schéma a postup migrací
+title: Databáze
+description: PostgreSQL, migrace, indexy a zálohování
 ---
 
 ## Databáze
 
-- Produktivní stack: **PostgreSQL 16** (služba `db` v compose).
+- Produktivní stack: **PostgreSQL 16** (služba `db` v Compose).
 - ORM: SQLAlchemy 2.x, modely v `backend/ticketmaster/models/`.
-- Connection string: `DATABASE_URL` (default v compose směřuje na `db:5432`).
+- Connection string: `DATABASE_URL`.
 
 ## Migrace
 
-Migrace jsou **čisté SQL soubory** v `backend/migrations/`, aplikované v pořadí podle názvu souboru.
+Migrace jsou **čisté SQL soubory** v `backend/migrations/`, aplikované v pořadí podle názvu.
 
-Sledování verzí: tabulka `schema_migrations` (vytvoří runner automaticky).
+Sledování: tabulka `schema_migrations` (vytvoří runner automaticky).
 
 ```bash
 docker compose exec api ticketmaster-cli db migrate
 ```
 
-Výstup JSON: `{"applied": ["007_....sql"], "status": "ok"}` — prázdné `applied` znamená, že vše je aktuální.
+Výstup JSON: `{"applied": ["009_....sql"], "status": "ok"}`. Prázdné `applied` = vše aktuální.
 
-### Aktuální soubory migrací
+API kontejner spouští `db migrate` při každém startu.
 
-- `001_initial.sql` — základní schéma
-- `002_production_indexes.sql`
-- `003_fulltext_search.sql`
-- `004_partner_client_hard_delete.sql`
-- `005_system_tickets.sql`
-- `006_ticket_custom_owner.sql`
-- `007_drop_ticket_custom_owner.sql`
+### Soubory migrací
 
-API kontejner spouští `db migrate` při každém startu (viz `backend/Dockerfile` CMD).
+| Soubor | Obsah |
+| --- | --- |
+| `001_initial.sql` | Základní schéma |
+| `002_production_indexes.sql` | Produkční indexy |
+| `003_fulltext_search.sql` | Fulltext vyhledávání |
+| `004_partner_client_hard_delete.sql` | Ochrana mazání |
+| `005_system_tickets.sql` | System tickety |
+| `006_ticket_custom_owner.sql` | Custom owner (dočasné) |
+| `007_drop_ticket_custom_owner.sql` | Odstranění custom owner |
+| `008_user_internal_roles.sql` | Více interních rolí (`internal_roles` JSONB) |
+| `009_audit_ticket_query_indexes.sql` | Indexy pro audit filtry a dashboard |
+
+### Indexy z 009 (výběr)
+
+**Audit log** — filtry a řazení `changed_at DESC`:
+
+- `idx_audit_logs_changed_at_desc`
+- `idx_audit_logs_action_changed`
+- `idx_audit_logs_source_changed`
+- `idx_audit_logs_entity_type_changed`
+- `idx_audit_logs_entity_id_changed`
+
+**Tickety** — dashboard filtry + `created_at DESC`:
+
+- `idx_tickets_status_created`
+- `idx_tickets_priority_created`
+- `idx_tickets_type_created`
+- `idx_tickets_resolver_team_created`
+- `idx_tickets_internal_created`
 
 ## Seed pro vývoj
 
@@ -39,12 +61,31 @@ API kontejner spouští `db migrate` při každém startu (viz `backend/Dockerfi
 docker compose exec api ticketmaster-cli db seed-dev
 ```
 
-Idempotentní — vytvoří chybějící demo entity, nepřepisuje existující.
+Idempotentní — vytvoří chybějící demo entity. Na produkci defaultně zakázáno (`ALLOW_SEED_DEV`).
 
 ## Uploady
 
-Přílohy ticketů: adresář z `UPLOAD_DIR` (v Dockeru volume `uploads` → `/app/uploads`).
+Přílohy: adresář `UPLOAD_DIR` (Docker volume `uploads` → `/app/uploads`).
+
+## Záloha a obnova
+
+```bash
+docker compose exec -T db pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > backup-$(date +%F).sql
+```
+
+Obnova (destruktivní):
+
+```bash
+docker compose exec -T db psql -U "$POSTGRES_USER" "$POSTGRES_DB" < backup-YYYY-MM-DD.sql
+```
+
+Volume: `postgres_data`.
 
 ## Testy a DB
 
-Pytest používá **SQLite in-memory** (`backend/tests/conftest.py`), ne produkční PostgreSQL schéma 1:1 — testy ověřují business pravidla a API chování.
+Pytest používá **SQLite in-memory** (`backend/tests/conftest.py`) — testy ověřují business pravidla a API, ne 1:1 PostgreSQL schéma.
+
+## Související
+
+- [Provoz](/docs/provoz) — backup v runbooku
+- [Řešení problémů](/docs/reseni-problemu) — migrace selhaly

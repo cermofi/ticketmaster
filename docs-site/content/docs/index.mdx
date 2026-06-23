@@ -1,28 +1,52 @@
 ---
 title: Úvod
-description: Co je TicketMaster a proč existuje samostatná dokumentace
+description: Co je TicketMaster, pro koho je určený a jak je dokumentace uspořádaná
 ---
 
-TicketMaster je interní ticketovací systém pro partnery a interní týmy (L1–L3, Admin, Delivery Manager).
+TicketMaster je interní ticketovací systém pro **partnery** a **interní týmy** (L1–L3, Admin, Delivery Manager).
 
 ## Co systém dělá
 
-- Partner vytváří a sleduje tickety svého partnera.
-- Interní tým řeší, přiřazuje, uzavírá a audituje tickety.
-- API + React UI běží v Docker Compose; backend je FastAPI, frontend Vite + ASAB WebUI.
+- Partner vytváří a sleduje tickety svého partnera (klient, typ, priorita, komentáře, přílohy).
+- Interní tým tickety přiřazuje, řeší, uzavírá a audituje.
+- Tickety s týmem **L3** lze propojit s GitLab issue a synchronizovat stav oběma směry.
+- Admin a Delivery Manager spravují partnery, klienty a uživatele.
 
-## Proč samostatná docs aplikace
+## Pro koho je tato dokumentace
 
-Dokumentace je v adresáři `docs-site/` jako **samostatná Next.js + Fumadocs** aplikace.
+Pro kohokoli, kdo aplikaci **neviděl** — vývojáře, provoz, support i nové členy týmu. Každá stránka popisuje jednu oblast; začněte [Rychlým startem](/docs/spusteni).
 
-- Produkční frontend (`frontend/`) je statický Vite build za nginx — integrace docs by zbytečně komplikovala produkční image.
-- Docs běží jako služba `docs` v Docker Compose; v produkci jsou na **`/docs/`** (nginx proxy z frontendu).
-
-## Rychlý přehled stacku
+## Stack (stručně)
 
 | Vrstva | Technologie |
 | --- | --- |
-| API | FastAPI, SQLAlchemy, PostgreSQL |
-| UI | React 19, Vite, ASAB WebUI |
-| CLI | `ticketmaster-cli` (Python entrypoint) |
-| Infra | Docker Compose: `db`, `api`, `frontend`, `mailpit` |
+| API | FastAPI, SQLAlchemy, PostgreSQL 16 |
+| UI | React 19, Vite, ASAB WebUI (hash router) |
+| CLI | `ticketmaster-cli` (Python) |
+| Docs | Next.js + Fumadocs (`docs-site/`) |
+| Infra | Docker Compose: `db`, `api`, `frontend`, `docs`, `mailpit` |
+
+## Kde co běží
+
+| Prostředí | Web UI | Dokumentace | API |
+| --- | --- | --- | --- |
+| Lokální Docker | http://localhost:3006 | http://localhost:3006/docs/ | http://localhost:3006/api/ |
+| Lokální docs dev | — | http://localhost:3007/docs | — |
+| Produkce | https://ticketmaster.cermofi.cz | `/docs/` (jen interní síť) | `/api/` |
+
+Frontend nginx proxuje `/api/` → `api:8000` a `/docs/` → `docs:3000`.
+
+## Navigace v dokumentaci
+
+1. [Rychlý start](/docs/spusteni) — první spuštění a ověření
+2. [Architektura](/docs/architektura) — struktura repozitáře a služby
+3. [Role a workflow](/docs/role-a-workflow) — oprávnění a životní cyklus ticketu
+4. [Autentizace](/docs/autentizace) — přihlášení, impersonace partnera
+5. [GitLab](/docs/gitlab) — L3 integrace a webhook
+6. [Audit](/docs/audit) — audit log a filtry
+7. [Export](/docs/export) — Excel export
+8. [API](/docs/api) — OpenAPI reference a příklady
+9. [Konfigurace](/docs/konfiguracni-minimum) — proměnné prostředí
+10. [Provoz](/docs/provoz) — nasazení, health, smoke check
+
+Provozní cheat sheet: [`docs/production-runbook.md`](https://github.com/cermofi/new-ticketmaster/blob/main/docs/production-runbook.md) v repozitáři (stejný obsah jako sekce Provoz).

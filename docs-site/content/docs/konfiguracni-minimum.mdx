@@ -1,68 +1,95 @@
 ---
-title: Konfigurační minimum
+title: Konfigurace
 description: Povinné proměnné pro dev a produkci, bezpečné výchozí hodnoty
 ---
 
-Vzor je v `.env.example`. V Docker Compose se proměnné předávají službě `api` přes blok `x-app-environment` v `docker-compose.yml`.
+Vzor je v `.env.example`. Docker Compose předává proměnné službě `api` přes blok `x-app-environment` v `docker-compose.yml`.
 
-Nikdy necommitujte reálný `.env` — jen `.env.example`.
+**Nikdy necommitujte reálný `.env`** — jen `.env.example`.
 
 ## Dev (Docker Compose)
-
-Minimum pro lokální start:
 
 ```bash
 cp .env.example .env
 docker compose up -d --build
 ```
 
+### Povinné minimum
+
 | Proměnná | Výchozí | Poznámka |
 | --- | --- | --- |
-| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | `ticketmaster` | Pouze pro službu `db`; API používá `DATABASE_URL` |
-| `DATABASE_URL` | `postgresql+psycopg2://ticketmaster:ticketmaster@db:5432/ticketmaster` | Musí odpovídat DB v Compose |
-| `APP_SECRET` | `dev-ticketmaster-secret-change-me` | Pro JWT — v dev stačí, v prod změnit |
-| `APP_BASE_URL` | `http://localhost:3006` | Odkazy v e-mailech a invite |
-| `TICKETMASTER_DEV_PASSWORD` | `ChangeMe123!` | Heslo partnerů po `db seed-dev` |
+| `DATABASE_URL` | `postgresql+psycopg2://ticketmaster:ticketmaster@db:5432/ticketmaster` | Musí odpovídat službě `db` |
+| `POSTGRES_*` | `ticketmaster` | Pro službu `db` |
+| `APP_SECRET` | `dev-ticketmaster-secret-change-me` | JWT — v prod **změnit** |
+| `APP_BASE_URL` | `http://localhost:3006` | Odkazy v e-mailech |
+| `TICKETMASTER_DEV_PASSWORD` | `ChangeMe123!` | Heslo po `db seed-dev` |
 
-Volitelné integrace (mají bezpečné defaulty):
+### Integrace (volitelné)
 
-| Proměnná | Výchozí | Účel |
+| Proměnná | Výchozí (.env.example) | Účel |
 | --- | --- | --- |
-| `SMTP_HOST` | `mailpit` | Dev SMTP (Mailpit) |
-| `SMTP_PORT` | `1025` | |
-| `SMTP_FROM` | `ticketmaster@example.test` | |
-| `SMTP_TLS` | `false` | |
+| `SMTP_*` | Mailpit | Odchozí mail |
 | `MAIL_SUPPRESS_SEND` | `false` | `true` = fronta bez odeslání |
-| `GITLAB_BASE_URL` | `https://gitlab.example.test` | |
-| `GITLAB_PROJECT_ID` | `ticketmaster-dev-placeholder` | |
-| `GITLAB_TOKEN` | prázdné | Bez tokenu + `GITLAB_DRY_RUN=true` nic nevolá API |
-| `GITLAB_DRY_RUN` | `true` | |
-| `UPLOAD_DIR` | `/app/uploads` | V Compose je volume `uploads` |
+| `GITLAB_BASE_URL` | `https://gitlab.teskalabs.int` | GitLab instance |
+| `GITLAB_PROJECT_ID` | `503` | Projekt |
+| `GITLAB_TOKEN` | prázdné | API token |
+| `GITLAB_DRY_RUN` | `true` | Bez reálných volání GitLab API |
+| `GITLAB_WEBHOOK_SECRET` | prázdné | Inbound webhook |
+| `UPLOAD_DIR` | `/app/uploads` | Přílohy (volume `uploads`) |
+
+### Výkon a limity
+
+| Proměnná | Default | Účel |
+| --- | --- | --- |
+| `WEB_CONCURRENCY` | `2` | Uvicorn workery |
+| `TICKET_PAGE_DEFAULT_LIMIT` | `50` | Stránkování |
+| `TICKET_PAGE_MAX_LIMIT` | `200` | Max limit |
+| `EXPORT_TICKET_MAX_COUNT` | `2000` | Max ticketů v exportu |
+| `AUTH_RATE_LIMIT_*` / `LOGIN_RATE_LIMIT_*` | `10` / `300s` | Rate limit auth |
+
+### Bezpečnost (dev)
+
+| Proměnná | Default | |
+| --- | --- | --- |
 | `CORS_ORIGINS` | `*` | |
 | `TRUSTED_HOSTS` | `*` | |
-| `WEB_CONCURRENCY` | `2` | Počet uvicorn workerů |
+| `APP_DEBUG` | `false` | `true` = detailní 500 chyby |
 
-## Produkc (minimum navíc)
+### Seed a smoke
+
+| Proměnná | Účel |
+| --- | --- |
+| `ALLOW_SEED_DEV` | Povolit `db seed-dev` (auto `true` pokud URL obsahuje localhost) |
+| `SMOKE_CHECK_BASE_URL` | URL pro post-deploy smoke (prod: `https://ticketmaster.cermofi.cz`) |
+
+## Produkc (navíc)
 
 | Proměnná | Proč |
 | --- | --- |
-| `APP_SECRET` | **Povinně změnit** — náhodný dlouhý řetězec |
-| `POSTGRES_PASSWORD` + `DATABASE_URL` | Silné heslo DB, ne výchozí `ticketmaster` |
-| `APP_BASE_URL` | Veřejná URL aplikace (např. `https://ticketmaster.cermofi.cz`) |
-| `CORS_ORIGINS` | Konkrétní domény UI (ne `*`) |
-| `TRUSTED_HOSTS` | Host hlavičky, které API akceptuje (ne `*`) |
+| `APP_SECRET` | Náhodný dlouhý řetězec |
+| `POSTGRES_PASSWORD` + `DATABASE_URL` | Silné heslo DB |
+| `APP_BASE_URL` | Veřejná URL (`https://ticketmaster.cermofi.cz`) |
+| `CORS_ORIGINS` | Konkrétní domény UI |
+| `TRUSTED_HOSTS` | Host hlavičky pro API |
+| `GITLAB_DRY_RUN` | `false` + platný `GITLAB_TOKEN` |
+| `GITLAB_WEBHOOK_SECRET` | Pro inbound sync |
+| `ALLOW_SEED_DEV` | **Ne** nastavovat (nebo `false`) |
 
-Pro reálný mail a GitLab doplňte `SMTP_*` / `GITLAB_TOKEN` a nastavte `GITLAB_DRY_RUN=false`.
-
-## Ověření konfigurace
+## Ověření
 
 ```bash
 curl -fsS http://127.0.0.1:3006/api/health
 curl -fsS http://127.0.0.1:3006/api/ready
-docker compose exec api ticketmaster-cli health
+docker compose exec api ticketmaster-cli config check
 ```
 
 ## Co nepatří do repozitáře
 
-- Reálné hesla DB, `APP_SECRET`, `GITLAB_TOKEN`, `SMTP_PASSWORD`
-- Produkční `.env` — držte jen na serveru nebo v secret store
+- Reálná hesla DB, `APP_SECRET`, `GITLAB_TOKEN`, `SMTP_PASSWORD`
+- Produkční `.env` — držte na serveru nebo v secret store
+
+## Související
+
+- [Docker](/docs/docker) — jak Compose proměnné mapuje
+- [GitLab](/docs/gitlab) — GitLab proměnné
+- [Autentizace](/docs/autentizace) — rate limit

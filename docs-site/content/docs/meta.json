@@ -3,14 +3,19 @@
   "pages": [
     "index",
     "spusteni",
-    "konfiguracni-minimum",
-    "struktura",
+    "architektura",
+    "role-a-workflow",
+    "autentizace",
+    "gitlab",
+    "audit",
+    "export",
     "api",
-    "pravidla",
+    "konfiguracni-minimum",
     "docker",
     "cli",
     "databaze",
-    "testy",
-    "provoz"
+    "provoz",
+    "reseni-problemu",
+    "testy"
   ]
 }
