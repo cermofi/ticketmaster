@@ -824,7 +824,84 @@ body[data-tm-density="compact"] .tm-login-form {
 
 .tm-audit-search {
   margin-bottom: .7rem;
-  max-width: 28rem;
+  max-width: 100%;
+}
+
+.tm-audit-filters-panel {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(130px, 1fr)) max-content;
+  gap: .7rem;
+  align-items: end;
+  margin-bottom: .85rem;
+  padding: .65rem .72rem;
+  border: 1px solid var(--tm-ticket-filters-border);
+  border-radius: 8px;
+  background: var(--tm-ticket-filters-bg);
+  box-shadow: var(--tm-ticket-filters-shadow);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tm-audit-filters-panel .form-group,
+.tm-audit-filters-panel .mb-3 {
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.tm-audit-filters-panel .form-label {
+  margin-bottom: .28rem;
+  font-size: .74rem;
+  color: var(--tm-ticket-filter-label);
+}
+
+.tm-audit-filters-panel .form-control,
+.tm-audit-filters-panel .form-select {
+  height: calc(1.5em + .75rem + 2px);
+  min-height: calc(1.5em + .75rem + 2px);
+  border-color: var(--tm-ticket-filter-input-border);
+  background-color: var(--tm-ticket-filter-input-bg);
+  min-width: 0;
+}
+
+.tm-audit-filters-toggle .tm-audit-filters-checkbox {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  min-height: calc(1.5em + .75rem + 2px);
+  font-size: .82rem;
+  color: var(--tm-muted);
+}
+
+.tm-audit-filters-toggle .form-check-input {
+  margin-top: 0;
+}
+
+.tm-audit-filters-actions {
+  display: flex;
+  min-width: max-content;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+
+.tm-audit-filters-reset-spacer {
+  visibility: hidden;
+  margin-bottom: .28rem;
+  font-size: .74rem;
+}
+
+.tm-audit-filters-reset-btn {
+  border: 1px solid var(--tm-ticket-filter-input-border);
+  background: var(--tm-ticket-filter-input-bg);
+  color: var(--tm-text);
+  font-size: .82rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tm-audit-filters-reset-btn:hover,
+.tm-audit-filters-reset-btn:focus-visible {
+  border-color: rgba(96, 165, 250, .8);
+  outline: none;
 }
 
 .tm-audit-table-wrap {
@@ -2460,6 +2537,7 @@ body[data-tm-contrast="high"] {
   .tm-toolbar,
   .tm-ticket-searchbar,
   .tm-ticket-filters-panel,
+  .tm-audit-filters-panel,
   .tm-layout,
   .tm-ticket-layout,
   .tm-admin-layout,

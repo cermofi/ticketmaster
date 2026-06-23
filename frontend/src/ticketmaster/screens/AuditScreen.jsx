@@ -1,11 +1,25 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactJson from '@microlink/react-json-view';
-import { Button, Form, Input, Modal, ModalBody, ModalFooter, ModalHeader, Table } from 'reactstrap';
+import { Button, Form, FormGroup, Input, Label, Modal, ModalBody, ModalFooter, ModalHeader, Table } from 'reactstrap';
 
 import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
 import { useRefetchOnFocus } from '../hooks/useLiveRefresh.js';
 import { AbsoluteTimeCell, EmptyRow, ErrorBanner, PageHeader, apiError, hasAnyInternalRole } from './helpers.jsx';
+
+const EMPTY_FILTERS = {
+  search: '',
+  from: '',
+  to: '',
+  action: '',
+  source: '',
+  entity_type: '',
+  entity_id: '',
+  changed_by: '',
+  has_details: false,
+};
+const FILTER_DEBOUNCE_MS = 400;
+const TEXT_FILTER_KEYS = ['search', 'entity_id', 'changed_by', 'action'];
 
 export default function AuditScreen() {
   return (
@@ -17,38 +31,69 @@ export default function AuditScreen() {
 
 function Audit({ user }) {
   const [rows, setRows] = useState([]);
-  const [entityId, setEntityId] = useState('');
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [options, setOptions] = useState({ actions: [], sources: [], entity_types: [] });
   const [error, setError] = useState('');
   const [detailRow, setDetailRow] = useState(null);
-  const skipFilterEffect = useRef(true);
-  const entityIdRef = useRef(entityId);
-  entityIdRef.current = entityId;
+  const skipDebouncedReload = useRef(true);
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (nextFilters) => {
+    const activeFilters = nextFilters ?? filtersRef.current;
     setError('');
     try {
-      const filter = entityIdRef.current;
-      const response = await api.get('/audit', { params: filter ? { entity_id: filter } : {} });
+      const params = buildAuditParams(activeFilters);
+      const response = await api.get('/audit', { params });
       setRows(response.data);
     } catch (err) {
       setError(apiError(err));
     }
   }, []);
 
+  const loadOptions = useCallback(async () => {
+    try {
+      const response = await api.get('/audit/options');
+      setOptions(response.data);
+    } catch {
+      // Filter dropdowns fall back to text inputs when options fail to load.
+    }
+  }, []);
+
   useEffect(() => {
     load();
-  }, [load]);
+    loadOptions();
+  }, [load, loadOptions]);
+
+  const debouncedTextFilters = useMemo(
+    () => TEXT_FILTER_KEYS.map((key) => filters[key]).join('\0'),
+    [filters],
+  );
 
   useEffect(() => {
-    if (skipFilterEffect.current) {
-      skipFilterEffect.current = false;
+    if (skipDebouncedReload.current) {
+      skipDebouncedReload.current = false;
       return undefined;
     }
-    const handle = window.setTimeout(() => load(), 400);
+    const handle = window.setTimeout(() => load(), FILTER_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
-  }, [entityId, load]);
+  }, [debouncedTextFilters, load]);
 
   useRefetchOnFocus(load);
+
+  const updateFilter = (key, value) => setFilters((current) => ({ ...current, [key]: value }));
+
+  const updateAndApply = (key, value) => {
+    const nextFilters = { ...filtersRef.current, [key]: value };
+    setFilters(nextFilters);
+    load(nextFilters);
+  };
+
+  const resetFilters = () => {
+    skipDebouncedReload.current = true;
+    setFilters(EMPTY_FILTERS);
+    load(EMPTY_FILTERS);
+  };
 
   if (user.kind !== 'internal' || !hasAnyInternalRole(user, ['Admin', 'DeliveryManager'])) {
     return <div className="tm-screen tm-audit-screen"><ErrorBanner error="Audit log is available only to Admin and Delivery Manager." /></div>;
@@ -58,13 +103,13 @@ function Audit({ user }) {
     <div className="tm-screen tm-audit-screen">
       <PageHeader title="Audit" />
       <ErrorBanner error={error} />
-      <Form className="tm-audit-search">
-        <Input
-          value={entityId}
-          onChange={(event) => setEntityId(event.target.value)}
-          placeholder="Filter by entity ID"
-        />
-      </Form>
+      <AuditFilters
+        filters={filters}
+        options={options}
+        onUpdate={updateFilter}
+        onApply={updateAndApply}
+        onReset={resetFilters}
+      />
       <div className="tm-table-wrap tm-audit-table-wrap">
         <Table hover className="tm-table tm-audit-table">
           <colgroup>
@@ -105,6 +150,125 @@ function Audit({ user }) {
       <AuditDetailsModal row={detailRow} onClose={() => setDetailRow(null)} />
     </div>
   );
+}
+
+function AuditFilters({ filters, options, onUpdate, onApply, onReset }) {
+  const actions = options.actions ?? [];
+  const sources = options.sources ?? [];
+  const entityTypes = options.entity_types ?? [];
+
+  return (
+    <>
+      <Form className="tm-audit-search" onSubmit={(event) => event.preventDefault()}>
+        <Input
+          value={filters.search}
+          onChange={(event) => onUpdate('search', event.target.value)}
+          placeholder="Search action, entity, source, user, payload…"
+          aria-label="Search audit log"
+        />
+      </Form>
+      <Form className="tm-audit-filters-panel">
+        <FormGroup>
+          <Label for="audit-from">From</Label>
+          <Input
+            id="audit-from"
+            type="datetime-local"
+            value={filters.from}
+            onChange={(event) => onApply('from', event.target.value)}
+          />
+        </FormGroup>
+        <FormGroup>
+          <Label for="audit-to">To</Label>
+          <Input
+            id="audit-to"
+            type="datetime-local"
+            value={filters.to}
+            onChange={(event) => onApply('to', event.target.value)}
+          />
+        </FormGroup>
+        <FormGroup>
+          <Label for="audit-action">Action</Label>
+          {actions.length > 0 ? (
+            <Input id="audit-action" type="select" value={filters.action} onChange={(event) => onApply('action', event.target.value)}>
+              <option value="">All</option>
+              {actions.map((action) => <option key={action} value={action}>{action}</option>)}
+            </Input>
+          ) : (
+            <Input
+              id="audit-action"
+              value={filters.action}
+              onChange={(event) => onUpdate('action', event.target.value)}
+              placeholder="e.g. ticket.create"
+            />
+          )}
+        </FormGroup>
+        <FormGroup>
+          <Label for="audit-source">Source</Label>
+          <Input id="audit-source" type="select" value={filters.source} onChange={(event) => onApply('source', event.target.value)}>
+            <option value="">All</option>
+            {sources.map((source) => <option key={source} value={source}>{source}</option>)}
+          </Input>
+        </FormGroup>
+        <FormGroup>
+          <Label for="audit-entity-type">Entity type</Label>
+          <Input id="audit-entity-type" type="select" value={filters.entity_type} onChange={(event) => onApply('entity_type', event.target.value)}>
+            <option value="">All</option>
+            {entityTypes.map((entityType) => <option key={entityType} value={entityType}>{entityType}</option>)}
+          </Input>
+        </FormGroup>
+        <FormGroup>
+          <Label for="audit-entity-id">Entity ID</Label>
+          <Input
+            id="audit-entity-id"
+            value={filters.entity_id}
+            onChange={(event) => onUpdate('entity_id', event.target.value)}
+            placeholder="Exact entity ID"
+          />
+        </FormGroup>
+        <FormGroup>
+          <Label for="audit-changed-by">Changed by</Label>
+          <Input
+            id="audit-changed-by"
+            value={filters.changed_by}
+            onChange={(event) => onUpdate('changed_by', event.target.value)}
+            placeholder="Name or e-mail"
+          />
+        </FormGroup>
+        <FormGroup className="tm-audit-filters-toggle">
+          <Label for="audit-has-details">Details</Label>
+          <div className="tm-audit-filters-checkbox">
+            <Input
+              id="audit-has-details"
+              type="checkbox"
+              checked={filters.has_details}
+              onChange={(event) => onApply('has_details', event.target.checked)}
+            />
+            <span>Only with payload</span>
+          </div>
+        </FormGroup>
+        <FormGroup className="tm-audit-filters-actions">
+          <Label className="tm-audit-filters-reset-spacer" aria-hidden="true">&nbsp;</Label>
+          <button className="tm-audit-filters-reset-btn form-control" type="button" onClick={onReset}>
+            Reset filters
+          </button>
+        </FormGroup>
+      </Form>
+    </>
+  );
+}
+
+function buildAuditParams(filters) {
+  const params = {};
+  if (filters.search) params.search = filters.search;
+  if (filters.from) params.from = filters.from;
+  if (filters.to) params.to = filters.to;
+  if (filters.action) params.action = filters.action;
+  if (filters.source) params.source = filters.source;
+  if (filters.entity_type) params.entity_type = filters.entity_type;
+  if (filters.entity_id) params.entity_id = filters.entity_id;
+  if (filters.changed_by) params.changed_by = filters.changed_by;
+  if (filters.has_details) params.has_details = true;
+  return params;
 }
 
 function AuditViewButton({ row, onOpen }) {
@@ -173,4 +337,3 @@ function AuditPayloadSection({ title, value }) {
     </section>
   );
 }
-

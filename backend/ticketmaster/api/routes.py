@@ -4,7 +4,7 @@ import os
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select, text
@@ -25,6 +25,7 @@ from ticketmaster.schemas.serializers import (
 )
 from ticketmaster.services import account, admin, auth, gitlab, malware, notifications, ticket_activity, ticket_exports, tickets
 from ticketmaster.services.audit import audit
+from ticketmaster.services.audit_list import audit_filter_options, list_audit_logs, parse_audit_filter_datetime
 from ticketmaster.services.audit_display import enrich_audit_rows
 from ticketmaster.services.errors import NotFoundError, PermissionDenied, ValidationError
 from ticketmaster.services.internal_roles import get_internal_roles, user_has_any_internal_role
@@ -958,15 +959,48 @@ def attachments_download(db: DbSession, user: CurrentUser, attachment_id: str) -
     return FileResponse(path, media_type=attachment.content_type, filename=attachment.filename)
 
 
-@router.get("/audit")
-def audit_list(db: DbSession, user: CurrentUser, entity_id: str | None = None) -> list[dict]:
+@router.get("/audit/options")
+def audit_options(db: DbSession, user: CurrentUser) -> dict:
     if user.kind != "internal" or not user_has_any_internal_role(user, {"Admin", "DeliveryManager"}):
         raise PermissionDenied("Audit log is visible only for Admin and Delivery Manager")
-    stmt = select(AuditLog)
-    if entity_id:
-        stmt = stmt.where(AuditLog.entity_id == entity_id)
-    stmt = stmt.order_by(AuditLog.changed_at.desc()).limit(200)
-    return enrich_audit_rows(db, list(db.scalars(stmt).all()))
+    return audit_filter_options(db)
+
+
+@router.get("/audit")
+def audit_list(
+    db: DbSession,
+    user: CurrentUser,
+    entity_id: str | None = None,
+    from_: str | None = Query(None, alias="from"),
+    to: str | None = None,
+    action: str | None = None,
+    source: str | None = None,
+    entity_type: str | None = None,
+    changed_by: str | None = None,
+    search: str | None = None,
+    has_details: bool | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict]:
+    if user.kind != "internal" or not user_has_any_internal_role(user, {"Admin", "DeliveryManager"}):
+        raise PermissionDenied("Audit log is visible only for Admin and Delivery Manager")
+    changed_from = parse_audit_filter_datetime(from_) if from_ else None
+    changed_to = parse_audit_filter_datetime(to) if to else None
+    rows = list_audit_logs(
+        db,
+        entity_id=entity_id,
+        changed_from=changed_from,
+        changed_to=changed_to,
+        action=action,
+        source=source,
+        entity_type=entity_type,
+        changed_by=changed_by,
+        search=search,
+        has_details=has_details,
+        limit=limit,
+        offset=offset,
+    )
+    return enrich_audit_rows(db, rows)
 
 
 @router.get("/gitlab/check")
