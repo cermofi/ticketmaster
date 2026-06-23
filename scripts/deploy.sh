@@ -42,7 +42,8 @@ echo "==> Running database migrations"
 "${COMPOSE[@]}" exec -T api ticketmaster-cli db migrate
 
 echo "==> Building and restarting changed services"
-if git diff --name-only "${PRE_DEPLOY_REV}" HEAD | grep -qE '^(backend/|frontend/|docs-site/|docker-compose)'; then
+HEAD_REV="$(git rev-parse HEAD)"
+if [ "$PRE_DEPLOY_REV" != "$HEAD_REV" ] || git diff --name-only "${PRE_DEPLOY_REV}" HEAD | grep -qE '^(backend/|frontend/|docs-site/|docker-compose)'; then
   "${COMPOSE[@]}" up -d --build
 else
   echo "No service image changes detected; restarting api and frontend only"
