@@ -51,11 +51,11 @@ function Audit({ user }) {
   useRefetchOnFocus(load);
 
   if (user.kind !== 'internal' || !hasAnyInternalRole(user, ['Admin', 'DeliveryManager'])) {
-    return <div className="tm-screen"><ErrorBanner error="Audit log is available only to Admin and Delivery Manager." /></div>;
+    return <div className="tm-screen tm-audit-screen"><ErrorBanner error="Audit log is available only to Admin and Delivery Manager." /></div>;
   }
 
   return (
-    <div className="tm-screen">
+    <div className="tm-screen tm-audit-screen">
       <PageHeader title="Audit" />
       <ErrorBanner error={error} />
       <Form className="tm-audit-search">
@@ -65,27 +65,35 @@ function Audit({ user }) {
           placeholder="Filter by entity ID"
         />
       </Form>
-      <div className="tm-table-wrap">
-        <Table responsive hover className="tm-table">
+      <div className="tm-table-wrap tm-audit-table-wrap">
+        <Table hover className="tm-table tm-audit-table">
+          <colgroup>
+            <col className="tm-audit-col-time" />
+            <col className="tm-audit-col-entity" />
+            <col className="tm-audit-col-action" />
+            <col className="tm-audit-col-source" />
+            <col className="tm-audit-col-changed-by" />
+            <col className="tm-audit-col-details" />
+          </colgroup>
           <thead>
             <tr>
-              <th>Time</th>
-              <th>Entity</th>
-              <th>Action</th>
-              <th>Source</th>
-              <th>Changed by</th>
-              <th>Details</th>
+              <th className="tm-audit-col-time">Time</th>
+              <th className="tm-audit-col-entity">Entity</th>
+              <th className="tm-audit-col-action">Action</th>
+              <th className="tm-audit-col-source">Source</th>
+              <th className="tm-audit-col-changed-by">Changed by</th>
+              <th className="tm-audit-col-details">Details</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
               <tr key={row.id}>
-                <td><AbsoluteTimeCell value={row.changed_at} /></td>
-                <td title={`${row.entity_type}:${row.entity_id}`}>{row.entity_label || `${row.entity_type}:${row.entity_id}`}</td>
-                <td>{row.action}</td>
-                <td className="tm-quiet-cell">{row.source}</td>
-                <td className="tm-quiet-cell">{row.changed_by_label || '-'}</td>
-                <td>
+                <td className="tm-audit-col-time"><AbsoluteTimeCell value={row.changed_at} /></td>
+                <td className="tm-audit-col-entity" title={`${row.entity_type}:${row.entity_id}`}>{row.entity_label || `${row.entity_type}:${row.entity_id}`}</td>
+                <td className="tm-audit-col-action">{row.action}</td>
+                <td className="tm-audit-col-source tm-quiet-cell">{row.source}</td>
+                <td className="tm-audit-col-changed-by tm-quiet-cell">{row.changed_by_label || '-'}</td>
+                <td className="tm-audit-col-details">
                   <AuditDetailsButton row={row} onOpen={setDetailRow} />
                 </td>
               </tr>
