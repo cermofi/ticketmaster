@@ -87,11 +87,11 @@ services:
       test:
         - CMD-SHELL
         - |
-          if [ "${TRUSTED_HOSTS:-*}" = "*" ]; then
+          if [ "$${TRUSTED_HOSTS:-*}" = "*" ]; then
             curl -fsS http://127.0.0.1:8000/api/ready >/dev/null
           else
-            host=$(echo "${TRUSTED_HOSTS}" | cut -d, -f1)
-            curl -fsS -H "Host: ${host}" http://127.0.0.1:8000/api/ready >/dev/null
+            host=$$(echo "$${TRUSTED_HOSTS}" | cut -d, -f1)
+            curl -fsS -H "Host: $${host}" http://127.0.0.1:8000/api/ready >/dev/null
           fi
       interval: 10s
       timeout: 5s
