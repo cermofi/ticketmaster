@@ -5,9 +5,10 @@ const adminPassword = process.env.E2E_ADMIN_PASSWORD || 'ChangeMe123!';
 
 async function login(page) {
   await page.goto('/#/');
-  await expect(page.locator('.tm-login')).toBeVisible();
-  await page.getByLabel('E-mail / přihlašovací jméno').fill(adminEmail);
-  await page.getByLabel('Heslo').fill(adminPassword);
+  const loginForm = page.locator('.tm-login-form');
+  await expect(loginForm).toBeVisible();
+  await loginForm.locator('input:not([type="password"])').fill(adminEmail);
+  await loginForm.locator('input[type="password"]').fill(adminPassword);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page.locator('.tm-page-header h1')).toHaveText('Tickets');
 }
@@ -21,7 +22,7 @@ test.describe('smoke', () => {
     await login(page);
     await page.getByRole('button', { name: 'Open user menu' }).click();
     await page.getByRole('menuitem', { name: 'Sign in as partner' }).click();
-    await expect(page.getByText('Sign in as partner')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sign in as partner' })).toBeVisible();
     await page.locator('#tm-partner-sign-in-user').selectOption({ index: 1 });
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(page.locator('body.tm-partner-session')).toBeVisible();
@@ -35,12 +36,14 @@ test.describe('smoke', () => {
     await login(page);
     await page.goto('/#/tickets/new?target=partner');
     await expect(page.locator('.tm-page-header h1')).toHaveText('Create ticket to partner');
-    const title = `[E2E smoke] partner ticket ${Date.now()}`;
-    await page.locator('.tm-ticket-create-form input').nth(0).fill(title);
-    await page.locator('.tm-ticket-create-form textarea').first().fill('Playwright smoke create');
-    await page.locator('.tm-ticket-create-form select').nth(0).selectOption({ index: 1 });
-    await page.locator('.tm-ticket-create-form select').nth(1).selectOption({ index: 1 });
-    await page.getByRole('button', { name: 'Create ticket' }).click();
+    const form = page.locator('.tm-ticket-create-form');
+    await expect(form).toBeVisible();
+    const title = `[SMOKE] partner ticket ${Date.now()}`;
+    await form.locator('select').nth(0).selectOption({ index: 1 });
+    await form.locator('select').nth(1).selectOption({ index: 1 });
+    await form.locator('input[type="text"]').fill(title);
+    await form.locator('.tm-field-wide textarea').fill('Playwright smoke create');
+    await form.getByRole('button', { name: 'Create to partner' }).click();
     await expect(page).toHaveURL(/#\/tickets\//);
     await expect(page.getByText(title)).toBeVisible();
   });
