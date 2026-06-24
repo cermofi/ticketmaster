@@ -84,7 +84,15 @@ services:
       - uploads:/app/uploads
       - api_logs:/app/logs
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/api/ready >/dev/null"]
+      test:
+        - CMD-SHELL
+        - |
+          if [ "${TRUSTED_HOSTS:-*}" = "*" ]; then
+            curl -fsS http://127.0.0.1:8000/api/ready >/dev/null
+          else
+            host=$(echo "${TRUSTED_HOSTS}" | cut -d, -f1)
+            curl -fsS -H "Host: ${host}" http://127.0.0.1:8000/api/ready >/dev/null
+          fi
       interval: 10s
       timeout: 5s
       retries: 12
