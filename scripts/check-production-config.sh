@@ -8,10 +8,20 @@ PRODUCTION_HOST="ticketmaster.cermofi.cz"
 PRODUCTION_ORIGIN="https://${PRODUCTION_HOST}"
 
 if [[ -f "${ENV_FILE}" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "${ENV_FILE}"
-  set +a
+  eval "$(python3 - <<PY
+from pathlib import Path
+import shlex
+
+for raw_line in Path("${ENV_FILE}").read_text().splitlines():
+    line = raw_line.strip()
+    if not line or line.startswith("#") or "=" not in line:
+        continue
+    key, value = line.split("=", 1)
+    key = key.strip()
+    value = value.strip().strip('"').strip("'")
+    print(f"export {key}={shlex.quote(value)}")
+PY
+)"
 fi
 
 APP_SECRET="${APP_SECRET:-dev-ticketmaster-secret-change-me}"

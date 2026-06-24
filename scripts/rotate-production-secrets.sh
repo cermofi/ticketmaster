@@ -28,6 +28,7 @@ cp "${ENV_FILE}" "${backup}"
 
 python3 - <<PY
 from pathlib import Path
+import shlex
 
 env_path = Path("${ENV_FILE}")
 lines = env_path.read_text().splitlines()
@@ -44,13 +45,13 @@ for line in lines:
     key, _ = line.split("=", 1)
     key = key.strip()
     if key in updates:
-        out.append(f"{key}={updates[key]}")
+        out.append(f"{key}={shlex.quote(updates[key])}")
         seen.add(key)
     else:
         out.append(line)
 for key, value in updates.items():
     if key not in seen:
-        out.append(f"{key}={value}")
+        out.append(f"{key}={shlex.quote(value)}")
 env_path.write_text("\n".join(out) + "\n")
 PY
 
