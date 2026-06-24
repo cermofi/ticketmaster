@@ -3,7 +3,9 @@ from __future__ import annotations
 import time
 
 from ticketmaster.core.config import settings
+from ticketmaster.core.redis_client import log_redis_fallback_once, redis_configured
 from ticketmaster.services.errors import RateLimitError
+from ticketmaster.services import redis_store
 
 _attempts: dict[str, list[float]] = {}
 
@@ -13,6 +15,14 @@ def auth_rate_limit_key(scope: str, client_ip: str, identifier: str) -> str:
 
 
 def check_rate_limit(key: str) -> None:
+    if redis_store.redis_enabled():
+        if not redis_store.redis_check_rate_limit(key):
+            raise RateLimitError("Too many authentication attempts")
+        return
+
+    if redis_configured():
+        log_redis_fallback_once("auth rate limit")
+
     now = time.time()
     window_start = now - settings.auth_rate_limit_window_seconds
     attempts = [stamp for stamp in _attempts.get(key, []) if stamp >= window_start]
@@ -23,10 +33,21 @@ def check_rate_limit(key: str) -> None:
 
 
 def clear_rate_limit(key: str) -> bool:
+    if redis_store.redis_enabled():
+        return redis_store.redis_clear_rate_limit(key)
+
+    if redis_configured():
+        log_redis_fallback_once("auth rate limit")
     return _attempts.pop(key, None) is not None
 
 
 def reset_rate_limits(*, ip: str | None = None, identifier: str | None = None, scope: str | None = None) -> int:
+    if redis_store.redis_enabled():
+        return redis_store.redis_reset_rate_limits(ip=ip, identifier=identifier, scope=scope)
+
+    if redis_configured():
+        log_redis_fallback_once("auth rate limit")
+
     if not ip and not identifier and not scope:
         count = len(_attempts)
         _attempts.clear()
@@ -50,4 +71,9 @@ def reset_rate_limits(*, ip: str | None = None, identifier: str | None = None, s
 
 
 def list_rate_limit_keys() -> list[str]:
+    if redis_store.redis_enabled():
+        return redis_store.redis_list_rate_limit_keys()
+
+    if redis_configured():
+        log_redis_fallback_once("auth rate limit")
     return sorted(_attempts)

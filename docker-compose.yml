@@ -18,6 +18,8 @@ x-app-environment: &app-environment
   UPLOAD_DIR: /app/uploads
   CORS_ORIGINS: ${CORS_ORIGINS:-*}
   TRUSTED_HOSTS: ${TRUSTED_HOSTS:-*}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  REDIS_SOCKET_TIMEOUT_SECONDS: ${REDIS_SOCKET_TIMEOUT_SECONDS:-2}
   LOGIN_RATE_LIMIT_ATTEMPTS: ${LOGIN_RATE_LIMIT_ATTEMPTS:-10}
   LOGIN_RATE_LIMIT_WINDOW_SECONDS: ${LOGIN_RATE_LIMIT_WINDOW_SECONDS:-300}
   AUTH_RATE_LIMIT_ATTEMPTS: ${AUTH_RATE_LIMIT_ATTEMPTS:-10}
@@ -52,6 +54,18 @@ services:
       - "8025"
       - "1025"
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   api:
     build:
       context: ./backend
@@ -61,6 +75,8 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     expose:
       - "8000"

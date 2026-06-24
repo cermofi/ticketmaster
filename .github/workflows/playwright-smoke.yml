@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       base_url:
-        description: App base URL (no trailing slash)
-        required: true
-        default: http://127.0.0.1:3006
+        description: Staging app base URL (no trailing slash)
+        required: false
+        default: ""
 
 jobs:
   smoke:
@@ -21,10 +21,10 @@ jobs:
         run: |
           npm install
           npx playwright install chromium --with-deps
-      - name: Run smoke specs
+      - name: Run smoke specs against staging
         working-directory: frontend
         env:
-          PLAYWRIGHT_BASE_URL: ${{ github.event.inputs.base_url }}
-          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
-          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+          PLAYWRIGHT_BASE_URL: ${{ github.event.inputs.base_url || secrets.E2E_STAGING_BASE_URL || 'https://staging.ticketmaster.cermofi.cz' }}
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_STAGING_ADMIN_EMAIL || secrets.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_STAGING_ADMIN_PASSWORD || secrets.E2E_ADMIN_PASSWORD }}
         run: npm run test:e2e

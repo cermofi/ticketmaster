@@ -10,11 +10,13 @@ dependencies = [
   "psycopg2-binary==2.9.10",
   "python-multipart==0.0.20",
   "httpx==0.28.1",
+  "redis==5.2.1",
 ]
 
 [project.optional-dependencies]
 test = [
   "pytest==8.3.4",
+  "fakeredis==2.26.2",
 ]
 
 [project.scripts]

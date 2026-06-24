@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:3006';
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || process.env.E2E_STAGING_BASE_URL || 'http://127.0.0.1:3006';
 
 export default defineConfig({
   testDir: './e2e',

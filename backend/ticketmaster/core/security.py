@@ -9,6 +9,7 @@ import time
 from typing import Any
 
 from ticketmaster.core.config import settings
+from ticketmaster.core.redis_client import log_redis_fallback_once, redis_configured
 
 
 def hash_password(password: str) -> str:
@@ -74,6 +75,24 @@ def _purge_consumed_return_jtis() -> None:
             del _consumed_return_jtis[jti]
 
 
+def _consume_return_jti(jti: str, expires_at: float) -> None:
+    from ticketmaster.services import redis_store
+
+    ttl_seconds = max(1, int(expires_at - time.time()))
+    if redis_store.redis_enabled():
+        if not redis_store.redis_consume_return_jti(jti, ttl_seconds):
+            raise ValueError("Return token already used")
+        return
+
+    if redis_configured():
+        log_redis_fallback_once("return-token JTI anti-replay")
+
+    _purge_consumed_return_jtis()
+    if jti in _consumed_return_jtis:
+        raise ValueError("Return token already used")
+    _consumed_return_jtis[jti] = expires_at
+
+
 def create_return_token(*, impersonator_id: str, partner_user_id: str, ttl_seconds: int = 12 * 60 * 60) -> str:
     jti = _b64(os.urandom(16))
     return create_token(
@@ -98,8 +117,5 @@ def decode_and_consume_return_token(token: str) -> dict[str, Any]:
     partner_user_id = payload.get("sub")
     if not impersonator_id or not partner_user_id:
         raise ValueError("Invalid return token")
-    _purge_consumed_return_jtis()
-    if jti in _consumed_return_jtis:
-        raise ValueError("Return token already used")
-    _consumed_return_jtis[jti] = float(payload["exp"])
+    _consume_return_jti(jti, float(payload["exp"]))
     return payload

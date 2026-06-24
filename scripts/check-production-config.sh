@@ -4,6 +4,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${ROOT}/.env"
+PRODUCTION_HOST="ticketmaster.cermofi.cz"
+PRODUCTION_ORIGIN="https://${PRODUCTION_HOST}"
 
 if [[ -f "${ENV_FILE}" ]]; then
   set -a
@@ -17,6 +19,9 @@ APP_DEBUG="${APP_DEBUG:-false}"
 ALLOW_SEED_DEV="${ALLOW_SEED_DEV:-false}"
 ALLOW_DEV_SSO="${ALLOW_DEV_SSO:-false}"
 TICKETMASTER_DEV_PASSWORD="${TICKETMASTER_DEV_PASSWORD:-ChangeMe123!}"
+CORS_ORIGINS="${CORS_ORIGINS:-*}"
+TRUSTED_HOSTS="${TRUSTED_HOSTS:-*}"
+REDIS_URL="${REDIS_URL:-}"
 
 errors=()
 
@@ -40,6 +45,26 @@ fi
 
 if [[ "${TICKETMASTER_DEV_PASSWORD}" == "ChangeMe123!" ]]; then
   errors+=("TICKETMASTER_DEV_PASSWORD is still the default dev value")
+fi
+
+if [[ "${CORS_ORIGINS}" == "*" ]]; then
+  errors+=("CORS_ORIGINS must be explicit in production (expected ${PRODUCTION_ORIGIN})")
+fi
+
+if [[ "${TRUSTED_HOSTS}" == "*" ]]; then
+  errors+=("TRUSTED_HOSTS must be explicit in production (expected ${PRODUCTION_HOST})")
+fi
+
+if [[ "${CORS_ORIGINS}" != "${PRODUCTION_ORIGIN}" ]]; then
+  errors+=("CORS_ORIGINS must be ${PRODUCTION_ORIGIN} (single main host policy)")
+fi
+
+if [[ "${TRUSTED_HOSTS}" != "${PRODUCTION_HOST}" ]]; then
+  errors+=("TRUSTED_HOSTS must be ${PRODUCTION_HOST} (single main host policy)")
+fi
+
+if [[ -z "${REDIS_URL}" ]]; then
+  errors+=("REDIS_URL is required in production for distributed rate-limit and return-token anti-replay")
 fi
 
 if [[ ${#errors[@]} -gt 0 ]]; then

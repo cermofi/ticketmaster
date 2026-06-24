@@ -13,7 +13,7 @@ cd /home/new-ticketmaster
 
 Skript automaticky:
 
-0. v produkci (`TM_ENV=production`) ověří bezpečnou konfiguraci (`scripts/check-production-config.sh`) — selže při default `APP_SECRET`, `APP_DEBUG`, `ALLOW_SEED_DEV`, `ALLOW_DEV_SSO`, nebo default `TICKETMASTER_DEV_PASSWORD`
+0. v produkci (`TM_ENV=production`) ověří bezpečnou konfiguraci (`scripts/check-production-config.sh`) — selže při default `APP_SECRET`, `APP_DEBUG`, `ALLOW_SEED_DEV`, `ALLOW_DEV_SSO`, default `TICKETMASTER_DEV_PASSWORD`, wildcard `CORS_ORIGINS`/`TRUSTED_HOSTS`, nebo chybějícím `REDIS_URL`
 1. uloží rollback git revizi do `.deploy/last-good-rev`
 2. zkontroluje pending migrace (`ticketmaster-cli db plan`)
 3. u **risky** migrací vytvoří DB backup a rollback artifact (vyžaduje `MIGRATE_CONFIRM=1` v produkci)
@@ -135,13 +135,33 @@ Contract testy: `backend/tests/test_policy_contract.py`
 
 Chráněné endpointy: `/api/auth/login`, `/api/auth/dev-sso`, `/api/auth/activate`, `/api/auth/sign-in-as-partner`, `/api/auth/back-to-admin`.
 
+Pozn.: rate limit a return-token anti-replay jsou **Redis-backed** (`REDIS_URL`); při výpadku Redis se API přepne na in-memory fallback (log warning).
+
 ```bash
 docker compose exec api ticketmaster-cli rate-limit reset --scope login --ip <CLIENT_IP> --identifier user@example.com
 docker compose exec api ticketmaster-cli rate-limit reset --scope sign-in-as-partner --ip <CLIENT_IP> --identifier <USER_ID>
 docker compose exec api ticketmaster-cli rate-limit list
 ```
 
-Pozn.: limit je in-memory na worker; při `WEB_CONCURRENCY>1` restartujte API.
+## Secret rotation (production)
+
+```bash
+cd /home/new-ticketmaster
+bash scripts/rotate-production-secrets.sh
+docker compose up -d --build api
+curl -fsS https://ticketmaster.cermofi.cz/api/health
+curl -fsS https://ticketmaster.cermofi.cz/api/ready
+```
+
+Rotace invaliduje existující bearer tokeny (nový `APP_SECRET`). Uživatelé se musí znovu přihlásit.
+
+## Production host policy
+
+| Proměnná | Produkční hodnota |
+| --- | --- |
+| `CORS_ORIGINS` | `https://ticketmaster.cermofi.cz` |
+| `TRUSTED_HOSTS` | `ticketmaster.cermofi.cz` |
+| `REDIS_URL` | `redis://redis:6379/0` |
 
 ## API chyby
 

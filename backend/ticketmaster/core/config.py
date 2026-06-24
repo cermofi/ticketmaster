@@ -29,6 +29,14 @@ def _bool(name: str, default: bool) -> bool:
     return value.lower() in {"1", "true", "yes", "on"}
 
 
+def _csv(name: str, default: str) -> tuple[str, ...]:
+    return tuple(item.strip() for item in os.getenv(name, default).split(",") if item.strip())
+
+
+PRODUCTION_HOST = "ticketmaster.cermofi.cz"
+PRODUCTION_ORIGIN = f"https://{PRODUCTION_HOST}"
+
+
 @dataclass(frozen=True)
 class Settings:
     database_url: str = os.getenv(
@@ -55,8 +63,11 @@ class Settings:
 
     upload_dir: str = os.getenv("UPLOAD_DIR", "/app/uploads")
 
-    cors_origins: tuple[str, ...] = tuple(origin.strip() for origin in os.getenv("CORS_ORIGINS", "*").split(",") if origin.strip())
-    trusted_hosts: tuple[str, ...] = tuple(host.strip() for host in os.getenv("TRUSTED_HOSTS", "*").split(",") if host.strip())
+    cors_origins: tuple[str, ...] = _csv("CORS_ORIGINS", "*")
+    trusted_hosts: tuple[str, ...] = _csv("TRUSTED_HOSTS", "*")
+    redis_url: str | None = os.getenv("REDIS_URL") or None
+    redis_socket_timeout_seconds: float = float(os.getenv("REDIS_SOCKET_TIMEOUT_SECONDS", "2"))
+    staging_base_url: str = os.getenv("E2E_STAGING_BASE_URL", f"https://staging.{PRODUCTION_HOST}")
     login_rate_limit_attempts: int = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "10"))
     login_rate_limit_window_seconds: int = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
     auth_rate_limit_attempts: int = int(
