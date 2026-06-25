@@ -69,6 +69,19 @@ TICKET_EXPORT_COLUMNS: tuple[tuple[str, str], ...] = (
     ("url", "URL"),
 )
 
+DELIVERY_TRACKING_EXPORT_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("delivery_issue", "Delivery issue"),
+    ("current_state", "Current state"),
+    ("target_team", "Target team"),
+    ("target_issue_url", "Target issue URL"),
+    ("assignee", "Assignee"),
+    ("labels", "Labels"),
+    ("sync_status", "Sync status"),
+    ("last_gitlab_update", "Last GitLab update"),
+    ("delivery_url", "Delivery URL"),
+    ("resolution_source", "Resolution source"),
+)
+
 
 def format_ticket_export_datetime(value: datetime) -> str:
     if value.tzinfo is None:
@@ -106,6 +119,86 @@ def build_ticket_export(db: Session, *, actor: User, export_format: str, filters
     media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     filename = f"ticketmaster_export_{timestamp}.xlsx"
     return ExportResult(content=content, media_type=media_type, filename=filename, ticket_count=len(rows), filters=clean_filters)
+
+
+def build_delivery_tracking_export(
+    db: Session,
+    *,
+    actor: User,
+    export_format: str,
+    filters: dict[str, Any],
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
+) -> ExportResult:
+    normalized_format = export_format.lower().strip() or SUPPORTED_EXPORT_FORMAT
+    if normalized_format != SUPPORTED_EXPORT_FORMAT:
+        raise ValidationError("Only Excel (xlsx) export is supported")
+    if actor.kind != "internal":
+        raise ValidationError("Delivery tracking export is internal only")
+
+    from ticketmaster.services import gitlab_delivery_tracking
+
+    clean_filters = {key: value for key, value in filters.items() if value not in (None, "")}
+    normalized_sort_by, normalized_sort_direction = gitlab_delivery_tracking.normalize_sort(sort_by, sort_direction)
+    updated_since = gitlab_delivery_tracking.parse_updated_since(clean_filters.get("updated_since"))
+    rows_payload = gitlab_delivery_tracking.list_tracked_issues(
+        db,
+        search=clean_filters.get("search"),
+        target_team=clean_filters.get("target_team"),
+        state=clean_filters.get("state"),
+        missing_mapping=clean_filters.get("missing_mapping"),
+        updated_since=updated_since,
+        sort_by=normalized_sort_by,
+        sort_direction=normalized_sort_direction,
+        limit=settings.export_ticket_max_count + 1,
+        offset=0,
+    )
+    rows = rows_payload["items"]
+    if len(rows) > settings.export_ticket_max_count:
+        raise ValidationError(f"Export contains too many tracked issues. Limit is {settings.export_ticket_max_count}.")
+
+    sheet_rows: list[dict[str, Any]] = []
+    for row in rows:
+        delivery_issue = f"#{row.get('delivery_issue_iid') or '-'} {row.get('delivery_title') or ''}".strip()
+        labels = ", ".join(row.get("target_labels") or [])
+        assignee = row.get("target_assignee") or ""
+        last_gitlab_update = row.get("target_updated_at") or row.get("delivery_updated_at")
+        if isinstance(last_gitlab_update, datetime):
+            last_gitlab_update = format_ticket_export_datetime(last_gitlab_update)
+        sheet_rows.append(
+            {
+                "Delivery issue": delivery_issue,
+                "Current state": row.get("target_state") or "",
+                "Target team": row.get("target_team_name") or row.get("target_project_name") or "",
+                "Target issue URL": row.get("target_url") or "",
+                "Assignee": assignee,
+                "Labels": labels,
+                "Sync status": row.get("sync_status") or "",
+                "Last GitLab update": last_gitlab_update or "",
+                "Delivery URL": row.get("delivery_url") or "",
+                "Resolution source": row.get("resolution_source") or "",
+            }
+        )
+
+    columns = [label for _, label in DELIVERY_TRACKING_EXPORT_COLUMNS]
+    sheet = Sheet(
+        name="Delivery tracking",
+        key="delivery_tracking",
+        filename="delivery_tracking.csv",
+        columns=columns,
+        rows=sheet_rows,
+    )
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
+    content = _xlsx_bytes([sheet])
+    media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    filename = f"delivery_tracking_{timestamp}.xlsx"
+    return ExportResult(
+        content=content,
+        media_type=media_type,
+        filename=filename,
+        ticket_count=len(rows),
+        filters={**clean_filters, "sort_by": normalized_sort_by, "sort_direction": normalized_sort_direction},
+    )
 
 
 def _build_sheets(db: Session, *, actor: User, ticket_rows: list[Ticket]) -> list[Sheet]:
@@ -426,7 +519,10 @@ def _cols_xml(widths: list[float]) -> str:
 
 
 def _worksheet_xml(sheet: Sheet) -> str:
-    hyperlink_indices = {index for index, column in enumerate(sheet.columns) if column == "URL"}
+    hyperlink_indices = {
+        index for index, column in enumerate(sheet.columns)
+        if column.upper().endswith("URL")
+    }
     rows = [_xlsx_row(1, sheet.columns)]
     for index, row in enumerate(sheet.rows, start=2):
         rows.append(_xlsx_row(index, [row.get(column) for column in sheet.columns], hyperlink_indices=hyperlink_indices))

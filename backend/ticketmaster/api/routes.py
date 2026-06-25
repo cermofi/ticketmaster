@@ -1058,6 +1058,8 @@ def gitlab_delivery_tracking_list(
     state: str | None = None,
     missing_mapping: bool | None = None,
     updated_since: str | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> dict:
@@ -1072,8 +1074,59 @@ def gitlab_delivery_tracking_list(
         state=state,
         missing_mapping=missing_mapping,
         updated_since=changed_since,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
         limit=actual_limit,
         offset=actual_offset,
+    )
+
+
+@router.get("/gitlab/delivery-tracking/export")
+def gitlab_delivery_tracking_export(
+    db: DbSession,
+    user: CurrentUser,
+    format: str = "xlsx",
+    search: str | None = None,
+    target_team: str | None = None,
+    state: str | None = None,
+    missing_mapping: bool | None = None,
+    updated_since: str | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
+) -> Response:
+    admin.require_internal(user)
+    result = ticket_exports.build_delivery_tracking_export(
+        db,
+        actor=user,
+        export_format=format,
+        filters={
+            "search": search,
+            "target_team": target_team,
+            "state": state,
+            "missing_mapping": missing_mapping,
+            "updated_since": updated_since,
+        },
+        sort_by=sort_by,
+        sort_direction=sort_direction,
+    )
+    audit(
+        db,
+        entity_type="GitLabDeliveryTrackingExport",
+        entity_id=user.id,
+        action="gitlab.delivery_tracking.export",
+        actor=user,
+        source="ui",
+        new_value={
+            "format": format.lower().strip(),
+            "rows": result.ticket_count,
+            "filters": result.filters,
+        },
+    )
+    db.commit()
+    return Response(
+        content=result.content,
+        media_type=result.media_type,
+        headers={"Content-Disposition": f'attachment; filename="{result.filename}"'},
     )
 
 

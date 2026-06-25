@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+from datetime import datetime
 from datetime import timezone
+from types import SimpleNamespace
 
 import pytest
 
 from ticketmaster.services.errors import ValidationError
-from ticketmaster.services.gitlab_delivery_tracking import _parse_issue_url, parse_updated_since
+from ticketmaster.services.gitlab_delivery_tracking import (
+    _parse_issue_url,
+    _sort_tracked_issue_rows,
+    normalize_sort,
+    parse_updated_since,
+)
 
 
 def test_parse_updated_since_accepts_date_only() -> None:
@@ -45,3 +52,45 @@ def test_parse_issue_url_accepts_relative_path() -> None:
 def test_parse_issue_url_rejects_different_host() -> None:
     with pytest.raises(ValidationError):
         _parse_issue_url("https://example.com/group-a/project-x/-/issues/123")
+
+
+def test_normalize_sort_fallbacks_to_defaults() -> None:
+    sort_by, sort_direction = normalize_sort("unsupported-field", "sideways")
+    assert sort_by == "delivery_issue"
+    assert sort_direction == "asc"
+
+
+def test_sort_rows_by_assignee_desc() -> None:
+    base = datetime(2026, 6, 25, 12, 0, tzinfo=timezone.utc)
+    rows = [
+        SimpleNamespace(
+            delivery_issue_iid="1",
+            delivery_title="A",
+            target_state="opened",
+            target_team_name="team-a",
+            target_url="http://example/1",
+            target_assignees=[{"name": "Alice"}],
+            target_labels=["x"],
+            sync_status="ok",
+            target_updated_at=base,
+            delivery_updated_at=base,
+            delivery_url="http://delivery/1",
+            resolution_source="system_note",
+        ),
+        SimpleNamespace(
+            delivery_issue_iid="2",
+            delivery_title="B",
+            target_state="opened",
+            target_team_name="team-a",
+            target_url="http://example/2",
+            target_assignees=[{"name": "Bob"}],
+            target_labels=["y"],
+            sync_status="ok",
+            target_updated_at=base,
+            delivery_updated_at=base,
+            delivery_url="http://delivery/2",
+            resolution_source="system_note",
+        ),
+    ]
+    sorted_rows = _sort_tracked_issue_rows(rows, sort_by="assignee", sort_direction="desc")
+    assert [row.delivery_issue_iid for row in sorted_rows] == ["2", "1"]

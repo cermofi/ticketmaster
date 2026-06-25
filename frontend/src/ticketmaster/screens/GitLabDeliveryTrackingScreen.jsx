@@ -16,14 +16,29 @@ import api from '../../api/client.js';
 import AuthGate from './AuthGate.jsx';
 import { usePolling, useRefetchOnFocus, useSessionDomainRefresh, DATA_DOMAINS } from '../hooks/useLiveRefresh.js';
 import { useUrlFilters } from '../hooks/useUrlFilters.js';
-import { asArray, EmptyRow, ErrorBanner, Loading, PageHeader, StatusPill, TimeCell, apiError, hasAnyInternalRole } from './helpers.jsx';
+import {
+  asArray,
+  downloadResponse,
+  EmptyRow,
+  ErrorBanner,
+  exportError,
+  Loading,
+  PageHeader,
+  StatusPill,
+  TimeCell,
+  apiError,
+  hasAnyInternalRole
+} from './helpers.jsx';
 
+const DEFAULT_SORT = { sort_by: 'delivery_issue', sort_direction: 'asc' };
 const EMPTY_FILTERS = {
   search: '',
   target_team: '',
   state: '',
   missing_mapping: false,
-  updated_since: ''
+  updated_since: '',
+  sort_by: DEFAULT_SORT.sort_by,
+  sort_direction: DEFAULT_SORT.sort_direction
 };
 const FILTER_KEYS = Object.keys(EMPTY_FILTERS);
 const POLL_MS = 60000;
@@ -52,6 +67,7 @@ function TrackingDashboard({ user }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [syncLoading, setSyncLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [mappingModalOpen, setMappingModalOpen] = useState(false);
   const [mappingTargetUrl, setMappingTargetUrl] = useState('');
   const [mappingError, setMappingError] = useState('');
@@ -69,12 +85,7 @@ function TrackingDashboard({ user }) {
     setError('');
     setLoading(true);
     try {
-      const params = {};
-      if (activeFilters.search) params.search = activeFilters.search;
-      if (activeFilters.target_team) params.target_team = activeFilters.target_team;
-      if (activeFilters.state) params.state = activeFilters.state;
-      if (activeFilters.missing_mapping) params.missing_mapping = true;
-      if (activeFilters.updated_since) params.updated_since = activeFilters.updated_since;
+      const params = buildRequestParams(activeFilters);
       const [metaResponse, listResponse] = await Promise.all([
         api.get('/gitlab/delivery-tracking/meta'),
         api.get('/gitlab/delivery-tracking', { params })
@@ -110,6 +121,34 @@ function TrackingDashboard({ user }) {
     } finally {
       setSyncLoading(false);
     }
+  };
+
+  const exportDashboard = async () => {
+    setError('');
+    setExportLoading(true);
+    try {
+      const params = buildRequestParams(filtersRef.current);
+      const response = await api.get('/gitlab/delivery-tracking/export', {
+        params,
+        responseType: 'blob'
+      });
+      downloadResponse(response, 'delivery_tracking.xlsx');
+    } catch (err) {
+      setError(await exportError(err));
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const onSortChange = (key) => {
+    const isSame = filtersRef.current.sort_by === key;
+    const nextDirection = isSame && filtersRef.current.sort_direction === 'asc' ? 'desc' : 'asc';
+    const nextFilters = {
+      ...filtersRef.current,
+      sort_by: key,
+      sort_direction: nextDirection
+    };
+    setFilters(nextFilters);
   };
 
   const openMappingDialog = (row) => {
@@ -159,11 +198,18 @@ function TrackingDashboard({ user }) {
     <div className="tm-screen">
       <PageHeader
         title="GitLab Delivery Tracking"
-        actions={canManage ? (
-          <Button color="primary" onClick={triggerSync} disabled={syncLoading}>
-            {syncLoading ? 'Sync in progress...' : 'Sync now'}
-          </Button>
-        ) : null}
+        actions={(
+          <div className="d-flex gap-2">
+            {canManage && (
+              <Button color="primary" onClick={triggerSync} disabled={syncLoading}>
+                {syncLoading ? 'Sync in progress...' : 'Sync now'}
+              </Button>
+            )}
+            <Button color="secondary" outline onClick={exportDashboard} disabled={exportLoading}>
+              {exportLoading ? 'Exporting...' : 'Export Excel'}
+            </Button>
+          </div>
+        )}
       >
         {meta?.last_sync_run?.finished_at ? `Last sync: ${new Date(meta.last_sync_run.finished_at).toLocaleString()}` : 'No sync run yet'}
       </PageHeader>
@@ -185,6 +231,9 @@ function TrackingDashboard({ user }) {
             rows={rows}
             canManage={canManage}
             onManualMapping={openMappingDialog}
+            sortBy={filters.sort_by}
+            sortDirection={filters.sort_direction}
+            onSortChange={onSortChange}
           />
         </>
       )}
@@ -280,21 +329,45 @@ function TrackingFilters({ filters, setFilters, teams, states, onApply, onReset 
   );
 }
 
-function TrackingTable({ rows, canManage, onManualMapping }) {
+function TrackingTable({ rows, canManage, onManualMapping, sortBy, sortDirection, onSortChange }) {
+  const headers = [
+    { key: 'delivery_issue', label: 'Delivery issue' },
+    { key: 'current_state', label: 'Current state' },
+    { key: 'target_team', label: 'Target team' },
+    { key: 'target_issue_url', label: 'Target issue URL' },
+    { key: 'assignee', label: 'Assignee' },
+    { key: 'labels', label: 'Labels' },
+    { key: 'sync_status', label: 'Sync status' },
+    { key: 'last_gitlab_update', label: 'Last GitLab update' },
+    { key: 'delivery_url', label: 'Delivery URL' },
+    { key: 'resolution_source', label: 'Resolution source' }
+  ];
+
   return (
     <div className="tm-table-wrap">
       <Table hover responsive className="tm-table">
         <thead>
           <tr>
-            <th>Delivery issue</th>
-            <th>Delivery URL</th>
-            <th>Target team/project</th>
-            <th>Target issue URL</th>
-            <th>Current state</th>
-            <th>Labels</th>
-            <th>Assignee</th>
-            <th>Last GitLab update</th>
-            <th>Sync status</th>
+            {headers.map((header) => {
+              const isActive = sortBy === header.key;
+              const direction = isActive ? sortDirection : null;
+              const ariaSort = isActive ? (direction === 'asc' ? 'ascending' : 'descending') : 'none';
+              return (
+                <th key={header.key} aria-sort={ariaSort}>
+                  <button
+                    type="button"
+                    className={`tm-sort-button${isActive ? ' is-active' : ''}`}
+                    onClick={() => onSortChange(header.key)}
+                    aria-label={`Sort by ${header.label}${isActive ? ` (${direction})` : ''}`}
+                  >
+                    <span>{header.label}</span>
+                    <span className="tm-sort-indicator" aria-hidden="true">
+                      {isActive ? (direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </span>
+                  </button>
+                </th>
+              );
+            })}
             <th className="text-end">Actions</th>
           </tr>
         </thead>
@@ -306,7 +379,7 @@ function TrackingTable({ rows, canManage, onManualMapping }) {
                 <div className="tm-muted">#{row.delivery_issue_iid}</div>
               </td>
               <td>
-                <ExternalLink href={row.delivery_url} label="Open delivery issue" />
+                {row.target_state ? <StatusPill value={row.target_state} /> : <span className="tm-muted">-</span>}
               </td>
               <td>
                 <div>{row.target_team_name || '-'}</div>
@@ -315,16 +388,19 @@ function TrackingTable({ rows, canManage, onManualMapping }) {
               <td>
                 <ExternalLink href={row.target_url} label={row.target_issue_iid ? `#${row.target_issue_iid}` : 'Open target issue'} />
               </td>
-              <td>
-                {row.target_state ? <StatusPill value={row.target_state} /> : <span className="tm-muted">-</span>}
-              </td>
-              <td className="tm-quiet-cell">{formatLabels(row.target_labels)}</td>
               <td className="tm-quiet-cell">{formatAssignees(row.target_assignees)}</td>
+              <td className="tm-quiet-cell">{formatLabels(row.target_labels)}</td>
+              <td>
+                <StatusPill value={syncStatusLabel(row.sync_status)} tone={syncStatusTone(row.sync_status)} />
+              </td>
               <td className="tm-quiet-cell">
                 <TimeCell value={row.target_updated_at || row.delivery_updated_at} />
               </td>
               <td>
-                <StatusPill value={syncStatusLabel(row.sync_status)} tone={syncStatusTone(row.sync_status)} />
+                <ExternalLink href={row.delivery_url} label="Open delivery issue" />
+              </td>
+              <td>
+                <span className="tm-quiet-cell">{row.resolution_source || '-'}</span>
               </td>
               <td className="text-end">
                 {canManage && row.target_missing && (
@@ -337,7 +413,7 @@ function TrackingTable({ rows, canManage, onManualMapping }) {
           ))}
           {rows.length === 0 && (
             <EmptyRow
-              colSpan="10"
+              colSpan="11"
               title="No tracked issues found"
               message="Adjust filters or run a sync to import Delivery issues from GitLab."
             />
@@ -379,4 +455,16 @@ function syncStatusTone(value) {
   if (value === 'target_missing') return 'warning';
   if (value === 'error') return 'danger';
   return 'muted';
+}
+
+function buildRequestParams(filters) {
+  const params = {};
+  if (filters.search) params.search = filters.search;
+  if (filters.target_team) params.target_team = filters.target_team;
+  if (filters.state) params.state = filters.state;
+  if (filters.missing_mapping) params.missing_mapping = true;
+  if (filters.updated_since) params.updated_since = filters.updated_since;
+  if (filters.sort_by) params.sort_by = filters.sort_by;
+  if (filters.sort_direction) params.sort_direction = filters.sort_direction;
+  return params;
 }

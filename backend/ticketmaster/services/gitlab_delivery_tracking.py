@@ -4,10 +4,11 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import cmp_to_key
 from urllib.parse import quote_plus, urlparse
 
 import httpx
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.orm import Session
 
 from ticketmaster.core.config import settings
@@ -21,6 +22,19 @@ SYNC_ADVISORY_LOCK_ID = 90503
 ISSUE_URL_PATH_RE = re.compile(r"^/(?P<project_path>.+)/-/issues/(?P<issue_iid>\d+)/?$")
 ISSUE_URL_IN_TEXT_RE = re.compile(r"https?://[^\s)]+/-/issues/\d+", re.IGNORECASE)
 MOVED_NOTE_RE = re.compile(r"moved to\s+(?P<project_path>[A-Za-z0-9_.\-/]+)#(?P<issue_iid>\d+)", re.IGNORECASE)
+SORT_FIELDS = {
+    "delivery_issue",
+    "current_state",
+    "target_team",
+    "target_issue_url",
+    "assignee",
+    "labels",
+    "sync_status",
+    "last_gitlab_update",
+    "delivery_url",
+    "resolution_source",
+}
+SORT_DIRECTIONS = {"asc", "desc"}
 
 
 @dataclass
@@ -29,6 +43,16 @@ class IssueSyncOutcome:
     used_manual_mapping: bool = False
     used_moved_to: bool = False
     used_note_fallback: bool = False
+
+
+@dataclass
+class TargetResolution:
+    issue: dict | None
+    source: str
+    used_manual_mapping: bool
+    used_moved_to: bool
+    used_note_fallback: bool
+    fatal_error: str | None = None
 
 
 class GitLabApiError(RuntimeError):
@@ -164,6 +188,16 @@ def parse_updated_since(value: str | None) -> datetime | None:
         raise ValidationError("updated_since must be ISO date or datetime") from exc
 
 
+def normalize_sort(sort_by: str | None, sort_direction: str | None) -> tuple[str, str]:
+    normalized_sort_by = (sort_by or "delivery_issue").strip().lower().replace("-", "_")
+    if normalized_sort_by not in SORT_FIELDS:
+        normalized_sort_by = "delivery_issue"
+    normalized_direction = (sort_direction or "asc").strip().lower()
+    if normalized_direction not in SORT_DIRECTIONS:
+        normalized_direction = "asc"
+    return normalized_sort_by, normalized_direction
+
+
 def list_dashboard_meta(db: Session) -> dict:
     configured_teams = list_target_teams()
     team_names = [name for _, name in settings.gitlab_target_projects]
@@ -205,6 +239,8 @@ def list_tracked_issues(
     state: str | None = None,
     missing_mapping: bool | None = None,
     updated_since: datetime | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> dict:
@@ -234,17 +270,18 @@ def list_tracked_issues(
             )
         )
 
-    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
-    rows = db.scalars(
-        stmt.order_by(GitLabTrackedIssue.delivery_updated_at.desc(), GitLabTrackedIssue.delivery_issue_iid.asc())
-        .limit(limit)
-        .offset(offset)
-    ).all()
+    all_rows = db.scalars(stmt).all()
+    total = len(all_rows)
+    normalized_sort_by, normalized_sort_direction = normalize_sort(sort_by, sort_direction)
+    sorted_rows = _sort_tracked_issue_rows(all_rows, sort_by=normalized_sort_by, sort_direction=normalized_sort_direction)
+    paged_rows = sorted_rows[max(offset, 0): max(offset, 0) + max(limit, 0)]
     return {
-        "items": [serialize_tracked_issue(row) for row in rows],
+        "items": [serialize_tracked_issue(row) for row in paged_rows],
         "total": total,
         "limit": limit,
         "offset": offset,
+        "sort_by": normalized_sort_by,
+        "sort_direction": normalized_sort_direction,
     }
 
 
@@ -416,7 +453,12 @@ def set_manual_mapping(db: Session, *, tracked_issue_id: str, target_url: str, a
         tracked.resolution_source = "manual"
 
         try:
-            target_issue = client.get_project_issue(project["id"], issue_iid)
+            mapped_issue = client.get_project_issue(project["id"], issue_iid)
+            target_issue, _, _, chain_error = _resolve_terminal_issue(
+                client,
+                start_issue=mapped_issue,
+                project_cache=project_cache,
+            )
             _apply_target_fields(
                 tracked,
                 target_issue=target_issue,
@@ -425,8 +467,11 @@ def set_manual_mapping(db: Session, *, tracked_issue_id: str, target_url: str, a
                 client=client,
                 project_cache=project_cache,
             )
+            if chain_error:
+                tracked.sync_error = chain_error
+            else:
+                tracked.sync_error = None
             tracked.sync_status = "ok"
-            tracked.sync_error = None
             tracked.target_missing = False
         except GitLabApiError as exc:
             _clear_target_fields(tracked)
@@ -483,59 +528,21 @@ def _sync_delivery_issue(
     )
     tracked.manual_mapping_id = mapping.id if mapping else None
 
-    used_manual_mapping = False
-    used_moved_to = False
-    used_note_fallback = False
-    fatal_error: str | None = None
-    target_issue: dict | None = None
-    source = "none"
-
-    if mapping and mapping.target_project_id and mapping.target_issue_iid:
-        try:
-            target_issue = client.get_project_issue(mapping.target_project_id, mapping.target_issue_iid)
-            source = "manual"
-            used_manual_mapping = True
-        except GitLabApiError as exc:
-            if exc.status_code not in {404}:
-                fatal_error = f"Manual mapping lookup failed: {exc}"
-            logger.info("manual mapping could not resolve issue delivery_iid=%s error=%s", delivery_issue_iid, exc)
-
-    if target_issue is None:
-        moved_to_id = payload.get("moved_to_id")
-        if moved_to_id:
-            try:
-                target_issue = client.get_global_issue(str(moved_to_id))
-                source = "moved_to_id"
-                used_moved_to = True
-            except GitLabApiError as exc:
-                if exc.status_code not in {404}:
-                    fatal_error = f"moved_to_id lookup failed: {exc}"
-
-    if target_issue is None:
-        note_target = _resolve_target_from_system_notes(
-            client,
-            delivery_project_id=delivery_project_id,
-            delivery_issue_iid=delivery_issue_iid,
-            project_cache=project_cache,
-        )
-        if note_target is not None:
-            project_id, issue_iid = note_target
-            try:
-                target_issue = client.get_project_issue(project_id, issue_iid)
-                source = "system_note"
-                used_note_fallback = True
-            except GitLabApiError as exc:
-                if exc.status_code not in {404}:
-                    fatal_error = f"system note lookup failed: {exc}"
+    resolution = _resolve_target_issue(
+        client=client,
+        delivery_payload=payload,
+        mapping=mapping,
+        project_cache=project_cache,
+    )
 
     tracked.last_synced_at = _utcnow()
     tracked.updated_at = _utcnow()
 
-    if target_issue is not None:
+    if resolution.issue is not None:
         _apply_target_fields(
             tracked,
-            target_issue=target_issue,
-            source=source,
+            target_issue=resolution.issue,
+            source=resolution.source,
             target_teams=target_teams,
             client=client,
             project_cache=project_cache,
@@ -545,15 +552,15 @@ def _sync_delivery_issue(
         tracked.target_missing = False
         return IssueSyncOutcome(
             status="ok",
-            used_manual_mapping=used_manual_mapping,
-            used_moved_to=used_moved_to,
-            used_note_fallback=used_note_fallback,
+            used_manual_mapping=resolution.used_manual_mapping,
+            used_moved_to=resolution.used_moved_to,
+            used_note_fallback=resolution.used_note_fallback,
         )
 
     _clear_target_fields(tracked)
-    if fatal_error:
+    if resolution.fatal_error:
         tracked.sync_status = "error"
-        tracked.sync_error = fatal_error
+        tracked.sync_error = resolution.fatal_error
         tracked.target_missing = False
         tracked.resolution_source = "error"
         return IssueSyncOutcome(status="error")
@@ -563,6 +570,178 @@ def _sync_delivery_issue(
     tracked.target_missing = True
     tracked.resolution_source = "target_missing"
     return IssueSyncOutcome(status="target_missing")
+
+
+def _resolve_target_issue(
+    *,
+    client: GitLabReadOnlyClient,
+    delivery_payload: dict,
+    mapping: GitLabIssueManualMapping | None,
+    project_cache: dict[str, dict[str, str]],
+) -> TargetResolution:
+    delivery_project_id = _string_or_none(delivery_payload.get("project_id")) or _string_or_none(settings.gitlab_delivery_project_id) or ""
+    delivery_issue_iid = _string_or_none(delivery_payload.get("iid")) or ""
+    fatal_error: str | None = None
+
+    if mapping and mapping.target_project_id and mapping.target_issue_iid:
+        try:
+            manual_issue = client.get_project_issue(mapping.target_project_id, mapping.target_issue_iid)
+            issue, used_moved_to, used_note_fallback, chain_error = _resolve_terminal_issue(
+                client,
+                start_issue=manual_issue,
+                project_cache=project_cache,
+            )
+            return TargetResolution(
+                issue=issue,
+                source="manual",
+                used_manual_mapping=True,
+                used_moved_to=used_moved_to,
+                used_note_fallback=used_note_fallback,
+                fatal_error=chain_error,
+            )
+        except GitLabApiError as exc:
+            if not _is_recoverable_link_error(exc):
+                fatal_error = f"Manual mapping lookup failed: {exc}"
+            logger.info(
+                "manual mapping could not resolve issue delivery_iid=%s error=%s",
+                delivery_issue_iid,
+                exc,
+            )
+
+    candidate_issue: dict | None = None
+    source = "none"
+    used_moved_to = False
+    used_note_fallback = False
+
+    moved_to_id = _string_or_none(delivery_payload.get("moved_to_id"))
+    if moved_to_id:
+        try:
+            candidate_issue = client.get_global_issue(moved_to_id)
+            source = "moved_to_id"
+            used_moved_to = True
+        except GitLabApiError as exc:
+            if not _is_recoverable_link_error(exc):
+                fatal_error = f"moved_to_id lookup failed: {exc}"
+
+    if candidate_issue is None and delivery_project_id and delivery_issue_iid:
+        note_target = _resolve_target_from_system_notes(
+            client,
+            delivery_project_id=delivery_project_id,
+            delivery_issue_iid=delivery_issue_iid,
+            project_cache=project_cache,
+        )
+        if note_target is not None:
+            project_id, issue_iid = note_target
+            try:
+                candidate_issue = client.get_project_issue(project_id, issue_iid)
+                source = "system_note"
+                used_note_fallback = True
+            except GitLabApiError as exc:
+                if not _is_recoverable_link_error(exc):
+                    fatal_error = f"system note lookup failed: {exc}"
+
+    if candidate_issue is None:
+        return TargetResolution(
+            issue=None,
+            source="none",
+            used_manual_mapping=False,
+            used_moved_to=used_moved_to,
+            used_note_fallback=used_note_fallback,
+            fatal_error=fatal_error,
+        )
+
+    terminal_issue, chained_moved, chained_note, chain_error = _resolve_terminal_issue(
+        client,
+        start_issue=candidate_issue,
+        project_cache=project_cache,
+    )
+    return TargetResolution(
+        issue=terminal_issue,
+        source=source,
+        used_manual_mapping=False,
+        used_moved_to=used_moved_to or chained_moved,
+        used_note_fallback=used_note_fallback or chained_note,
+        fatal_error=fatal_error or chain_error,
+    )
+
+
+def _resolve_terminal_issue(
+    client: GitLabReadOnlyClient,
+    *,
+    start_issue: dict,
+    project_cache: dict[str, dict[str, str]],
+    max_hops: int = 20,
+) -> tuple[dict, bool, bool, str | None]:
+    current_issue = start_issue
+    visited: set[tuple[str | None, str | None]] = set()
+    used_moved_to = False
+    used_note_fallback = False
+    fatal_error: str | None = None
+
+    for _ in range(max_hops):
+        issue_key = (_string_or_none(current_issue.get("project_id")), _string_or_none(current_issue.get("iid")))
+        if issue_key in visited:
+            fatal_error = "Issue move chain contains a cycle"
+            break
+        visited.add(issue_key)
+
+        next_issue, next_source, next_error = _resolve_next_issue_in_chain(
+            client,
+            issue=current_issue,
+            project_cache=project_cache,
+        )
+        if next_issue is None:
+            if next_error:
+                fatal_error = next_error
+            break
+        if next_source == "moved_to_id":
+            used_moved_to = True
+        elif next_source == "system_note":
+            used_note_fallback = True
+        current_issue = next_issue
+    else:
+        fatal_error = "Issue move chain exceeds maximum hop count"
+
+    return current_issue, used_moved_to, used_note_fallback, fatal_error
+
+
+def _resolve_next_issue_in_chain(
+    client: GitLabReadOnlyClient,
+    *,
+    issue: dict,
+    project_cache: dict[str, dict[str, str]],
+) -> tuple[dict | None, str | None, str | None]:
+    fallback_error: str | None = None
+    moved_to_id = _string_or_none(issue.get("moved_to_id"))
+    if moved_to_id:
+        try:
+            return client.get_global_issue(moved_to_id), "moved_to_id", None
+        except GitLabApiError as exc:
+            if not _is_recoverable_link_error(exc):
+                fallback_error = f"moved_to_id lookup failed: {exc}"
+
+    project_id = _string_or_none(issue.get("project_id"))
+    issue_iid = _string_or_none(issue.get("iid"))
+    if project_id and issue_iid:
+        note_target = _resolve_target_from_system_notes(
+            client,
+            delivery_project_id=project_id,
+            delivery_issue_iid=issue_iid,
+            project_cache=project_cache,
+        )
+        if note_target is not None:
+            target_project_id, target_issue_iid = note_target
+            try:
+                return client.get_project_issue(target_project_id, target_issue_iid), "system_note", None
+            except GitLabApiError as exc:
+                if not _is_recoverable_link_error(exc):
+                    fallback_error = f"system note lookup failed: {exc}"
+
+    return None, None, fallback_error
+
+
+def _is_recoverable_link_error(exc: GitLabApiError) -> bool:
+    return exc.status_code in {403, 404}
 
 
 def _apply_delivery_fields(tracked: GitLabTrackedIssue, *, payload: dict, delivery_project_id: str) -> None:
@@ -680,6 +859,101 @@ def _summarize_run_status(run: GitLabIssueSyncRun) -> str:
     if run.failed_targets > 0:
         return "partial"
     return "ok"
+
+
+def _sort_tracked_issue_rows(
+    rows: list[GitLabTrackedIssue],
+    *,
+    sort_by: str,
+    sort_direction: str,
+) -> list[GitLabTrackedIssue]:
+    descending = sort_direction == "desc"
+
+    def compare(left: GitLabTrackedIssue, right: GitLabTrackedIssue) -> int:
+        return _compare_tracked_issue_rows(left, right, sort_by=sort_by, descending=descending)
+
+    return sorted(rows, key=cmp_to_key(compare))
+
+
+def _compare_tracked_issue_rows(
+    left: GitLabTrackedIssue,
+    right: GitLabTrackedIssue,
+    *,
+    sort_by: str,
+    descending: bool,
+) -> int:
+    compared = _compare_nullable_values(
+        _tracked_issue_sort_value(left, sort_by),
+        _tracked_issue_sort_value(right, sort_by),
+    )
+    if compared == 0:
+        compared = _compare_nullable_values(
+            _tracked_issue_sort_value(left, "delivery_issue"),
+            _tracked_issue_sort_value(right, "delivery_issue"),
+        )
+    return -compared if descending else compared
+
+
+def _compare_nullable_values(left: object, right: object) -> int:
+    left_empty = _is_empty_sort_value(left)
+    right_empty = _is_empty_sort_value(right)
+    if left_empty and right_empty:
+        return 0
+    if left_empty:
+        return 1
+    if right_empty:
+        return -1
+    if left < right:
+        return -1
+    if left > right:
+        return 1
+    return 0
+
+
+def _is_empty_sort_value(value: object) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, tuple):
+        return all(_is_empty_sort_value(item) for item in value)
+    return False
+
+
+def _tracked_issue_sort_value(row: GitLabTrackedIssue, sort_by: str) -> object:
+    if sort_by == "delivery_issue":
+        iid_text = _string_or_none(row.delivery_issue_iid) or ""
+        if iid_text.isdigit():
+            return (int(iid_text), "", _string_or_none(row.delivery_title) or "")
+        return (10**9, iid_text, _string_or_none(row.delivery_title) or "")
+    if sort_by == "current_state":
+        return (_string_or_none(row.target_state) or "").lower()
+    if sort_by == "target_team":
+        return (_string_or_none(row.target_team_name) or "").lower()
+    if sort_by == "target_issue_url":
+        return (_string_or_none(row.target_url) or "").lower()
+    if sort_by == "assignee":
+        return (_first_assignee_name(row) or "").lower()
+    if sort_by == "labels":
+        return ",".join(_normalize_labels(row.target_labels)).lower()
+    if sort_by == "sync_status":
+        return (_string_or_none(row.sync_status) or "").lower()
+    if sort_by == "last_gitlab_update":
+        timestamp = row.target_updated_at or row.delivery_updated_at
+        return timestamp.timestamp() if timestamp else None
+    if sort_by == "delivery_url":
+        return (_string_or_none(row.delivery_url) or "").lower()
+    if sort_by == "resolution_source":
+        return (_string_or_none(row.resolution_source) or "").lower()
+    return (_string_or_none(row.delivery_issue_iid) or "").lower()
+
+
+def _first_assignee_name(row: GitLabTrackedIssue) -> str | None:
+    assignees = _normalize_assignees(row.target_assignees)
+    if not assignees:
+        return None
+    first = assignees[0]
+    return _string_or_none(first.get("name")) or _string_or_none(first.get("username"))
 
 
 def _target_team_map() -> dict[str, str]:
