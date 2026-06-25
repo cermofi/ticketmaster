@@ -84,13 +84,18 @@ def _run_gitlab_delivery_tracking_loop(stop_event: Event) -> None:
             with SessionLocal() as db:
                 run = gitlab_delivery_tracking.sync_delivery_issues(db, triggered_by="scheduler")
                 db.commit()
+                run_status = run.status
+                total_issues = run.total_issues
+                resolved_targets = run.resolved_targets
+                missing_targets = run.missing_targets
+                failed_targets = run.failed_targets
             logger.info(
                 "gitlab delivery tracking sync status=%s total=%s resolved=%s missing=%s failed=%s",
-                run.status,
-                run.total_issues,
-                run.resolved_targets,
-                run.missing_targets,
-                run.failed_targets,
+                run_status,
+                total_issues,
+                resolved_targets,
+                missing_targets,
+                failed_targets,
             )
         except Exception:
             # Background sync must never take down API process.
