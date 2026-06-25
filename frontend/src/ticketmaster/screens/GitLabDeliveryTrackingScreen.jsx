@@ -372,24 +372,31 @@ function TrackingTable({ rows, canManage, onManualMapping, sortBy, sortDirection
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.id}>
+          {rows.map((row) => {
+            const inDelivery = row.sync_status === 'in_delivery';
+            const currentState = row.target_state || row.delivery_state;
+            const labels = (Array.isArray(row.target_labels) && row.target_labels.length > 0)
+              ? row.target_labels
+              : row.delivery_labels;
+            const targetTeam = row.target_team_name || (inDelivery ? 'Delivery' : '-');
+            return (
+              <tr key={row.id}>
               <td>
                 <div>{row.delivery_title}</div>
                 <div className="tm-muted">#{row.delivery_issue_iid}</div>
               </td>
               <td>
-                {row.target_state ? <StatusPill value={row.target_state} /> : <span className="tm-muted">-</span>}
+                {currentState ? <StatusPill value={currentState} /> : <span className="tm-muted">-</span>}
               </td>
               <td>
-                <div>{row.target_team_name || '-'}</div>
+                <div>{targetTeam}</div>
                 <div className="tm-muted">{row.target_project_name || '-'}</div>
               </td>
               <td>
                 <ExternalLink href={row.target_url} label={row.target_issue_iid ? `#${row.target_issue_iid}` : 'Open target issue'} />
               </td>
               <td className="tm-quiet-cell">{formatAssignees(row.target_assignees)}</td>
-              <td className="tm-quiet-cell">{formatLabels(row.target_labels)}</td>
+              <td className="tm-quiet-cell">{formatLabels(labels)}</td>
               <td>
                 <StatusPill value={syncStatusLabel(row.sync_status)} tone={syncStatusTone(row.sync_status)} />
               </td>
@@ -409,8 +416,9 @@ function TrackingTable({ rows, canManage, onManualMapping, sortBy, sortDirection
                   </Button>
                 )}
               </td>
-            </tr>
-          ))}
+              </tr>
+            );
+          })}
           {rows.length === 0 && (
             <EmptyRow
               colSpan="11"
@@ -445,6 +453,7 @@ function formatAssignees(assignees) {
 
 function syncStatusLabel(value) {
   if (value === 'ok') return 'Synced';
+  if (value === 'in_delivery') return 'In delivery';
   if (value === 'target_missing') return 'Target missing';
   if (value === 'error') return 'Sync error';
   return value || 'Unknown';
@@ -452,6 +461,7 @@ function syncStatusLabel(value) {
 
 function syncStatusTone(value) {
   if (value === 'ok') return 'success';
+  if (value === 'in_delivery') return 'neutral';
   if (value === 'target_missing') return 'warning';
   if (value === 'error') return 'danger';
   return 'muted';

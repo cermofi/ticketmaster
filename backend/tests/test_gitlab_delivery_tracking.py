@@ -8,7 +8,9 @@ import pytest
 
 from ticketmaster.services.errors import ValidationError
 from ticketmaster.services.gitlab_delivery_tracking import (
+    GitLabApiError,
     _parse_issue_url,
+    _resolve_target_issue,
     _sort_tracked_issue_rows,
     normalize_sort,
     parse_updated_since,
@@ -94,3 +96,39 @@ def test_sort_rows_by_assignee_desc() -> None:
     ]
     sorted_rows = _sort_tracked_issue_rows(rows, sort_by="assignee", sort_direction="desc")
     assert [row.delivery_issue_iid for row in sorted_rows] == ["2", "1"]
+
+
+def test_resolve_target_issue_without_hints_stays_in_delivery() -> None:
+    class DummyClient:
+        @staticmethod
+        def get_issue_notes(project_id: str, issue_iid: str) -> list[dict]:
+            return []
+
+    resolution = _resolve_target_issue(
+        client=DummyClient(),
+        delivery_payload={"project_id": "503", "iid": "10"},
+        mapping=None,
+        project_cache={},
+    )
+    assert resolution.issue is None
+    assert resolution.has_target_hint is False
+
+
+def test_resolve_target_issue_keeps_missing_when_hint_exists() -> None:
+    class DummyClient:
+        @staticmethod
+        def get_global_issue(issue_id: str) -> dict:
+            raise GitLabApiError("not found", status_code=404)
+
+        @staticmethod
+        def get_issue_notes(project_id: str, issue_iid: str) -> list[dict]:
+            return []
+
+    resolution = _resolve_target_issue(
+        client=DummyClient(),
+        delivery_payload={"project_id": "503", "iid": "10", "moved_to_id": "9999"},
+        mapping=None,
+        project_cache={},
+    )
+    assert resolution.issue is None
+    assert resolution.has_target_hint is True

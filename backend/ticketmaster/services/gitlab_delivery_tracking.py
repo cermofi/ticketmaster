@@ -8,7 +8,7 @@ from functools import cmp_to_key
 from urllib.parse import quote_plus, urlparse
 
 import httpx
-from sqlalchemy import or_, select, text
+from sqlalchemy import and_, or_, select, text
 from sqlalchemy.orm import Session
 
 from ticketmaster.core.config import settings
@@ -52,6 +52,7 @@ class TargetResolution:
     used_manual_mapping: bool
     used_moved_to: bool
     used_note_fallback: bool
+    has_target_hint: bool
     fatal_error: str | None = None
 
 
@@ -248,7 +249,15 @@ def list_tracked_issues(
     if target_team:
         stmt = stmt.where(GitLabTrackedIssue.target_team_name == target_team)
     if state:
-        stmt = stmt.where(GitLabTrackedIssue.target_state == state)
+        stmt = stmt.where(
+            or_(
+                GitLabTrackedIssue.target_state == state,
+                and_(
+                    GitLabTrackedIssue.sync_status == "in_delivery",
+                    GitLabTrackedIssue.delivery_state == state,
+                ),
+            )
+        )
     if missing_mapping is True:
         stmt = stmt.where(GitLabTrackedIssue.target_missing.is_(True))
     elif missing_mapping is False:
@@ -565,11 +574,29 @@ def _sync_delivery_issue(
         tracked.resolution_source = "error"
         return IssueSyncOutcome(status="error")
 
+    if not resolution.has_target_hint:
+        tracked.sync_status = "in_delivery"
+        tracked.sync_error = None
+        tracked.target_missing = False
+        tracked.resolution_source = "delivery"
+        tracked.target_team_name = "Delivery"
+        return IssueSyncOutcome(
+            status="ok",
+            used_manual_mapping=resolution.used_manual_mapping,
+            used_moved_to=resolution.used_moved_to,
+            used_note_fallback=resolution.used_note_fallback,
+        )
+
     tracked.sync_status = "target_missing"
     tracked.sync_error = "Target issue could not be resolved automatically"
     tracked.target_missing = True
     tracked.resolution_source = "target_missing"
-    return IssueSyncOutcome(status="target_missing")
+    return IssueSyncOutcome(
+        status="target_missing",
+        used_manual_mapping=resolution.used_manual_mapping,
+        used_moved_to=resolution.used_moved_to,
+        used_note_fallback=resolution.used_note_fallback,
+    )
 
 
 def _resolve_target_issue(
@@ -582,6 +609,7 @@ def _resolve_target_issue(
     delivery_project_id = _string_or_none(delivery_payload.get("project_id")) or _string_or_none(settings.gitlab_delivery_project_id) or ""
     delivery_issue_iid = _string_or_none(delivery_payload.get("iid")) or ""
     fatal_error: str | None = None
+    has_target_hint = bool(mapping and mapping.target_project_id and mapping.target_issue_iid)
 
     if mapping and mapping.target_project_id and mapping.target_issue_iid:
         try:
@@ -597,6 +625,7 @@ def _resolve_target_issue(
                 used_manual_mapping=True,
                 used_moved_to=used_moved_to,
                 used_note_fallback=used_note_fallback,
+                has_target_hint=True,
                 fatal_error=chain_error,
             )
         except GitLabApiError as exc:
@@ -615,6 +644,7 @@ def _resolve_target_issue(
 
     moved_to_id = _string_or_none(delivery_payload.get("moved_to_id"))
     if moved_to_id:
+        has_target_hint = True
         try:
             candidate_issue = client.get_global_issue(moved_to_id)
             source = "moved_to_id"
@@ -631,6 +661,7 @@ def _resolve_target_issue(
             project_cache=project_cache,
         )
         if note_target is not None:
+            has_target_hint = True
             project_id, issue_iid = note_target
             try:
                 candidate_issue = client.get_project_issue(project_id, issue_iid)
@@ -647,6 +678,7 @@ def _resolve_target_issue(
             used_manual_mapping=False,
             used_moved_to=used_moved_to,
             used_note_fallback=used_note_fallback,
+            has_target_hint=has_target_hint,
             fatal_error=fatal_error,
         )
 
@@ -661,6 +693,7 @@ def _resolve_target_issue(
         used_manual_mapping=False,
         used_moved_to=used_moved_to or chained_moved,
         used_note_fallback=used_note_fallback or chained_note,
+        has_target_hint=has_target_hint,
         fatal_error=fatal_error or chain_error,
     )
 
@@ -927,7 +960,7 @@ def _tracked_issue_sort_value(row: GitLabTrackedIssue, sort_by: str) -> object:
             return (int(iid_text), "", _string_or_none(row.delivery_title) or "")
         return (10**9, iid_text, _string_or_none(row.delivery_title) or "")
     if sort_by == "current_state":
-        return (_string_or_none(row.target_state) or "").lower()
+        return (_string_or_none(row.target_state) or _string_or_none(row.delivery_state) or "").lower()
     if sort_by == "target_team":
         return (_string_or_none(row.target_team_name) or "").lower()
     if sort_by == "target_issue_url":
@@ -935,7 +968,10 @@ def _tracked_issue_sort_value(row: GitLabTrackedIssue, sort_by: str) -> object:
     if sort_by == "assignee":
         return (_first_assignee_name(row) or "").lower()
     if sort_by == "labels":
-        return ",".join(_normalize_labels(row.target_labels)).lower()
+        target_labels = _normalize_labels(row.target_labels)
+        if target_labels:
+            return ",".join(target_labels).lower()
+        return ",".join(_normalize_labels(row.delivery_labels)).lower()
     if sort_by == "sync_status":
         return (_string_or_none(row.sync_status) or "").lower()
     if sort_by == "last_gitlab_update":
