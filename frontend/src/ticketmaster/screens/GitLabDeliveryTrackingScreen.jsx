@@ -30,7 +30,7 @@ import {
   hasAnyInternalRole
 } from './helpers.jsx';
 
-const DEFAULT_SORT = { sort_by: 'delivery_issue', sort_direction: 'asc' };
+const DEFAULT_SORT = { sort_by: 'last_gitlab_update', sort_direction: 'desc' };
 const EMPTY_FILTERS = {
   search: '',
   target_team: '',

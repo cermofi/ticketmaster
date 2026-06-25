@@ -189,12 +189,12 @@ def parse_updated_since(value: str | None) -> datetime | None:
 
 
 def normalize_sort(sort_by: str | None, sort_direction: str | None) -> tuple[str, str]:
-    normalized_sort_by = (sort_by or "delivery_issue").strip().lower().replace("-", "_")
+    normalized_sort_by = (sort_by or "last_gitlab_update").strip().lower().replace("-", "_")
     if normalized_sort_by not in SORT_FIELDS:
-        normalized_sort_by = "delivery_issue"
-    normalized_direction = (sort_direction or "asc").strip().lower()
+        normalized_sort_by = "last_gitlab_update"
+    normalized_direction = (sort_direction or "desc").strip().lower()
     if normalized_direction not in SORT_DIRECTIONS:
-        normalized_direction = "asc"
+        normalized_direction = "desc"
     return normalized_sort_by, normalized_direction
 
 

@@ -56,8 +56,8 @@ def test_parse_issue_url_rejects_different_host() -> None:
 
 def test_normalize_sort_fallbacks_to_defaults() -> None:
     sort_by, sort_direction = normalize_sort("unsupported-field", "sideways")
-    assert sort_by == "delivery_issue"
-    assert sort_direction == "asc"
+    assert sort_by == "last_gitlab_update"
+    assert sort_direction == "desc"
 
 
 def test_sort_rows_by_assignee_desc() -> None:
