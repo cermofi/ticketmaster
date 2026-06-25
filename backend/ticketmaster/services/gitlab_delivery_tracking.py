@@ -18,6 +18,7 @@ from ticketmaster.services.errors import NotFoundError, ValidationError
 
 logger = logging.getLogger("ticketmaster.gitlab.delivery_tracking")
 SYNC_ADVISORY_LOCK_ID = 90503
+CHECK_FINDINGS_LIMIT = 100
 
 ISSUE_URL_PATH_RE = re.compile(r"^/(?P<project_path>.+)/-/issues/(?P<issue_iid>\d+)/?$")
 ISSUE_URL_IN_TEXT_RE = re.compile(r"https?://[^\s)]+/-/issues/\d+", re.IGNORECASE)
@@ -230,6 +231,195 @@ def list_dashboard_meta(db: Session) -> dict:
         "sync_interval_seconds": settings.gitlab_sync_interval_seconds,
         "last_sync_run": serialize_sync_run(latest_run) if latest_run else None,
     }
+
+
+def run_delivery_tracking_checks(db: Session, *, issue_limit: int = 200) -> dict:
+    if not _sync_configured():
+        raise ValidationError("GitLab delivery tracking is not configured")
+
+    actual_limit = min(max(issue_limit, 1), 2000)
+    delivery_project_id = str(settings.gitlab_delivery_project_id or "").strip()
+    findings: list[dict] = []
+    summary = {
+        "missing_tracked_rows": 0,
+        "orphaned_tracked_rows": 0,
+        "invariant_failures": 0,
+        "state_mismatches": 0,
+        "resolution_mismatches": 0,
+        "api_errors": 0,
+    }
+
+    tracked_rows = db.scalars(
+        select(GitLabTrackedIssue).where(GitLabTrackedIssue.delivery_project_id == delivery_project_id)
+    ).all()
+    tracked_by_iid = {row.delivery_issue_iid: row for row in tracked_rows if row.delivery_issue_iid}
+    mappings = db.scalars(
+        select(GitLabIssueManualMapping).where(
+            GitLabIssueManualMapping.delivery_project_id == delivery_project_id
+        )
+    ).all()
+    mapping_by_iid = {row.delivery_issue_iid: row for row in mappings if row.delivery_issue_iid}
+
+    client = GitLabReadOnlyClient(base_url=settings.gitlab_base_url, token=str(settings.gitlab_token))
+    project_cache: dict[str, dict[str, str]] = {}
+    try:
+        try:
+            issues = client.list_project_issues(delivery_project_id, state="all")
+        except GitLabApiError as exc:
+            summary["api_errors"] += 1
+            return {
+                "status": "error",
+                "checked_at": _utcnow(),
+                "delivery_project_id": delivery_project_id,
+                "delivery_issues_total": 0,
+                "checked_issues": 0,
+                "issue_limit": actual_limit,
+                "tracked_rows_total": len(tracked_rows),
+                "summary": summary,
+                "findings": [],
+                "error_message": str(exc),
+            }
+        sorted_issues = sorted(
+            issues,
+            key=lambda payload: _safe_iid_sort(_string_or_none(payload.get("iid"))),
+        )
+        issue_iids = {
+            _string_or_none(payload.get("iid")) or ""
+            for payload in sorted_issues
+        }
+
+        for row in tracked_rows:
+            if row.delivery_issue_iid not in issue_iids:
+                summary["orphaned_tracked_rows"] += 1
+                _append_check_finding(
+                    findings,
+                    issue_iid=row.delivery_issue_iid,
+                    code="orphaned_tracked_row",
+                    message="Tracked row exists but delivery issue was not returned by GitLab",
+                )
+            invariant_errors = _tracked_issue_invariant_errors(row)
+            if invariant_errors:
+                summary["invariant_failures"] += len(invariant_errors)
+                for message in invariant_errors:
+                    _append_check_finding(
+                        findings,
+                        issue_iid=row.delivery_issue_iid,
+                        code="invariant_failure",
+                        message=message,
+                    )
+
+        checked_issues = 0
+        for payload in sorted_issues[:actual_limit]:
+            checked_issues += 1
+            delivery_issue_iid = _string_or_none(payload.get("iid")) or ""
+            tracked = tracked_by_iid.get(delivery_issue_iid)
+            if tracked is None:
+                summary["missing_tracked_rows"] += 1
+                _append_check_finding(
+                    findings,
+                    issue_iid=delivery_issue_iid,
+                    code="missing_tracked_row",
+                    message="Delivery issue exists in GitLab but not in tracked table",
+                )
+                continue
+
+            expected_delivery_state = _string_or_none(payload.get("state")) or ""
+            if (tracked.delivery_state or "") != expected_delivery_state:
+                summary["state_mismatches"] += 1
+                _append_check_finding(
+                    findings,
+                    issue_iid=delivery_issue_iid,
+                    code="delivery_state_mismatch",
+                    message="Stored delivery state differs from GitLab delivery issue state",
+                    expected=expected_delivery_state,
+                    actual=tracked.delivery_state,
+                )
+
+            try:
+                resolution = _resolve_target_issue(
+                    client=client,
+                    delivery_payload=payload,
+                    mapping=mapping_by_iid.get(delivery_issue_iid),
+                    project_cache=project_cache,
+                )
+            except GitLabApiError as exc:
+                summary["api_errors"] += 1
+                _append_check_finding(
+                    findings,
+                    issue_iid=delivery_issue_iid,
+                    code="resolution_api_error",
+                    message=f"GitLab API error during resolution check: {exc}",
+                )
+                continue
+
+            expected_sync_status = _expected_sync_status(resolution)
+            if tracked.sync_status != expected_sync_status:
+                summary["resolution_mismatches"] += 1
+                _append_check_finding(
+                    findings,
+                    issue_iid=delivery_issue_iid,
+                    code="sync_status_mismatch",
+                    message="Stored sync_status differs from resolver expectation",
+                    expected=expected_sync_status,
+                    actual=tracked.sync_status,
+                )
+
+            if expected_sync_status == "ok" and resolution.issue is not None:
+                expected_project_id = _string_or_none(resolution.issue.get("project_id"))
+                expected_issue_iid = _string_or_none(resolution.issue.get("iid"))
+                if tracked.target_project_id != expected_project_id:
+                    summary["resolution_mismatches"] += 1
+                    _append_check_finding(
+                        findings,
+                        issue_iid=delivery_issue_iid,
+                        code="target_project_mismatch",
+                        message="Stored target project differs from resolver expectation",
+                        expected=expected_project_id,
+                        actual=tracked.target_project_id,
+                    )
+                if tracked.target_issue_iid != expected_issue_iid:
+                    summary["resolution_mismatches"] += 1
+                    _append_check_finding(
+                        findings,
+                        issue_iid=delivery_issue_iid,
+                        code="target_issue_mismatch",
+                        message="Stored target issue IID differs from resolver expectation",
+                        expected=expected_issue_iid,
+                        actual=tracked.target_issue_iid,
+                    )
+            elif expected_sync_status == "in_delivery":
+                if tracked.target_project_id or tracked.target_issue_iid or tracked.target_url:
+                    summary["resolution_mismatches"] += 1
+                    _append_check_finding(
+                        findings,
+                        issue_iid=delivery_issue_iid,
+                        code="in_delivery_has_target_fields",
+                        message="Issue marked in_delivery should not store target issue fields",
+                    )
+            elif expected_sync_status == "target_missing":
+                if not tracked.target_missing:
+                    summary["resolution_mismatches"] += 1
+                    _append_check_finding(
+                        findings,
+                        issue_iid=delivery_issue_iid,
+                        code="target_missing_flag_mismatch",
+                        message="Issue expected as target_missing but target_missing flag is false",
+                    )
+
+        status = "ok" if not findings else "warning"
+        return {
+            "status": status,
+            "checked_at": _utcnow(),
+            "delivery_project_id": delivery_project_id,
+            "delivery_issues_total": len(sorted_issues),
+            "checked_issues": checked_issues,
+            "issue_limit": actual_limit,
+            "tracked_rows_total": len(tracked_rows),
+            "summary": summary,
+            "findings": findings,
+        }
+    finally:
+        client.close()
 
 
 def list_tracked_issues(
@@ -546,8 +736,9 @@ def _sync_delivery_issue(
 
     tracked.last_synced_at = _utcnow()
     tracked.updated_at = _utcnow()
+    expected_sync_status = _expected_sync_status(resolution)
 
-    if resolution.issue is not None:
+    if expected_sync_status == "ok" and resolution.issue is not None:
         _apply_target_fields(
             tracked,
             target_issue=resolution.issue,
@@ -557,7 +748,7 @@ def _sync_delivery_issue(
             project_cache=project_cache,
         )
         tracked.sync_status = "ok"
-        tracked.sync_error = None
+        tracked.sync_error = resolution.fatal_error
         tracked.target_missing = False
         return IssueSyncOutcome(
             status="ok",
@@ -567,14 +758,14 @@ def _sync_delivery_issue(
         )
 
     _clear_target_fields(tracked)
-    if resolution.fatal_error:
+    if expected_sync_status == "error":
         tracked.sync_status = "error"
         tracked.sync_error = resolution.fatal_error
         tracked.target_missing = False
         tracked.resolution_source = "error"
         return IssueSyncOutcome(status="error")
 
-    if not resolution.has_target_hint:
+    if expected_sync_status == "in_delivery":
         tracked.sync_status = "in_delivery"
         tracked.sync_error = None
         tracked.target_missing = False
@@ -597,6 +788,16 @@ def _sync_delivery_issue(
         used_moved_to=resolution.used_moved_to,
         used_note_fallback=resolution.used_note_fallback,
     )
+
+
+def _expected_sync_status(resolution: TargetResolution) -> str:
+    if resolution.issue is not None:
+        return "ok"
+    if resolution.fatal_error:
+        return "error"
+    if not resolution.has_target_hint:
+        return "in_delivery"
+    return "target_missing"
 
 
 def _resolve_target_issue(
@@ -892,6 +1093,52 @@ def _summarize_run_status(run: GitLabIssueSyncRun) -> str:
     if run.failed_targets > 0:
         return "partial"
     return "ok"
+
+
+def _tracked_issue_invariant_errors(row: GitLabTrackedIssue) -> list[str]:
+    errors: list[str] = []
+    if row.sync_status == "in_delivery":
+        if row.target_missing:
+            errors.append("in_delivery issue must not have target_missing=true")
+        if row.target_project_id or row.target_issue_iid or row.target_url:
+            errors.append("in_delivery issue must not keep target issue fields")
+    if row.sync_status == "target_missing" and not row.target_missing:
+        errors.append("target_missing issue must have target_missing=true")
+    if row.sync_status == "ok" and row.target_missing:
+        errors.append("ok issue must not have target_missing=true")
+    if row.sync_status == "in_delivery" and row.resolution_source != "delivery":
+        errors.append("in_delivery issue should have resolution_source=delivery")
+    return errors
+
+
+def _safe_iid_sort(value: str | None) -> tuple[int, str]:
+    text = (value or "").strip()
+    if text.isdigit():
+        return int(text), ""
+    return 10**9, text
+
+
+def _append_check_finding(
+    findings: list[dict],
+    *,
+    issue_iid: str | None,
+    code: str,
+    message: str,
+    expected: object | None = None,
+    actual: object | None = None,
+) -> None:
+    if len(findings) >= CHECK_FINDINGS_LIMIT:
+        return
+    finding = {
+        "delivery_issue_iid": issue_iid,
+        "code": code,
+        "message": message,
+    }
+    if expected is not None:
+        finding["expected"] = expected
+    if actual is not None:
+        finding["actual"] = actual
+    findings.append(finding)
 
 
 def _sort_tracked_issue_rows(

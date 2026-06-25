@@ -9,6 +9,9 @@ import pytest
 from ticketmaster.services.errors import ValidationError
 from ticketmaster.services.gitlab_delivery_tracking import (
     GitLabApiError,
+    TargetResolution,
+    _expected_sync_status,
+    _tracked_issue_invariant_errors,
     _parse_issue_url,
     _resolve_target_issue,
     _sort_tracked_issue_rows,
@@ -132,3 +135,63 @@ def test_resolve_target_issue_keeps_missing_when_hint_exists() -> None:
     )
     assert resolution.issue is None
     assert resolution.has_target_hint is True
+
+
+def test_expected_sync_status_resolution_matrix() -> None:
+    assert _expected_sync_status(
+        TargetResolution(
+            issue={"id": 1},
+            source="moved_to_id",
+            used_manual_mapping=False,
+            used_moved_to=True,
+            used_note_fallback=False,
+            has_target_hint=True,
+            fatal_error=None,
+        )
+    ) == "ok"
+    assert _expected_sync_status(
+        TargetResolution(
+            issue=None,
+            source="none",
+            used_manual_mapping=False,
+            used_moved_to=False,
+            used_note_fallback=False,
+            has_target_hint=False,
+            fatal_error=None,
+        )
+    ) == "in_delivery"
+    assert _expected_sync_status(
+        TargetResolution(
+            issue=None,
+            source="none",
+            used_manual_mapping=False,
+            used_moved_to=True,
+            used_note_fallback=False,
+            has_target_hint=True,
+            fatal_error=None,
+        )
+    ) == "target_missing"
+    assert _expected_sync_status(
+        TargetResolution(
+            issue=None,
+            source="none",
+            used_manual_mapping=False,
+            used_moved_to=False,
+            used_note_fallback=False,
+            has_target_hint=True,
+            fatal_error="boom",
+        )
+    ) == "error"
+
+
+def test_tracked_issue_invariant_errors_flags_bad_states() -> None:
+    row = SimpleNamespace(
+        sync_status="in_delivery",
+        target_missing=True,
+        target_project_id="212",
+        target_issue_iid="123",
+        target_url="http://example",
+        resolution_source="system_note",
+    )
+    errors = _tracked_issue_invariant_errors(row)
+    assert len(errors) >= 3

@@ -1130,6 +1130,16 @@ def gitlab_delivery_tracking_export(
     )
 
 
+@router.get("/gitlab/delivery-tracking/checks")
+def gitlab_delivery_tracking_checks(
+    db: DbSession,
+    user: CurrentUser,
+    issue_limit: int = 200,
+) -> dict:
+    admin.require_admin_or_dm(user)
+    return gitlab_delivery_tracking.run_delivery_tracking_checks(db, issue_limit=issue_limit)
+
+
 @router.post("/gitlab/delivery-tracking/sync")
 def gitlab_delivery_tracking_sync(db: DbSession, user: CurrentUser) -> dict:
     admin.require_admin_or_dm(user)
