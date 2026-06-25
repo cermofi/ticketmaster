@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from urllib.parse import quote_plus, urlparse
 
 import httpx
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
 
 from ticketmaster.core.config import settings
@@ -16,6 +16,7 @@ from ticketmaster.models.entities import new_id
 from ticketmaster.services.errors import NotFoundError, ValidationError
 
 logger = logging.getLogger("ticketmaster.gitlab.delivery_tracking")
+SYNC_ADVISORY_LOCK_ID = 90503
 
 ISSUE_URL_PATH_RE = re.compile(r"^/(?P<project_path>.+)/-/issues/(?P<issue_iid>\d+)/?$")
 ISSUE_URL_IN_TEXT_RE = re.compile(r"https?://[^\s)]+/-/issues/\d+", re.IGNORECASE)
@@ -299,59 +300,75 @@ def serialize_sync_run(row: GitLabIssueSyncRun) -> dict:
 
 
 def sync_delivery_issues(db: Session, *, triggered_by: str = "manual") -> GitLabIssueSyncRun:
+    lock_acquired = bool(db.execute(text("SELECT pg_try_advisory_lock(:lock_id)"), {"lock_id": SYNC_ADVISORY_LOCK_ID}).scalar())
+    if not lock_acquired:
+        run = GitLabIssueSyncRun(
+            id=new_id(),
+            status="skipped",
+            started_at=_utcnow(),
+            finished_at=_utcnow(),
+            error_message="Another delivery sync run is already in progress",
+        )
+        db.add(run)
+        db.flush()
+        return run
+
     run = GitLabIssueSyncRun(id=new_id(), status="running", started_at=_utcnow())
     db.add(run)
     db.flush()
 
-    if not _sync_configured():
-        run.status = "error"
-        run.finished_at = _utcnow()
-        run.error_message = "GitLab delivery tracking is not configured"
-        return run
-
-    target_teams = _target_team_map()
-    project_cache: dict[str, dict[str, str]] = {}
-    client = GitLabReadOnlyClient(base_url=settings.gitlab_base_url, token=str(settings.gitlab_token))
     try:
-        issues = client.list_project_issues(str(settings.gitlab_delivery_project_id), state="all")
-        run.total_issues = len(issues)
-        for payload in issues:
-            try:
-                outcome = _sync_delivery_issue(
-                    db,
-                    client=client,
-                    payload=payload,
-                    target_teams=target_teams,
-                    project_cache=project_cache,
-                )
-            except Exception as exc:  # pragma: no cover - defensive guard
-                run.failed_targets += 1
-                logger.warning("delivery issue sync failed: trigger=%s error=%s", triggered_by, exc)
-                continue
-            if outcome.status == "ok":
-                run.resolved_targets += 1
-            elif outcome.status == "target_missing":
-                run.missing_targets += 1
-            else:
-                run.failed_targets += 1
-            if outcome.used_manual_mapping:
-                run.manual_mappings_used += 1
-            if outcome.used_moved_to:
-                run.moved_to_resolutions += 1
-            if outcome.used_note_fallback:
-                run.note_resolutions += 1
-        run.status = _summarize_run_status(run)
-    except GitLabApiError as exc:
-        run.status = "error"
-        run.error_message = str(exc)
-        logger.warning("gitlab delivery sync blocked by API: %s", exc)
-    except Exception as exc:  # pragma: no cover - defensive guard
-        run.status = "error"
-        run.error_message = str(exc)
-        logger.exception("gitlab delivery sync crashed unexpectedly")
+        if not _sync_configured():
+            run.status = "error"
+            run.finished_at = _utcnow()
+            run.error_message = "GitLab delivery tracking is not configured"
+            return run
+
+        target_teams = _target_team_map()
+        project_cache: dict[str, dict[str, str]] = {}
+        client = GitLabReadOnlyClient(base_url=settings.gitlab_base_url, token=str(settings.gitlab_token))
+        try:
+            issues = client.list_project_issues(str(settings.gitlab_delivery_project_id), state="all")
+            run.total_issues = len(issues)
+            for payload in issues:
+                try:
+                    outcome = _sync_delivery_issue(
+                        db,
+                        client=client,
+                        payload=payload,
+                        target_teams=target_teams,
+                        project_cache=project_cache,
+                    )
+                except Exception as exc:  # pragma: no cover - defensive guard
+                    run.failed_targets += 1
+                    logger.warning("delivery issue sync failed: trigger=%s error=%s", triggered_by, exc)
+                    continue
+                if outcome.status == "ok":
+                    run.resolved_targets += 1
+                elif outcome.status == "target_missing":
+                    run.missing_targets += 1
+                else:
+                    run.failed_targets += 1
+                if outcome.used_manual_mapping:
+                    run.manual_mappings_used += 1
+                if outcome.used_moved_to:
+                    run.moved_to_resolutions += 1
+                if outcome.used_note_fallback:
+                    run.note_resolutions += 1
+            run.status = _summarize_run_status(run)
+        except GitLabApiError as exc:
+            run.status = "error"
+            run.error_message = str(exc)
+            logger.warning("gitlab delivery sync blocked by API: %s", exc)
+        except Exception as exc:  # pragma: no cover - defensive guard
+            run.status = "error"
+            run.error_message = str(exc)
+            logger.exception("gitlab delivery sync crashed unexpectedly")
+        finally:
+            run.finished_at = _utcnow()
+            client.close()
     finally:
-        run.finished_at = _utcnow()
-        client.close()
+        db.execute(text("SELECT pg_advisory_unlock(:lock_id)"), {"lock_id": SYNC_ADVISORY_LOCK_ID})
     return run
 
 
