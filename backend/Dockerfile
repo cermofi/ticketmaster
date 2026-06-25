@@ -14,7 +14,7 @@ COPY ticketmaster /app/ticketmaster
 COPY migrations /app/migrations
 COPY tests /app/tests
 
-RUN pip install --no-cache-dir -e ".[test]"
+RUN pip install --no-cache-dir --no-build-isolation -e ".[test]"
 
 EXPOSE 8000
 
