@@ -33,6 +33,22 @@ def _csv(name: str, default: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in os.getenv(name, default).split(",") if item.strip())
 
 
+def _project_map(name: str, default: str = "") -> tuple[tuple[str, str], ...]:
+    pairs: list[tuple[str, str]] = []
+    raw = os.getenv(name, default)
+    for item in raw.split(","):
+        chunk = item.strip()
+        if not chunk:
+            continue
+        project_id, _, display_name = chunk.partition(":")
+        pid = project_id.strip()
+        if not pid:
+            continue
+        label = (display_name.strip() or pid) if display_name else pid
+        pairs.append((pid, label))
+    return tuple(pairs)
+
+
 PRODUCTION_HOST = "ticketmaster.cermofi.cz"
 PRODUCTION_ORIGIN = f"https://{PRODUCTION_HOST}"
 
@@ -58,6 +74,9 @@ class Settings:
     gitlab_base_url: str = os.getenv("GITLAB_BASE_URL", "https://gitlab.teskalabs.int")
     gitlab_token: str | None = os.getenv("GITLAB_TOKEN") or None
     gitlab_project_id: str | None = os.getenv("GITLAB_PROJECT_ID", "503") or None
+    gitlab_delivery_project_id: str | None = os.getenv("GITLAB_DELIVERY_PROJECT_ID") or os.getenv("GITLAB_PROJECT_ID", "503") or None
+    gitlab_target_projects: tuple[tuple[str, str], ...] = _project_map("GITLAB_TARGET_PROJECTS", "")
+    gitlab_sync_interval_seconds: int = int(os.getenv("GITLAB_SYNC_INTERVAL_SECONDS", "300"))
     gitlab_dry_run: bool = _bool("GITLAB_DRY_RUN", True)
     gitlab_webhook_secret: str | None = os.getenv("GITLAB_WEBHOOK_SECRET") or None
 

@@ -186,6 +186,75 @@ class GitLabSyncEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
+class GitLabIssueManualMapping(Base):
+    __tablename__ = "gitlab_issue_manual_mappings"
+    __table_args__ = (UniqueConstraint("delivery_project_id", "delivery_issue_iid", name="uq_gitlab_issue_manual_mapping"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    delivery_project_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    delivery_issue_iid: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    target_url: Mapped[str] = mapped_column(Text, nullable=False)
+    target_project_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    target_project_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    target_issue_iid: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class GitLabTrackedIssue(Base):
+    __tablename__ = "gitlab_tracked_issues"
+    __table_args__ = (UniqueConstraint("delivery_project_id", "delivery_issue_iid", name="uq_gitlab_tracked_issue"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    delivery_project_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    delivery_issue_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    delivery_issue_iid: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    delivery_title: Mapped[str] = mapped_column(String(500), nullable=False)
+    delivery_url: Mapped[str] = mapped_column(Text, nullable=False)
+    delivery_state: Mapped[str] = mapped_column(String(40), nullable=False)
+    delivery_labels: Mapped[Optional[List[str]]] = mapped_column(JsonType, nullable=True)
+    delivery_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivery_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivery_closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    moved_to_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    resolution_source: Mapped[str] = mapped_column(String(40), nullable=False, default="none")
+    target_missing: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    target_project_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    target_project_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    target_team_name: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    target_issue_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    target_issue_iid: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    target_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target_state: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    target_labels: Mapped[Optional[List[str]]] = mapped_column(JsonType, nullable=True)
+    target_assignees: Mapped[Optional[List[dict]]] = mapped_column(JsonType, nullable=True)
+    target_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sync_status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending", index=True)
+    sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    manual_mapping_id: Mapped[str | None] = mapped_column(ForeignKey("gitlab_issue_manual_mappings.id"), nullable=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class GitLabIssueSyncRun(Base):
+    __tablename__ = "gitlab_issue_sync_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="running")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    total_issues: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    resolved_targets: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    missing_targets: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_targets: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    manual_mappings_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    moved_to_resolutions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    note_resolutions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class Notification(Base):
     __tablename__ = "notifications"
 

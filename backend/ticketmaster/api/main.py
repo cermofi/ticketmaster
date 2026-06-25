@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from threading import Event, Thread
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -17,11 +18,15 @@ from ticketmaster.api.error_handlers import (
 )
 from ticketmaster.api.routes import router
 from ticketmaster.core.config import settings
+from ticketmaster.core.database import SessionLocal
+from ticketmaster.services import gitlab_delivery_tracking
 from ticketmaster.services.errors import TicketMasterError
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("ticketmaster.api")
+_gitlab_sync_stop_event: Event | None = None
+_gitlab_sync_thread: Thread | None = None
 
 app = FastAPI(
     title="TicketMaster API",
@@ -70,3 +75,58 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
 
 app.include_router(router, prefix="/api")
+
+
+def _run_gitlab_delivery_tracking_loop(stop_event: Event) -> None:
+    interval_seconds = max(settings.gitlab_sync_interval_seconds, 15)
+    while not stop_event.is_set():
+        try:
+            with SessionLocal() as db:
+                run = gitlab_delivery_tracking.sync_delivery_issues(db, triggered_by="scheduler")
+                db.commit()
+            logger.info(
+                "gitlab delivery tracking sync status=%s total=%s resolved=%s missing=%s failed=%s",
+                run.status,
+                run.total_issues,
+                run.resolved_targets,
+                run.missing_targets,
+                run.failed_targets,
+            )
+        except Exception:
+            # Background sync must never take down API process.
+            logger.exception("gitlab delivery tracking background sync failed")
+        if stop_event.wait(interval_seconds):
+            break
+
+
+@app.on_event("startup")
+def start_gitlab_delivery_tracking_worker() -> None:
+    global _gitlab_sync_stop_event, _gitlab_sync_thread
+    if not gitlab_delivery_tracking.sync_enabled():
+        logger.info("gitlab delivery tracking sync worker disabled by configuration")
+        return
+    if _gitlab_sync_thread and _gitlab_sync_thread.is_alive():
+        return
+    _gitlab_sync_stop_event = Event()
+    _gitlab_sync_thread = Thread(
+        target=_run_gitlab_delivery_tracking_loop,
+        args=(_gitlab_sync_stop_event,),
+        name="gitlab-delivery-sync",
+        daemon=True,
+    )
+    _gitlab_sync_thread.start()
+    logger.info(
+        "gitlab delivery tracking sync worker started interval_seconds=%s",
+        settings.gitlab_sync_interval_seconds,
+    )
+
+
+@app.on_event("shutdown")
+def stop_gitlab_delivery_tracking_worker() -> None:
+    global _gitlab_sync_stop_event, _gitlab_sync_thread
+    if _gitlab_sync_stop_event is not None:
+        _gitlab_sync_stop_event.set()
+    if _gitlab_sync_thread and _gitlab_sync_thread.is_alive():
+        _gitlab_sync_thread.join(timeout=5)
+    _gitlab_sync_stop_event = None
+    _gitlab_sync_thread = None

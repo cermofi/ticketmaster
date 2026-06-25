@@ -23,7 +23,18 @@ from ticketmaster.schemas.serializers import (
     tickets_to_dict,
     user_to_dict,
 )
-from ticketmaster.services import account, admin, auth, gitlab, malware, notifications, ticket_activity, ticket_exports, tickets
+from ticketmaster.services import (
+    account,
+    admin,
+    auth,
+    gitlab,
+    gitlab_delivery_tracking,
+    malware,
+    notifications,
+    ticket_activity,
+    ticket_exports,
+    tickets,
+)
 from ticketmaster.services.audit import audit
 from ticketmaster.services.audit_list import audit_filter_options, list_audit_logs, parse_audit_filter_datetime
 from ticketmaster.services.audit_display import enrich_audit_rows
@@ -180,6 +191,10 @@ class TicketPriorityBody(BaseModel):
 
 class TransferOwnerBody(BaseModel):
     new_owner: str
+
+
+class GitLabManualMappingBody(BaseModel):
+    target_url: str = Field(min_length=1, max_length=1200)
 
 
 @router.get("/health")
@@ -1026,6 +1041,66 @@ def gitlab_check(user: CurrentUser) -> dict:
     if user.kind != "internal":
         raise PermissionDenied("GitLab check is internal only")
     return gitlab.check_configuration()
+
+
+@router.get("/gitlab/delivery-tracking/meta")
+def gitlab_delivery_tracking_meta(db: DbSession, user: CurrentUser) -> dict:
+    admin.require_internal(user)
+    return gitlab_delivery_tracking.list_dashboard_meta(db)
+
+
+@router.get("/gitlab/delivery-tracking")
+def gitlab_delivery_tracking_list(
+    db: DbSession,
+    user: CurrentUser,
+    search: str | None = None,
+    target_team: str | None = None,
+    state: str | None = None,
+    missing_mapping: bool | None = None,
+    updated_since: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> dict:
+    admin.require_internal(user)
+    actual_limit = min(max(limit or 100, 1), 500)
+    actual_offset = max(offset, 0)
+    changed_since = gitlab_delivery_tracking.parse_updated_since(updated_since)
+    return gitlab_delivery_tracking.list_tracked_issues(
+        db,
+        search=search,
+        target_team=target_team,
+        state=state,
+        missing_mapping=missing_mapping,
+        updated_since=changed_since,
+        limit=actual_limit,
+        offset=actual_offset,
+    )
+
+
+@router.post("/gitlab/delivery-tracking/sync")
+def gitlab_delivery_tracking_sync(db: DbSession, user: CurrentUser) -> dict:
+    admin.require_admin_or_dm(user)
+    run = gitlab_delivery_tracking.sync_delivery_issues(db, triggered_by=f"manual:{user.id}")
+    db.commit()
+    return gitlab_delivery_tracking.serialize_sync_run(run)
+
+
+@router.post("/gitlab/delivery-tracking/{tracked_issue_id}/manual-mapping")
+def gitlab_delivery_tracking_set_manual_mapping(
+    db: DbSession,
+    user: CurrentUser,
+    tracked_issue_id: str,
+    body: GitLabManualMappingBody,
+) -> dict:
+    admin.require_admin_or_dm(user)
+    tracked = gitlab_delivery_tracking.set_manual_mapping(
+        db,
+        tracked_issue_id=tracked_issue_id,
+        target_url=body.target_url,
+        actor=user,
+    )
+    db.commit()
+    return gitlab_delivery_tracking.serialize_tracked_issue(tracked)
 
 
 @router.post("/gitlab/webhook")

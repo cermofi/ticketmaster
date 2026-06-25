@@ -88,12 +88,26 @@ def validate_webhook_token(token: str | None) -> bool:
 
 def check_configuration() -> dict:
     configured = bool(settings.gitlab_base_url and settings.gitlab_project_id and (settings.gitlab_token or settings.gitlab_dry_run))
+    delivery_tracking_configured = bool(
+        settings.gitlab_base_url
+        and settings.gitlab_token
+        and settings.gitlab_delivery_project_id
+        and settings.gitlab_sync_interval_seconds > 0
+    )
     return {
         "configured": configured,
         "dry_run": settings.gitlab_dry_run,
         "base_url": settings.gitlab_base_url,
         "project_id": settings.gitlab_project_id,
         "webhook_secret_configured": bool(settings.gitlab_webhook_secret),
+        "delivery_tracking": {
+            "configured": delivery_tracking_configured,
+            "delivery_project_id": settings.gitlab_delivery_project_id,
+            "target_projects": [
+                {"project_id": project_id, "name": name} for project_id, name in settings.gitlab_target_projects
+            ],
+            "sync_interval_seconds": settings.gitlab_sync_interval_seconds,
+        },
     }
 
 

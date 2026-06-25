@@ -3,6 +3,7 @@ import { Module } from 'asab_webui_components';
 import LanguageDropdown from 'asab_webui_shell/dist/modules/i18n/dropdown.js';
 
 const DashboardScreen = lazy(() => import('./screens/DashboardScreen.jsx'));
+const GitLabDeliveryTrackingScreen = lazy(() => import('./screens/GitLabDeliveryTrackingScreen.jsx'));
 const NewTicketScreen = lazy(() => import('./screens/NewTicketScreen.jsx'));
 const TicketDetailScreen = lazy(() => import('./screens/TicketDetailScreen.jsx'));
 const PartnerOverviewScreen = lazy(() => import('./screens/PartnerOverviewScreen.jsx'));
@@ -17,6 +18,7 @@ export default class TicketMasterModule extends Module {
     super(app, 'TicketMasterModule');
 
     app.Router.addRoute({ path: '/', end: true, name: 'Tickets', component: DashboardScreen, resource: '*' });
+    app.Router.addRoute({ path: '/delivery-tracking', end: true, name: 'Delivery tracking', component: GitLabDeliveryTrackingScreen, resource: '*' });
     app.Router.addRoute({ path: '/tickets/new', end: true, name: 'Create ticket', component: NewTicketScreen, resource: '*' });
     app.Router.addRoute({ path: '/tickets/:ticketId', end: true, name: 'Ticket detail', component: TicketDetailScreen, resource: '*' });
     app.Router.addRoute({ path: '/partner-overview', end: true, name: 'Partner overview', component: PartnerOverviewScreen, resource: '*' });
@@ -27,6 +29,7 @@ export default class TicketMasterModule extends Module {
     app.Router.addRoute({ path: '/settings', end: true, name: 'Settings', component: SettingsScreen, resource: '*' });
 
     app.Navigation.addItem({ name: 'Tickets', url: '/', icon: 'bi bi-ticket-detailed' });
+    app.Navigation.addItem({ name: 'Delivery tracking', url: '/delivery-tracking', icon: 'bi bi-diagram-3' });
     app.Navigation.addItem({ name: 'Admin', url: '/admin', icon: 'bi bi-sliders' });
     app.Navigation.addItem({ name: 'Audit', url: '/audit', icon: 'bi bi-journal-check' });
     app.Navigation.addItem({ name: 'Settings', url: '/settings', icon: 'bi bi-gear' });
