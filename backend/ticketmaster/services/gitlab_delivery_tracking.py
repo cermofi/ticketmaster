@@ -5,20 +5,29 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import cmp_to_key
+from itertools import islice
 from urllib.parse import quote_plus, urlparse
 
 import httpx
-from sqlalchemy import and_, or_, select, text
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from ticketmaster.core.config import settings
-from ticketmaster.models import GitLabIssueManualMapping, GitLabIssueSyncRun, GitLabTrackedIssue, User
+from ticketmaster.models import (
+    GitLabDeliveryAlert,
+    GitLabDeliveryAlertRead,
+    GitLabIssueManualMapping,
+    GitLabIssueSyncRun,
+    GitLabTrackedIssue,
+    User,
+)
 from ticketmaster.models.entities import new_id
 from ticketmaster.services.errors import NotFoundError, ValidationError
 
 logger = logging.getLogger("ticketmaster.gitlab.delivery_tracking")
 SYNC_ADVISORY_LOCK_ID = 90503
 CHECK_FINDINGS_LIMIT = 100
+ALERT_CHANGES_PREVIEW_LIMIT = 4
 
 ISSUE_URL_PATH_RE = re.compile(r"^/(?P<project_path>.+)/-/issues/(?P<issue_iid>\d+)/?$")
 ISSUE_URL_IN_TEXT_RE = re.compile(r"https?://[^\s)]+/-/issues/\d+", re.IGNORECASE)
@@ -37,6 +46,22 @@ SORT_FIELDS = {
     "resolution_source",
 }
 SORT_DIRECTIONS = {"asc", "desc"}
+ALERT_FIELD_LABELS: tuple[tuple[str, str], ...] = (
+    ("delivery_title", "delivery issue"),
+    ("delivery_state", "delivery state"),
+    ("delivery_labels", "delivery labels"),
+    ("target_issue_iid", "team id"),
+    ("target_state", "current state"),
+    ("target_team_name", "target team"),
+    ("target_url", "target issue url"),
+    ("target_labels", "labels"),
+    ("target_assignees", "assignee"),
+    ("sync_status", "sync status"),
+    ("resolution_source", "resolution source"),
+    ("target_missing", "target missing"),
+    ("sync_error", "sync error"),
+    ("last_gitlab_update", "last update"),
+)
 
 
 @dataclass
@@ -257,6 +282,154 @@ def list_dashboard_meta(db: Session) -> dict:
         "sync_interval_seconds": settings.gitlab_sync_interval_seconds,
         "last_sync_run": serialize_sync_run(latest_run) if latest_run else None,
     }
+
+
+def list_delivery_alerts(
+    db: Session,
+    *,
+    actor: User,
+    unread_only: bool = False,
+    limit: int = 30,
+    offset: int = 0,
+) -> dict:
+    if actor.kind != "internal":
+        raise ValidationError("Delivery tracking alerts are internal only")
+
+    actual_limit = min(max(limit, 1), 200)
+    actual_offset = max(offset, 0)
+    read_alert_ids_stmt = select(GitLabDeliveryAlertRead.alert_id).where(GitLabDeliveryAlertRead.user_id == actor.id)
+
+    total_stmt = select(func.count()).select_from(GitLabDeliveryAlert)
+    if unread_only:
+        total_stmt = total_stmt.where(~GitLabDeliveryAlert.id.in_(read_alert_ids_stmt))
+    total = int(db.scalar(total_stmt) or 0)
+
+    unread_count = int(
+        db.scalar(
+            select(func.count())
+            .select_from(GitLabDeliveryAlert)
+            .where(~GitLabDeliveryAlert.id.in_(read_alert_ids_stmt))
+        )
+        or 0
+    )
+
+    list_stmt = select(GitLabDeliveryAlert)
+    if unread_only:
+        list_stmt = list_stmt.where(~GitLabDeliveryAlert.id.in_(read_alert_ids_stmt))
+    rows = db.scalars(
+        list_stmt.order_by(GitLabDeliveryAlert.created_at.desc())
+        .limit(actual_limit)
+        .offset(actual_offset)
+    ).all()
+
+    row_ids = [row.id for row in rows]
+    read_ids = _delivery_alert_read_ids(db, user_id=actor.id, alert_ids=row_ids)
+    return {
+        "items": [serialize_delivery_alert(row, is_read=row.id in read_ids) for row in rows],
+        "total": total,
+        "limit": actual_limit,
+        "offset": actual_offset,
+        "unread_count": unread_count,
+    }
+
+
+def mark_all_delivery_alerts_read(db: Session, *, actor: User) -> dict:
+    if actor.kind != "internal":
+        raise ValidationError("Delivery tracking alerts are internal only")
+
+    alert_ids = db.scalars(select(GitLabDeliveryAlert.id)).all()
+    if not alert_ids:
+        return {"marked_count": 0, "unread_count": 0}
+
+    existing = _delivery_alert_read_ids(db, user_id=actor.id, alert_ids=alert_ids)
+    marked_count = 0
+    now = _utcnow()
+    for alert_id in alert_ids:
+        if alert_id in existing:
+            continue
+        db.add(
+            GitLabDeliveryAlertRead(
+                id=new_id(),
+                alert_id=alert_id,
+                user_id=actor.id,
+                read_at=now,
+            )
+        )
+        marked_count += 1
+
+    db.flush()
+    unread_count = int(
+        db.scalar(
+            select(func.count())
+            .select_from(GitLabDeliveryAlert)
+            .where(
+                ~GitLabDeliveryAlert.id.in_(
+                    select(GitLabDeliveryAlertRead.alert_id).where(GitLabDeliveryAlertRead.user_id == actor.id)
+                )
+            )
+        )
+        or 0
+    )
+    return {"marked_count": marked_count, "unread_count": unread_count}
+
+
+def serialize_delivery_alert(row: GitLabDeliveryAlert, *, is_read: bool) -> dict:
+    raw_payload = row.changes if isinstance(row.changes, dict) else {}
+    raw_changes = raw_payload.get("changes") if isinstance(raw_payload.get("changes"), list) else []
+    changes: list[dict[str, str]] = []
+    for item in raw_changes:
+        if not isinstance(item, dict):
+            continue
+        changes.append(
+            {
+                "field": _string_or_none(item.get("field")) or "",
+                "label": _string_or_none(item.get("label")) or "",
+                "before": _string_or_none(item.get("before")) or "",
+                "after": _string_or_none(item.get("after")) or "",
+            }
+        )
+
+    return {
+        "id": row.id,
+        "tracked_issue_id": row.tracked_issue_id,
+        "delivery_issue_iid": row.delivery_issue_iid,
+        "delivery_title": row.delivery_title,
+        "delivery_url": row.delivery_url,
+        "target_url": row.target_url,
+        "alert_kind": row.alert_kind,
+        "message": row.message,
+        "changes": changes,
+        "change_summary": _delivery_alert_change_summary(changes),
+        "created_at": row.created_at,
+        "is_read": is_read,
+    }
+
+
+def _delivery_alert_read_ids(db: Session, *, user_id: str, alert_ids: list[str]) -> set[str]:
+    if not alert_ids:
+        return set()
+    return set(
+        db.scalars(
+            select(GitLabDeliveryAlertRead.alert_id).where(
+                GitLabDeliveryAlertRead.user_id == user_id,
+                GitLabDeliveryAlertRead.alert_id.in_(alert_ids),
+            )
+        ).all()
+    )
+
+
+def _delivery_alert_change_summary(changes: list[dict[str, str]]) -> str:
+    if not changes:
+        return ""
+    chunks: list[str] = []
+    for change in islice(changes, ALERT_CHANGES_PREVIEW_LIMIT):
+        label = _string_or_none(change.get("label")) or _string_or_none(change.get("field")) or "change"
+        after = _string_or_none(change.get("after")) or "-"
+        chunks.append(f"{label}: {after}")
+    remaining = len(changes) - ALERT_CHANGES_PREVIEW_LIMIT
+    if remaining > 0:
+        chunks.append(f"+{remaining} more")
+    return "; ".join(chunks)
 
 
 def run_delivery_tracking_checks(db: Session, *, issue_limit: int = 200) -> dict:
@@ -644,6 +817,7 @@ def set_manual_mapping(db: Session, *, tracked_issue_id: str, target_url: str, a
     tracked = db.get(GitLabTrackedIssue, tracked_issue_id)
     if not tracked:
         raise NotFoundError("Tracked issue not found")
+    previous_snapshot = _tracked_issue_alert_snapshot(tracked)
 
     if actor.kind != "internal":
         raise ValidationError("Only internal users can update manual issue mapping")
@@ -716,6 +890,12 @@ def set_manual_mapping(db: Session, *, tracked_issue_id: str, target_url: str, a
     finally:
         client.close()
 
+    _emit_delivery_alert_if_needed(
+        db,
+        tracked=tracked,
+        previous_snapshot=previous_snapshot,
+        is_new=False,
+    )
     return tracked
 
 
@@ -738,6 +918,8 @@ def _sync_delivery_issue(
             GitLabTrackedIssue.delivery_issue_iid == delivery_issue_iid,
         )
     )
+    is_new = tracked is None
+    previous_snapshot = None if tracked is None else _tracked_issue_alert_snapshot(tracked)
     if tracked is None:
         tracked = GitLabTrackedIssue(
             id=new_id(),
@@ -782,11 +964,17 @@ def _sync_delivery_issue(
         tracked.sync_status = "ok"
         tracked.sync_error = resolution.fatal_error
         tracked.target_missing = False
-        return IssueSyncOutcome(
-            status="ok",
-            used_manual_mapping=resolution.used_manual_mapping,
-            used_moved_to=resolution.used_moved_to,
-            used_note_fallback=resolution.used_note_fallback,
+        return _sync_outcome_with_alert(
+            db,
+            tracked=tracked,
+            previous_snapshot=previous_snapshot,
+            is_new=is_new,
+            outcome=IssueSyncOutcome(
+                status="ok",
+                used_manual_mapping=resolution.used_manual_mapping,
+                used_moved_to=resolution.used_moved_to,
+                used_note_fallback=resolution.used_note_fallback,
+            ),
         )
 
     _clear_target_fields(tracked)
@@ -795,7 +983,13 @@ def _sync_delivery_issue(
         tracked.sync_error = resolution.fatal_error
         tracked.target_missing = False
         tracked.resolution_source = "error"
-        return IssueSyncOutcome(status="error")
+        return _sync_outcome_with_alert(
+            db,
+            tracked=tracked,
+            previous_snapshot=previous_snapshot,
+            is_new=is_new,
+            outcome=IssueSyncOutcome(status="error"),
+        )
 
     if expected_sync_status == "in_delivery":
         tracked.sync_status = "in_delivery"
@@ -803,22 +997,34 @@ def _sync_delivery_issue(
         tracked.target_missing = False
         tracked.resolution_source = "delivery"
         tracked.target_team_name = "Delivery"
-        return IssueSyncOutcome(
-            status="ok",
-            used_manual_mapping=resolution.used_manual_mapping,
-            used_moved_to=resolution.used_moved_to,
-            used_note_fallback=resolution.used_note_fallback,
+        return _sync_outcome_with_alert(
+            db,
+            tracked=tracked,
+            previous_snapshot=previous_snapshot,
+            is_new=is_new,
+            outcome=IssueSyncOutcome(
+                status="ok",
+                used_manual_mapping=resolution.used_manual_mapping,
+                used_moved_to=resolution.used_moved_to,
+                used_note_fallback=resolution.used_note_fallback,
+            ),
         )
 
     tracked.sync_status = "target_missing"
     tracked.sync_error = "Target issue could not be resolved automatically"
     tracked.target_missing = True
     tracked.resolution_source = "target_missing"
-    return IssueSyncOutcome(
-        status="target_missing",
-        used_manual_mapping=resolution.used_manual_mapping,
-        used_moved_to=resolution.used_moved_to,
-        used_note_fallback=resolution.used_note_fallback,
+    return _sync_outcome_with_alert(
+        db,
+        tracked=tracked,
+        previous_snapshot=previous_snapshot,
+        is_new=is_new,
+        outcome=IssueSyncOutcome(
+            status="target_missing",
+            used_manual_mapping=resolution.used_manual_mapping,
+            used_moved_to=resolution.used_moved_to,
+            used_note_fallback=resolution.used_note_fallback,
+        ),
     )
 
 
@@ -830,6 +1036,160 @@ def _expected_sync_status(resolution: TargetResolution) -> str:
     if not resolution.has_target_hint:
         return "in_delivery"
     return "target_missing"
+
+
+def _sync_outcome_with_alert(
+    db: Session,
+    *,
+    tracked: GitLabTrackedIssue,
+    previous_snapshot: dict[str, object] | None,
+    is_new: bool,
+    outcome: IssueSyncOutcome,
+) -> IssueSyncOutcome:
+    _emit_delivery_alert_if_needed(
+        db,
+        tracked=tracked,
+        previous_snapshot=previous_snapshot,
+        is_new=is_new,
+    )
+    return outcome
+
+
+def _emit_delivery_alert_if_needed(
+    db: Session,
+    *,
+    tracked: GitLabTrackedIssue,
+    previous_snapshot: dict[str, object] | None,
+    is_new: bool,
+) -> None:
+    current_snapshot = _tracked_issue_alert_snapshot(tracked)
+    payload = _build_delivery_alert_payload(
+        tracked,
+        previous_snapshot=previous_snapshot,
+        current_snapshot=current_snapshot,
+        is_new=is_new,
+    )
+    if payload is None:
+        return
+    db.add(
+        GitLabDeliveryAlert(
+            id=new_id(),
+            tracked_issue_id=tracked.id,
+            delivery_issue_iid=tracked.delivery_issue_iid,
+            delivery_title=tracked.delivery_title,
+            delivery_url=tracked.delivery_url,
+            target_url=tracked.target_url,
+            alert_kind=payload["kind"],
+            message=payload["message"],
+            changes={"changes": payload["changes"]},
+            created_at=_utcnow(),
+        )
+    )
+
+
+def _build_delivery_alert_payload(
+    tracked: GitLabTrackedIssue,
+    *,
+    previous_snapshot: dict[str, object] | None,
+    current_snapshot: dict[str, object],
+    is_new: bool,
+) -> dict[str, object] | None:
+    if previous_snapshot is None:
+        if not is_new:
+            return None
+        return {
+            "kind": "tracked",
+            "message": "New delivery issue started tracking.",
+            "changes": [],
+        }
+
+    changes = _tracked_issue_alert_changes(previous_snapshot, current_snapshot)
+    if not changes:
+        return None
+    kind, message = _delivery_alert_kind_and_message(tracked, changes)
+    return {"kind": kind, "message": message, "changes": changes}
+
+
+def _tracked_issue_alert_snapshot(tracked: GitLabTrackedIssue) -> dict[str, object]:
+    last_gitlab_update = tracked.target_updated_at or tracked.delivery_updated_at
+    return {
+        "delivery_title": tracked.delivery_title or "",
+        "delivery_state": tracked.delivery_state or "",
+        "delivery_labels": tuple(_normalize_labels(tracked.delivery_labels)),
+        "target_issue_iid": tracked.target_issue_iid or "",
+        "target_state": tracked.target_state or "",
+        "target_team_name": tracked.target_team_name or "",
+        "target_url": tracked.target_url or "",
+        "target_labels": tuple(_normalize_labels(tracked.target_labels)),
+        "target_assignees": tuple(_assignee_names(tracked)),
+        "sync_status": tracked.sync_status or "",
+        "resolution_source": tracked.resolution_source or "",
+        "target_missing": bool(tracked.target_missing),
+        "sync_error": tracked.sync_error or "",
+        "last_gitlab_update": last_gitlab_update.isoformat() if isinstance(last_gitlab_update, datetime) else "",
+    }
+
+
+def _tracked_issue_alert_changes(previous_snapshot: dict[str, object], current_snapshot: dict[str, object]) -> list[dict[str, str]]:
+    changes: list[dict[str, str]] = []
+    for field, label in ALERT_FIELD_LABELS:
+        previous_value = previous_snapshot.get(field)
+        current_value = current_snapshot.get(field)
+        if previous_value == current_value:
+            continue
+        changes.append(
+            {
+                "field": field,
+                "label": label,
+                "before": _alert_value_text(previous_value),
+                "after": _alert_value_text(current_value),
+            }
+        )
+    return changes
+
+
+def _delivery_alert_kind_and_message(
+    tracked: GitLabTrackedIssue,
+    changes: list[dict[str, str]],
+) -> tuple[str, str]:
+    changed_fields = {change["field"] for change in changes}
+    if "sync_status" in changed_fields:
+        if tracked.sync_status == "target_missing":
+            return "target_missing", "Target mapping is missing and needs attention."
+        if tracked.sync_status == "error":
+            return "sync_error", "Delivery tracking sync reported an error."
+        if tracked.sync_status == "ok":
+            return "sync_status", "Delivery tracking sync status returned to synced."
+        return "sync_status", f"Sync status changed to {tracked.sync_status or 'unknown'}."
+
+    if {"target_issue_iid", "target_url", "target_team_name"} & changed_fields:
+        if tracked.target_issue_iid:
+            return "reassigned", f"Ticket moved to team id {tracked.target_issue_iid}."
+        return "reassigned", "Ticket target assignment changed."
+
+    if {"target_state", "delivery_state"} & changed_fields:
+        state = tracked.target_state or tracked.delivery_state or "unknown"
+        return "state_changed", f"Ticket state changed to {state}."
+
+    if changed_fields == {"last_gitlab_update"}:
+        return "activity", "Ticket has new GitLab activity (comment or update)."
+
+    return "updated", "Tracked ticket details changed in GitLab."
+
+
+def _alert_value_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, tuple):
+        chunks = []
+        for item in value:
+            text = _alert_value_text(item)
+            if text:
+                chunks.append(text)
+        return ", ".join(chunks)
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
 
 
 def _resolve_target_issue(

@@ -10,8 +10,10 @@ from ticketmaster.services.errors import ValidationError
 from ticketmaster.services.gitlab_delivery_tracking import (
     GitLabApiError,
     TargetResolution,
+    _build_delivery_alert_payload,
     _expected_sync_status,
     _tracked_issue_invariant_errors,
+    _tracked_issue_alert_changes,
     _row_matches_assignee_filter,
     _row_matches_label_filter,
     _parse_issue_url,
@@ -140,6 +142,35 @@ def test_row_matches_label_filter_prefers_target_labels_with_delivery_fallback()
     assert _row_matches_label_filter(with_target, "ops")
     assert not _row_matches_label_filter(with_target, "delivery")
     assert _row_matches_label_filter(with_delivery_only, "delivery")
+
+
+def test_tracked_issue_alert_changes_detect_modified_values() -> None:
+    previous = {"target_state": "opened", "sync_status": "ok", "last_gitlab_update": "2026-06-26T10:00:00+00:00"}
+    current = {"target_state": "closed", "sync_status": "target_missing", "last_gitlab_update": "2026-06-26T10:05:00+00:00"}
+    changes = _tracked_issue_alert_changes(previous, current)
+    fields = {change["field"] for change in changes}
+    assert "target_state" in fields
+    assert "sync_status" in fields
+    assert "last_gitlab_update" in fields
+
+
+def test_build_delivery_alert_payload_for_new_issue() -> None:
+    tracked = SimpleNamespace(sync_status="ok", target_issue_iid="101", target_state="opened", delivery_state="opened")
+    payload = _build_delivery_alert_payload(tracked, previous_snapshot=None, current_snapshot={"sync_status": "ok"}, is_new=True)
+    assert payload is not None
+    assert payload["kind"] == "tracked"
+
+
+def test_build_delivery_alert_payload_for_state_change() -> None:
+    tracked = SimpleNamespace(sync_status="ok", target_issue_iid="55", target_state="closed", delivery_state="opened")
+    payload = _build_delivery_alert_payload(
+        tracked,
+        previous_snapshot={"target_state": "opened"},
+        current_snapshot={"target_state": "closed"},
+        is_new=False,
+    )
+    assert payload is not None
+    assert payload["kind"] == "state_changed"
 
 
 def test_resolve_target_issue_without_hints_stays_in_delivery() -> None:

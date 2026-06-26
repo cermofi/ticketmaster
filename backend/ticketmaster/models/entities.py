@@ -255,6 +255,31 @@ class GitLabIssueSyncRun(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class GitLabDeliveryAlert(Base):
+    __tablename__ = "gitlab_delivery_alerts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tracked_issue_id: Mapped[str] = mapped_column(ForeignKey("gitlab_tracked_issues.id"), nullable=False, index=True)
+    delivery_issue_iid: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    delivery_title: Mapped[str] = mapped_column(String(500), nullable=False)
+    delivery_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    alert_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    changes: Mapped[dict | None] = mapped_column(JsonType, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+
+
+class GitLabDeliveryAlertRead(Base):
+    __tablename__ = "gitlab_delivery_alert_reads"
+    __table_args__ = (UniqueConstraint("alert_id", "user_id", name="uq_gitlab_delivery_alert_read"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    alert_id: Mapped[str] = mapped_column(ForeignKey("gitlab_delivery_alerts.id"), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class Notification(Base):
     __tablename__ = "notifications"
 

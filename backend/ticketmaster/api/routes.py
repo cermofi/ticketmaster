@@ -1049,6 +1049,34 @@ def gitlab_delivery_tracking_meta(db: DbSession, user: CurrentUser) -> dict:
     return gitlab_delivery_tracking.list_dashboard_meta(db)
 
 
+@router.get("/gitlab/delivery-tracking/alerts")
+def gitlab_delivery_tracking_alerts(
+    db: DbSession,
+    user: CurrentUser,
+    unread_only: bool = False,
+    limit: int | None = None,
+    offset: int = 0,
+) -> dict:
+    admin.require_internal(user)
+    actual_limit = min(max(limit or 30, 1), 200)
+    actual_offset = max(offset, 0)
+    return gitlab_delivery_tracking.list_delivery_alerts(
+        db,
+        actor=user,
+        unread_only=unread_only,
+        limit=actual_limit,
+        offset=actual_offset,
+    )
+
+
+@router.post("/gitlab/delivery-tracking/alerts/read-all")
+def gitlab_delivery_tracking_mark_alerts_read(db: DbSession, user: CurrentUser) -> dict:
+    admin.require_internal(user)
+    result = gitlab_delivery_tracking.mark_all_delivery_alerts_read(db, actor=user)
+    db.commit()
+    return result
+
+
 @router.get("/gitlab/delivery-tracking")
 def gitlab_delivery_tracking_list(
     db: DbSession,
