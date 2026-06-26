@@ -1246,6 +1246,155 @@ body[data-tm-density="compact"] .tm-login-form {
   color: var(--tm-ink);
 }
 
+.tm-delivery-filters-panel {
+  display: flex;
+  flex-direction: column;
+  gap: .72rem;
+  margin-bottom: .9rem;
+  padding: .72rem .82rem;
+  border: 1px solid var(--tm-ticket-filters-border);
+  border-radius: 10px;
+  background: var(--tm-ticket-filters-bg);
+  box-shadow: var(--tm-ticket-filters-shadow);
+}
+
+.tm-delivery-filters-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .75rem;
+}
+
+.tm-delivery-filters-head h6 {
+  margin: 0;
+  font-size: .86rem;
+  font-weight: 600;
+}
+
+.tm-delivery-filters-head span {
+  color: var(--tm-muted);
+  font-size: .77rem;
+}
+
+.tm-delivery-filters-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.35fr) repeat(5, minmax(130px, 1fr));
+  gap: .7rem;
+  align-items: end;
+}
+
+.tm-delivery-filter-search {
+  grid-column: span 2;
+}
+
+.tm-delivery-filters-panel .form-group,
+.tm-delivery-filters-panel .mb-3 {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+.tm-delivery-filters-panel .form-label {
+  margin-bottom: .28rem;
+  font-size: .74rem;
+  color: var(--tm-ticket-filter-label);
+}
+
+.tm-delivery-filters-panel .form-control,
+.tm-delivery-filters-panel .form-select {
+  height: calc(1.5em + .75rem + 2px);
+  min-height: calc(1.5em + .75rem + 2px);
+  border-color: var(--tm-ticket-filter-input-border);
+  background-color: var(--tm-ticket-filter-input-bg);
+}
+
+.tm-delivery-filters-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: .5rem;
+}
+
+.tm-delivery-filters-actions .btn {
+  min-width: 7.25rem;
+}
+
+.tm-delivery-table-wrap {
+  overflow-x: clip;
+}
+
+.tm-delivery-table-wrap .tm-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.tm-delivery-table-wrap .tm-table th,
+.tm-delivery-table-wrap .tm-table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: middle;
+}
+
+.tm-delivery-table-wrap .tm-table th:nth-child(1),
+.tm-delivery-table-wrap .tm-table td:nth-child(1) {
+  width: 13%;
+}
+
+.tm-delivery-table-wrap .tm-table th:nth-child(2),
+.tm-delivery-table-wrap .tm-table td:nth-child(2) {
+  width: 8%;
+}
+
+.tm-delivery-table-wrap .tm-table th:nth-child(3),
+.tm-delivery-table-wrap .tm-table td:nth-child(3) {
+  width: 25%;
+}
+
+.tm-delivery-table-wrap .tm-table th:nth-child(4),
+.tm-delivery-table-wrap .tm-table td:nth-child(4) {
+  width: 12%;
+}
+
+.tm-delivery-table-wrap .tm-table th:nth-child(5),
+.tm-delivery-table-wrap .tm-table td:nth-child(5) {
+  width: 14%;
+}
+
+.tm-delivery-table-wrap .tm-table th:nth-child(6),
+.tm-delivery-table-wrap .tm-table td:nth-child(6) {
+  width: 14%;
+}
+
+.tm-delivery-table-wrap .tm-table th:nth-child(7),
+.tm-delivery-table-wrap .tm-table td:nth-child(7) {
+  width: 14%;
+}
+
+.tm-delivery-drilldown {
+  display: inline-block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--tm-ink);
+  text-align: left;
+  font: inherit;
+  font-weight: 400;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.tm-delivery-drilldown:hover {
+  color: var(--tm-ink);
+  text-decoration: none;
+  opacity: .82;
+}
+
+.tm-delivery-drilldown:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: 0 0 0 .14rem rgba(37, 99, 235, .2);
+}
+
 .tm-tickets-table-wrap {
   border-color: var(--tm-tickets-table-border);
   border-radius: 10px;
@@ -2537,6 +2686,7 @@ body[data-tm-contrast="high"] {
   .tm-toolbar,
   .tm-ticket-searchbar,
   .tm-ticket-filters-panel,
+  .tm-delivery-filters-grid,
   .tm-audit-filters-panel,
   .tm-layout,
   .tm-ticket-layout,
@@ -2568,6 +2718,24 @@ body[data-tm-contrast="high"] {
   .tm-toolbar-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .tm-delivery-filter-search {
+    grid-column: auto;
+  }
+
+  .tm-delivery-filters-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .tm-delivery-filters-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tm-delivery-filters-actions .btn {
+    width: 100%;
   }
 
   .tm-ticket-filters-reset-spacer {

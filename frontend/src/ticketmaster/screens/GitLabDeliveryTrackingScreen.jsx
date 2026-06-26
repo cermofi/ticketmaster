@@ -35,7 +35,8 @@ const EMPTY_FILTERS = {
   search: '',
   target_team: '',
   state: '',
-  missing_mapping: false,
+  assignee: '',
+  label: '',
   updated_since: '',
   sort_by: DEFAULT_SORT.sort_by,
   sort_direction: DEFAULT_SORT.sort_direction
@@ -56,8 +57,7 @@ function TrackingDashboard({ user }) {
   const canManage = canView && hasAnyInternalRole(user, ['Admin', 'DeliveryManager']);
   const { filters, syncFiltersToUrl, resetFilters: resetUrlFilters } = useUrlFilters(
     EMPTY_FILTERS,
-    FILTER_KEYS,
-    { booleanKeys: ['missing_mapping'] }
+    FILTER_KEYS
   );
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
@@ -233,6 +233,8 @@ function TrackingDashboard({ user }) {
             setFilters={setFilters}
             teams={asArray(meta?.target_teams)}
             states={asArray(meta?.states)}
+            assignees={asArray(meta?.assignees)}
+            labels={asArray(meta?.labels)}
             onApply={load}
             onReset={() => {
               const reset = resetUrlFilters();
@@ -292,79 +294,88 @@ function TrackingDashboard({ user }) {
   );
 }
 
-function TrackingFilters({ filters, setFilters, teams, states, onApply, onReset }) {
+function TrackingFilters({
+  filters,
+  setFilters,
+  teams,
+  states,
+  assignees,
+  labels,
+  onApply,
+  onReset
+}) {
   const update = (key, value) => setFilters({ ...filters, [key]: value });
-  const updateAndApply = (key, value) => {
-    const next = { ...filters, [key]: value };
-    setFilters(next);
-    onApply(next);
-  };
 
   return (
-    <Form className="tm-ticket-filters-panel" onSubmit={(event) => { event.preventDefault(); onApply(); }}>
-      <FormGroup>
-        <Label>Search</Label>
-        <Input
-          value={filters.search}
-          placeholder="Search by title or issue IID"
-          onChange={(event) => update('search', event.target.value)}
-        />
-      </FormGroup>
-      <FormGroup>
-        <Label>Target team</Label>
-        <Input type="select" value={filters.target_team} onChange={(event) => updateAndApply('target_team', event.target.value)}>
-          <option value="">All</option>
-          {teams.map((team) => <option key={team.name} value={team.name}>{team.name}</option>)}
-        </Input>
-      </FormGroup>
-      <FormGroup>
-        <Label>Current state</Label>
-        <Input type="select" value={filters.state} onChange={(event) => updateAndApply('state', event.target.value)}>
-          <option value="">All</option>
-          {states.map((state) => <option key={state} value={state}>{state}</option>)}
-        </Input>
-      </FormGroup>
-      <FormGroup>
-        <Label>Updated since</Label>
-        <Input type="date" value={filters.updated_since} onChange={(event) => updateAndApply('updated_since', event.target.value)} />
-      </FormGroup>
-      <FormGroup className="d-flex align-items-end">
-        <div className="form-check mb-2">
+    <Form className="tm-delivery-filters-panel" onSubmit={(event) => { event.preventDefault(); onApply(); }}>
+      <div className="tm-delivery-filters-head">
+        <h6>Filters</h6>
+        <span>Refine issues by team, assignee, labels and state.</span>
+      </div>
+      <div className="tm-delivery-filters-grid">
+        <FormGroup className="tm-delivery-filter-search">
+          <Label>Search</Label>
           <Input
-            id="filter-missing-mapping"
-            type="checkbox"
-            checked={Boolean(filters.missing_mapping)}
-            onChange={(event) => updateAndApply('missing_mapping', event.target.checked)}
+            value={filters.search}
+            placeholder="Search by delivery title or ticket ID"
+            onChange={(event) => update('search', event.target.value)}
           />
-          <Label className="form-check-label" for="filter-missing-mapping">
-            Missing mapping only
-          </Label>
-        </div>
-      </FormGroup>
-      <FormGroup className="tm-ticket-filters-actions">
-        <Label className="tm-ticket-filters-reset-spacer" aria-hidden="true">&nbsp;</Label>
-        <button className="tm-ticket-filters-reset-btn form-control" type="button" onClick={onReset}>
-          Reset filters
-        </button>
-      </FormGroup>
+        </FormGroup>
+        <FormGroup>
+          <Label>Target team</Label>
+          <Input type="select" value={filters.target_team} onChange={(event) => update('target_team', event.target.value)}>
+            <option value="">All</option>
+            {teams.map((team) => <option key={team.name} value={team.name}>{team.name}</option>)}
+          </Input>
+        </FormGroup>
+        <FormGroup>
+          <Label>Current state</Label>
+          <Input type="select" value={filters.state} onChange={(event) => update('state', event.target.value)}>
+            <option value="">All</option>
+            {states.map((state) => <option key={state} value={state}>{state}</option>)}
+          </Input>
+        </FormGroup>
+        <FormGroup>
+          <Label>Asignee</Label>
+          <Input type="select" value={filters.assignee} onChange={(event) => update('assignee', event.target.value)}>
+            <option value="">All</option>
+            {assignees.map((assignee) => <option key={assignee} value={assignee}>{assignee}</option>)}
+          </Input>
+        </FormGroup>
+        <FormGroup>
+          <Label>Labels</Label>
+          <Input type="select" value={filters.label} onChange={(event) => update('label', event.target.value)}>
+            <option value="">All</option>
+            {labels.map((label) => <option key={label} value={label}>{label}</option>)}
+          </Input>
+        </FormGroup>
+        <FormGroup>
+          <Label>Updated since</Label>
+          <Input type="date" value={filters.updated_since} onChange={(event) => update('updated_since', event.target.value)} />
+        </FormGroup>
+      </div>
+      <div className="tm-delivery-filters-actions">
+        <Button size="sm" color="primary" type="submit">Apply filters</Button>
+        <Button size="sm" color="secondary" outline type="button" onClick={onReset}>Reset</Button>
+      </div>
     </Form>
   );
 }
 
 function TrackingTable({ rows, sortBy, sortDirection, onSortChange, onOpenDetails }) {
   const headers = [
-    { key: 'last_gitlab_update', label: 'Last GitLab update' },
-    { key: 'delivery_issue', label: 'Delivery issue' },
-    { key: 'ticket_id', label: 'Ticket ID' },
+    { key: 'last_gitlab_update', label: 'last update' },
+    { key: 'ticket_id', label: 'ID' },
+    { key: 'delivery_issue', label: 'delivery issue' },
     { key: 'current_state', label: 'Current state' },
-    { key: 'target_issue_url', label: 'Target issue URL' },
+    { key: 'target_issue_url', label: 'team id' },
     { key: 'assignee', label: 'Asignee' },
     { key: 'labels', label: 'Labels' }
   ];
 
   return (
-    <div className="tm-table-wrap">
-      <Table hover responsive className="tm-table">
+    <div className="tm-table-wrap tm-delivery-table-wrap">
+      <Table hover className="tm-table">
         <thead>
           <tr>
             {headers.map((header) => {
@@ -400,21 +411,21 @@ function TrackingTable({ rows, sortBy, sortDirection, onSortChange, onOpenDetail
                 <td className="tm-quiet-cell">
                   <TimeCell value={row.target_updated_at || row.delivery_updated_at} />
                 </td>
+                <td className="tm-quiet-cell">{formatTicketId(row.delivery_issue_iid)}</td>
                 <td>
                   <button
                     type="button"
-                    className="btn btn-link p-0 text-start align-baseline"
+                    className="tm-delivery-drilldown"
                     onClick={() => onOpenDetails(row)}
                   >
                     {row.delivery_title || '-'}
                   </button>
                 </td>
-                <td className="tm-quiet-cell">{formatTicketId(row.delivery_issue_iid)}</td>
                 <td>
                   {currentState ? <StatusPill value={currentState} /> : <span className="tm-muted">-</span>}
                 </td>
                 <td>
-                  <ExternalLink href={row.target_url} label={row.target_issue_iid ? `#${row.target_issue_iid}` : 'Open target issue'} />
+                  <ExternalLink href={row.target_url} label={row.target_issue_iid || 'Open'} />
                 </td>
                 <td className="tm-quiet-cell">{formatAssignees(row.target_assignees)}</td>
                 <td className="tm-quiet-cell">{formatLabels(labels)}</td>
@@ -478,7 +489,7 @@ function TrackingDetailsModal({ isOpen, row, canManage, onClose, onManualMapping
             <DetailItem label="Resolution source">
               <span>{row.resolution_source || '-'}</span>
             </DetailItem>
-            <DetailItem label="Last GitLab update">
+            <DetailItem label="Last update">
               <TimeCell value={lastGitlabUpdate} />
             </DetailItem>
             <DetailItem label="Last synced at">
@@ -561,7 +572,8 @@ function buildRequestParams(filters) {
   if (filters.search) params.search = filters.search;
   if (filters.target_team) params.target_team = filters.target_team;
   if (filters.state) params.state = filters.state;
-  if (filters.missing_mapping) params.missing_mapping = true;
+  if (filters.assignee) params.assignee = filters.assignee;
+  if (filters.label) params.label = filters.label;
   if (filters.updated_since) params.updated_since = filters.updated_since;
   if (filters.sort_by) params.sort_by = filters.sort_by;
   if (filters.sort_direction) params.sort_direction = filters.sort_direction;

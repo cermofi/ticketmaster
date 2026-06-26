@@ -224,11 +224,36 @@ def list_dashboard_meta(db: Session) -> dict:
         ).all()
         if state
     ]
+    filter_rows = db.execute(
+        select(
+            GitLabTrackedIssue.target_assignees,
+            GitLabTrackedIssue.target_labels,
+            GitLabTrackedIssue.delivery_labels,
+        )
+    ).all()
+    assignee_values: set[str] = set()
+    label_values: set[str] = set()
+    for target_assignees, target_labels, delivery_labels in filter_rows:
+        for assignee in _normalize_assignees(target_assignees):
+            name = _string_or_none(assignee.get("name")) or _string_or_none(assignee.get("username"))
+            if name:
+                assignee_values.add(name)
+        effective_labels = _normalize_labels(target_labels)
+        if not effective_labels:
+            effective_labels = _normalize_labels(delivery_labels)
+        for label in effective_labels:
+            text = _string_or_none(label)
+            if text:
+                label_values.add(text)
+    assignees = sorted(assignee_values, key=str.casefold)
+    labels = sorted(label_values, key=str.casefold)
     latest_run = db.scalar(select(GitLabIssueSyncRun).order_by(GitLabIssueSyncRun.started_at.desc()))
     return {
         "configured": _sync_configured(),
         "target_teams": configured_teams,
         "states": states,
+        "assignees": assignees,
+        "labels": labels,
         "sync_interval_seconds": settings.gitlab_sync_interval_seconds,
         "last_sync_run": serialize_sync_run(latest_run) if latest_run else None,
     }
@@ -430,6 +455,8 @@ def list_tracked_issues(
     target_team: str | None = None,
     state: str | None = None,
     missing_mapping: bool | None = None,
+    assignee: str | None = None,
+    label: str | None = None,
     updated_since: datetime | None = None,
     sort_by: str | None = None,
     sort_direction: str | None = None,
@@ -471,6 +498,10 @@ def list_tracked_issues(
         )
 
     all_rows = db.scalars(stmt).all()
+    if assignee:
+        all_rows = [row for row in all_rows if _row_matches_assignee_filter(row, assignee)]
+    if label:
+        all_rows = [row for row in all_rows if _row_matches_label_filter(row, label)]
     total = len(all_rows)
     normalized_sort_by, normalized_sort_direction = normalize_sort(sort_by, sort_direction)
     sorted_rows = _sort_tracked_issue_rows(all_rows, sort_by=normalized_sort_by, sort_direction=normalized_sort_direction)
@@ -1214,14 +1245,11 @@ def _tracked_issue_sort_value(row: GitLabTrackedIssue, sort_by: str) -> object:
     if sort_by == "target_team":
         return (_string_or_none(row.target_team_name) or "").lower()
     if sort_by == "target_issue_url":
-        return (_string_or_none(row.target_url) or "").lower()
+        return (_string_or_none(row.target_issue_iid) or _string_or_none(row.target_url) or "").lower()
     if sort_by == "assignee":
         return (_first_assignee_name(row) or "").lower()
     if sort_by == "labels":
-        target_labels = _normalize_labels(row.target_labels)
-        if target_labels:
-            return ",".join(target_labels).lower()
-        return ",".join(_normalize_labels(row.delivery_labels)).lower()
+        return ",".join(_effective_labels(row)).lower()
     if sort_by == "sync_status":
         return (_string_or_none(row.sync_status) or "").lower()
     if sort_by == "last_gitlab_update":
@@ -1235,11 +1263,42 @@ def _tracked_issue_sort_value(row: GitLabTrackedIssue, sort_by: str) -> object:
 
 
 def _first_assignee_name(row: GitLabTrackedIssue) -> str | None:
-    assignees = _normalize_assignees(row.target_assignees)
+    assignees = _assignee_names(row)
     if not assignees:
         return None
-    first = assignees[0]
-    return _string_or_none(first.get("name")) or _string_or_none(first.get("username"))
+    return assignees[0]
+
+
+def _assignee_names(row: GitLabTrackedIssue) -> list[str]:
+    names: list[str] = []
+    for assignee in _normalize_assignees(row.target_assignees):
+        name = _string_or_none(assignee.get("name")) or _string_or_none(assignee.get("username"))
+        if name:
+            names.append(name)
+    return names
+
+
+def _effective_labels(row: GitLabTrackedIssue) -> list[str]:
+    target_labels = _normalize_labels(row.target_labels)
+    if target_labels:
+        return target_labels
+    return _normalize_labels(row.delivery_labels)
+
+
+def _row_matches_assignee_filter(row: GitLabTrackedIssue, assignee: str) -> bool:
+    expected = _string_or_none(assignee)
+    if not expected:
+        return True
+    token = expected.lower()
+    return any(token in name.lower() for name in _assignee_names(row))
+
+
+def _row_matches_label_filter(row: GitLabTrackedIssue, label: str) -> bool:
+    expected = _string_or_none(label)
+    if not expected:
+        return True
+    token = expected.lower()
+    return any(token in value.lower() for value in _effective_labels(row))
 
 
 def _target_team_map() -> dict[str, str]:

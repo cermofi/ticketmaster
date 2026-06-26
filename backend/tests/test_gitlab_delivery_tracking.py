@@ -12,6 +12,8 @@ from ticketmaster.services.gitlab_delivery_tracking import (
     TargetResolution,
     _expected_sync_status,
     _tracked_issue_invariant_errors,
+    _row_matches_assignee_filter,
+    _row_matches_label_filter,
     _parse_issue_url,
     _resolve_target_issue,
     _sort_tracked_issue_rows,
@@ -109,6 +111,35 @@ def test_sort_rows_by_ticket_id_asc() -> None:
     ]
     sorted_rows = _sort_tracked_issue_rows(rows, sort_by="ticket_id", sort_direction="asc")
     assert [row.delivery_issue_iid for row in sorted_rows] == ["3", "11", "20"]
+
+
+def test_row_matches_assignee_filter_uses_name_and_username() -> None:
+    row = SimpleNamespace(
+        target_assignees=[
+            {"name": "Alice Delivery", "username": "adelivery"},
+            {"name": None, "username": "bworker"},
+        ],
+    )
+    assert _row_matches_assignee_filter(row, "alice")
+    assert _row_matches_assignee_filter(row, "bworker")
+    assert not _row_matches_assignee_filter(row, "charlie")
+
+
+def test_sort_rows_by_team_id_uses_target_issue_iid() -> None:
+    rows = [
+        SimpleNamespace(delivery_issue_iid="1", delivery_title="A", target_issue_iid="200", target_url="http://example/200"),
+        SimpleNamespace(delivery_issue_iid="2", delivery_title="B", target_issue_iid="15", target_url="http://example/15"),
+    ]
+    sorted_rows = _sort_tracked_issue_rows(rows, sort_by="target_issue_url", sort_direction="asc")
+    assert [row.delivery_issue_iid for row in sorted_rows] == ["2", "1"]
+
+
+def test_row_matches_label_filter_prefers_target_labels_with_delivery_fallback() -> None:
+    with_target = SimpleNamespace(target_labels=["Ops"], delivery_labels=["Delivery"])
+    with_delivery_only = SimpleNamespace(target_labels=[], delivery_labels=["Delivery"])
+    assert _row_matches_label_filter(with_target, "ops")
+    assert not _row_matches_label_filter(with_target, "delivery")
+    assert _row_matches_label_filter(with_delivery_only, "delivery")
 
 
 def test_resolve_target_issue_without_hints_stays_in_delivery() -> None:

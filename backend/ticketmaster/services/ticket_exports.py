@@ -70,11 +70,11 @@ TICKET_EXPORT_COLUMNS: tuple[tuple[str, str], ...] = (
 )
 
 DELIVERY_TRACKING_EXPORT_COLUMNS: tuple[tuple[str, str], ...] = (
-    ("last_gitlab_update", "Last GitLab update"),
-    ("delivery_issue", "Delivery issue"),
-    ("ticket_id", "Ticket ID"),
+    ("last_gitlab_update", "last update"),
+    ("ticket_id", "ID"),
+    ("delivery_issue", "delivery issue"),
     ("current_state", "Current state"),
-    ("target_issue_url", "Target issue URL"),
+    ("target_issue_url", "team id"),
     ("assignee", "Asignee"),
     ("labels", "Labels"),
 )
@@ -144,6 +144,8 @@ def build_delivery_tracking_export(
         target_team=clean_filters.get("target_team"),
         state=clean_filters.get("state"),
         missing_mapping=clean_filters.get("missing_mapping"),
+        assignee=clean_filters.get("assignee"),
+        label=clean_filters.get("label"),
         updated_since=updated_since,
         sort_by=normalized_sort_by,
         sort_direction=normalized_sort_direction,
@@ -167,11 +169,11 @@ def build_delivery_tracking_export(
             last_gitlab_update = format_ticket_export_datetime(last_gitlab_update)
         sheet_rows.append(
             {
-                "Last GitLab update": last_gitlab_update or "",
-                "Delivery issue": delivery_issue,
-                "Ticket ID": ticket_id,
+                "last update": last_gitlab_update or "",
+                "ID": ticket_id,
+                "delivery issue": delivery_issue,
                 "Current state": current_state,
-                "Target issue URL": row.get("target_url") or "",
+                "team id": row.get("target_issue_iid") or "",
                 "Asignee": assignee,
                 "Labels": labels,
             }
