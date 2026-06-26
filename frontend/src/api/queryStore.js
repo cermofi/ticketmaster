@@ -109,7 +109,9 @@ export function invalidateDomains(domains) {
   });
   const legacy = domainInvalidators.get(LEGACY_ALL);
   if (legacy) runBucket(legacy);
-  window.dispatchEvent(new Event(SESSION_CHANGE_EVENT));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(SESSION_CHANGE_EVENT));
+  }
 }
 
 export function invalidateForTransition(transition) {

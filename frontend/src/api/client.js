@@ -2,8 +2,10 @@ import axios from 'axios';
 
 import { invalidateAllDomains, registerDomainInvalidator } from './queryStore.js';
 
+const VITE_API_BASE = import.meta?.env?.VITE_API_BASE;
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE || '/api'
+  baseURL: VITE_API_BASE || '/api'
 });
 
 api.interceptors.request.use((config) => {
