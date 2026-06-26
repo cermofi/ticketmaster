@@ -70,6 +70,7 @@ services:
       retries: 10
 
   api:
+    image: ghcr.io/cermofi/ticketmaster-api:${IMAGE_TAG:-main-latest}
     build:
       context: ./backend
     environment: *app-environment
@@ -101,6 +102,7 @@ services:
       retries: 12
 
   docs:
+    image: ghcr.io/cermofi/ticketmaster-docs:${IMAGE_TAG:-main-latest}
     build:
       context: ./docs-site
     restart: unless-stopped
@@ -113,6 +115,7 @@ services:
       retries: 12
 
   frontend:
+    image: ghcr.io/cermofi/ticketmaster-frontend:${IMAGE_TAG:-main-latest}
     build:
       context: .
       dockerfile: frontend/Dockerfile
