@@ -101,6 +101,16 @@ def test_sort_rows_by_assignee_desc() -> None:
     assert [row.delivery_issue_iid for row in sorted_rows] == ["2", "1"]
 
 
+def test_sort_rows_by_ticket_id_asc() -> None:
+    rows = [
+        SimpleNamespace(delivery_issue_iid="20", delivery_title="A"),
+        SimpleNamespace(delivery_issue_iid="3", delivery_title="B"),
+        SimpleNamespace(delivery_issue_iid="11", delivery_title="C"),
+    ]
+    sorted_rows = _sort_tracked_issue_rows(rows, sort_by="ticket_id", sort_direction="asc")
+    assert [row.delivery_issue_iid for row in sorted_rows] == ["3", "11", "20"]
+
+
 def test_resolve_target_issue_without_hints_stays_in_delivery() -> None:
     class DummyClient:
         @staticmethod

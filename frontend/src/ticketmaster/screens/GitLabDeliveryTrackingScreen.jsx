@@ -73,6 +73,8 @@ function TrackingDashboard({ user }) {
   const [mappingError, setMappingError] = useState('');
   const [mappingSaving, setMappingSaving] = useState(false);
   const [mappingRow, setMappingRow] = useState(null);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [detailRow, setDetailRow] = useState(null);
 
   const setFilters = useCallback((next) => {
     const merged = typeof next === 'function' ? next(filtersRef.current) : next;
@@ -158,6 +160,16 @@ function TrackingDashboard({ user }) {
     setMappingModalOpen(true);
   };
 
+  const openDetailDialog = (row) => {
+    setDetailRow(row);
+    setDetailModalOpen(true);
+  };
+
+  const closeDetailDialog = () => {
+    setDetailModalOpen(false);
+    setDetailRow(null);
+  };
+
   const closeMappingDialog = () => {
     if (mappingSaving) return;
     setMappingModalOpen(false);
@@ -229,14 +241,24 @@ function TrackingDashboard({ user }) {
           />
           <TrackingTable
             rows={rows}
-            canManage={canManage}
-            onManualMapping={openMappingDialog}
             sortBy={filters.sort_by}
             sortDirection={filters.sort_direction}
             onSortChange={onSortChange}
+            onOpenDetails={openDetailDialog}
           />
         </>
       )}
+      <TrackingDetailsModal
+        isOpen={detailModalOpen}
+        row={detailRow}
+        canManage={canManage}
+        onClose={closeDetailDialog}
+        onManualMapping={(row) => {
+          if (!row) return;
+          closeDetailDialog();
+          openMappingDialog(row);
+        }}
+      />
       <Modal isOpen={mappingModalOpen} toggle={closeMappingDialog}>
         <ModalHeader toggle={closeMappingDialog}>Manual issue mapping</ModalHeader>
         <ModalBody>
@@ -329,18 +351,15 @@ function TrackingFilters({ filters, setFilters, teams, states, onApply, onReset 
   );
 }
 
-function TrackingTable({ rows, canManage, onManualMapping, sortBy, sortDirection, onSortChange }) {
+function TrackingTable({ rows, sortBy, sortDirection, onSortChange, onOpenDetails }) {
   const headers = [
-    { key: 'delivery_issue', label: 'Delivery issue' },
-    { key: 'current_state', label: 'Current state' },
-    { key: 'target_team', label: 'Target team' },
-    { key: 'target_issue_url', label: 'Target issue URL' },
-    { key: 'assignee', label: 'Assignee' },
-    { key: 'labels', label: 'Labels' },
-    { key: 'sync_status', label: 'Sync status' },
     { key: 'last_gitlab_update', label: 'Last GitLab update' },
-    { key: 'delivery_url', label: 'Delivery URL' },
-    { key: 'resolution_source', label: 'Resolution source' }
+    { key: 'delivery_issue', label: 'Delivery issue' },
+    { key: 'ticket_id', label: 'Ticket ID' },
+    { key: 'current_state', label: 'Current state' },
+    { key: 'target_issue_url', label: 'Target issue URL' },
+    { key: 'assignee', label: 'Asignee' },
+    { key: 'labels', label: 'Labels' }
   ];
 
   return (
@@ -368,66 +387,131 @@ function TrackingTable({ rows, canManage, onManualMapping, sortBy, sortDirection
                 </th>
               );
             })}
-            <th className="text-end">Actions</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => {
-            const inDelivery = row.sync_status === 'in_delivery';
             const currentState = row.target_state || row.delivery_state;
             const labels = (Array.isArray(row.target_labels) && row.target_labels.length > 0)
               ? row.target_labels
               : row.delivery_labels;
-            const targetTeam = row.target_team_name || (inDelivery ? 'Delivery' : '-');
             return (
               <tr key={row.id}>
-              <td>
-                <div>{row.delivery_title}</div>
-                <div className="tm-muted">#{row.delivery_issue_iid}</div>
-              </td>
-              <td>
-                {currentState ? <StatusPill value={currentState} /> : <span className="tm-muted">-</span>}
-              </td>
-              <td>
-                <div>{targetTeam}</div>
-                <div className="tm-muted">{row.target_project_name || '-'}</div>
-              </td>
-              <td>
-                <ExternalLink href={row.target_url} label={row.target_issue_iid ? `#${row.target_issue_iid}` : 'Open target issue'} />
-              </td>
-              <td className="tm-quiet-cell">{formatAssignees(row.target_assignees)}</td>
-              <td className="tm-quiet-cell">{formatLabels(labels)}</td>
-              <td>
-                <StatusPill value={syncStatusLabel(row.sync_status)} tone={syncStatusTone(row.sync_status)} />
-              </td>
-              <td className="tm-quiet-cell">
-                <TimeCell value={row.target_updated_at || row.delivery_updated_at} />
-              </td>
-              <td>
-                <ExternalLink href={row.delivery_url} label="Open delivery issue" />
-              </td>
-              <td>
-                <span className="tm-quiet-cell">{row.resolution_source || '-'}</span>
-              </td>
-              <td className="text-end">
-                {canManage && row.target_missing && (
-                  <Button size="sm" outline color="secondary" onClick={() => onManualMapping(row)}>
-                    Map manually
-                  </Button>
-                )}
-              </td>
+                <td className="tm-quiet-cell">
+                  <TimeCell value={row.target_updated_at || row.delivery_updated_at} />
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    className="btn btn-link p-0 text-start align-baseline"
+                    onClick={() => onOpenDetails(row)}
+                  >
+                    {row.delivery_title || '-'}
+                  </button>
+                </td>
+                <td className="tm-quiet-cell">{formatTicketId(row.delivery_issue_iid)}</td>
+                <td>
+                  {currentState ? <StatusPill value={currentState} /> : <span className="tm-muted">-</span>}
+                </td>
+                <td>
+                  <ExternalLink href={row.target_url} label={row.target_issue_iid ? `#${row.target_issue_iid}` : 'Open target issue'} />
+                </td>
+                <td className="tm-quiet-cell">{formatAssignees(row.target_assignees)}</td>
+                <td className="tm-quiet-cell">{formatLabels(labels)}</td>
               </tr>
             );
           })}
           {rows.length === 0 && (
             <EmptyRow
-              colSpan="11"
+              colSpan="7"
               title="No tracked issues found"
               message="Adjust filters or run a sync to import Delivery issues from GitLab."
             />
           )}
         </tbody>
       </Table>
+    </div>
+  );
+}
+
+function TrackingDetailsModal({ isOpen, row, canManage, onClose, onManualMapping }) {
+  const currentState = row?.target_state || row?.delivery_state;
+  const labels = (Array.isArray(row?.target_labels) && row.target_labels.length > 0)
+    ? row.target_labels
+    : row?.delivery_labels;
+  const targetTeam = row?.target_team_name || (row?.sync_status === 'in_delivery' ? 'Delivery' : '-');
+  const lastGitlabUpdate = row ? (row.target_updated_at || row.delivery_updated_at) : null;
+  const lastSyncedAt = row?.last_synced_at || null;
+
+  return (
+    <Modal isOpen={isOpen} toggle={onClose} size="lg">
+      <ModalHeader toggle={onClose}>Delivery issue detail</ModalHeader>
+      <ModalBody>
+        {!row ? null : (
+          <div className="row g-3">
+            <DetailItem label="Delivery issue">
+              <div>{row.delivery_title || '-'}</div>
+              <div className="tm-muted">{formatTicketId(row.delivery_issue_iid)}</div>
+            </DetailItem>
+            <DetailItem label="Delivery URL">
+              <ExternalLink href={row.delivery_url} label="Open delivery issue" />
+            </DetailItem>
+            <DetailItem label="Current state">
+              {currentState ? <StatusPill value={currentState} /> : <span className="tm-muted">-</span>}
+            </DetailItem>
+            <DetailItem label="Target team / project">
+              <div>{targetTeam}</div>
+              <div className="tm-muted">{row.target_project_name || '-'}</div>
+            </DetailItem>
+            <DetailItem label="Target issue URL">
+              <ExternalLink href={row.target_url} label={row.target_issue_iid ? `#${row.target_issue_iid}` : 'Open target issue'} />
+            </DetailItem>
+            <DetailItem label="Asignee">
+              {formatAssignees(row.target_assignees)}
+            </DetailItem>
+            <DetailItem label="Labels">
+              {formatLabels(labels)}
+            </DetailItem>
+            <DetailItem label="Sync status">
+              <StatusPill value={syncStatusLabel(row.sync_status)} tone={syncStatusTone(row.sync_status)} />
+            </DetailItem>
+            <DetailItem label="Resolution source">
+              <span>{row.resolution_source || '-'}</span>
+            </DetailItem>
+            <DetailItem label="Last GitLab update">
+              <TimeCell value={lastGitlabUpdate} />
+            </DetailItem>
+            <DetailItem label="Last synced at">
+              <TimeCell value={lastSyncedAt} />
+            </DetailItem>
+            {row.sync_error && (
+              <div className="col-12">
+                <div className="tm-muted mb-1">Sync error</div>
+                <div>{row.sync_error}</div>
+              </div>
+            )}
+          </div>
+        )}
+      </ModalBody>
+      <ModalFooter>
+        {canManage && row?.target_missing && (
+          <Button color="secondary" outline onClick={() => onManualMapping(row)}>
+            Map manually
+          </Button>
+        )}
+        <Button outline color="secondary" onClick={onClose}>
+          Close
+        </Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+function DetailItem({ label, children }) {
+  return (
+    <div className="col-12 col-md-6">
+      <div className="tm-muted mb-1">{label}</div>
+      <div>{children}</div>
     </div>
   );
 }
@@ -449,6 +533,11 @@ function formatLabels(labels) {
 function formatAssignees(assignees) {
   if (!Array.isArray(assignees) || assignees.length === 0) return '-';
   return assignees.map((assignee) => assignee?.name || assignee?.username).filter(Boolean).join(', ') || '-';
+}
+
+function formatTicketId(value) {
+  if (!value) return '-';
+  return String(value);
 }
 
 function syncStatusLabel(value) {

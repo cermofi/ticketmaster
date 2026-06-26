@@ -25,6 +25,7 @@ ISSUE_URL_IN_TEXT_RE = re.compile(r"https?://[^\s)]+/-/issues/\d+", re.IGNORECAS
 MOVED_NOTE_RE = re.compile(r"moved to\s+(?P<project_path>[A-Za-z0-9_.\-/]+)#(?P<issue_iid>\d+)", re.IGNORECASE)
 SORT_FIELDS = {
     "delivery_issue",
+    "ticket_id",
     "current_state",
     "target_team",
     "target_issue_url",
@@ -1206,6 +1207,8 @@ def _tracked_issue_sort_value(row: GitLabTrackedIssue, sort_by: str) -> object:
         if iid_text.isdigit():
             return (int(iid_text), "", _string_or_none(row.delivery_title) or "")
         return (10**9, iid_text, _string_or_none(row.delivery_title) or "")
+    if sort_by == "ticket_id":
+        return _safe_iid_sort(row.delivery_issue_iid)
     if sort_by == "current_state":
         return (_string_or_none(row.target_state) or _string_or_none(row.delivery_state) or "").lower()
     if sort_by == "target_team":
