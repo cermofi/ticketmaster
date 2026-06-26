@@ -51,6 +51,8 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
+          build-args: |
+            APP_VERSION=sha-${{ github.sha }}
           push: true
           tags: |
             ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image_name }}:sha-${{ github.sha }}

@@ -119,6 +119,8 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      args:
+        APP_VERSION: ${IMAGE_TAG:-main-latest}
     depends_on:
       api:
         condition: service_healthy

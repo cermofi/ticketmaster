@@ -1,6 +1,8 @@
 FROM node:22-alpine AS build
 
 WORKDIR /app
+ARG APP_VERSION=dev-local
+ENV VITE_APP_VERSION=${APP_VERSION}
 COPY frontend/package.json package.json
 RUN npm install
 COPY frontend/index.html frontend/vite.config.js /app/

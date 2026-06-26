@@ -1081,6 +1081,9 @@ def _emit_delivery_alert_if_needed(
     )
     if payload is None:
         return
+    if tracked in db.new:
+        # Persist newly tracked issue first so alert FK always points to an existing row.
+        db.flush([tracked])
     db.add(
         GitLabDeliveryAlert(
             id=new_id(),

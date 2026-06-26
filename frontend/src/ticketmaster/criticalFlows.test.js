@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { isLoginFormSubmittable, loginSubmitLabel, normalizeLoginIdentifier, resolveLoginErrorMessage } from '../loginFlow.js';
-import { availableNewTicketModes, isNewTicketModeVisible, resolveNewTicketInitialMode } from '../newTicketMode.js';
-import { canReturnToAdmin, canSignInAsPartner } from '../sessionControls.js';
+import { isLoginFormSubmittable, loginSubmitLabel, normalizeLoginIdentifier, resolveLoginErrorMessage } from './loginFlow.js';
+import { availableNewTicketModes, isNewTicketModeVisible, resolveNewTicketInitialMode } from './newTicketMode.js';
+import { canReturnToAdmin, canSignInAsPartner } from './sessionControls.js';
 
 test('normalizeLoginIdentifier trims whitespace', () => {
   assert.equal(normalizeLoginIdentifier('  admin@example.test  '), 'admin@example.test');

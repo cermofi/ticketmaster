@@ -6,6 +6,7 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 import './styles.scss';
 
+import BuildVersionFooter from './ticketmaster/BuildVersionFooter.jsx';
 import TicketMasterModule from './ticketmaster/TicketMasterModule.jsx';
 
 const CHUNK_RELOAD_KEY = 'ticketmaster.chunk_reload_attempt';
@@ -191,6 +192,7 @@ createRoot(document.getElementById('app')).render(
       modules={[I18nModule, TicketMasterModule]}
       configdefaults={ConfigDefaults}
     />
+    <BuildVersionFooter />
   </ApplicationHashRouter>
 );
 
