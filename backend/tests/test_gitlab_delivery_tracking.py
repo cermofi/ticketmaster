@@ -173,6 +173,77 @@ def test_build_delivery_alert_payload_for_state_change() -> None:
     assert payload["kind"] == "state_changed"
 
 
+def test_build_delivery_alert_payload_for_comment_addition() -> None:
+    tracked = SimpleNamespace(sync_status="ok", target_issue_iid="55", target_state="opened", delivery_state="opened")
+    payload = _build_delivery_alert_payload(
+        tracked,
+        previous_snapshot={
+            "activity_source": "target",
+            "activity_comment_count": 2,
+            "activity_description_digest": "same",
+        },
+        current_snapshot={
+            "activity_source": "target",
+            "activity_comment_count": 3,
+            "activity_description_digest": "same",
+        },
+        is_new=False,
+    )
+    assert payload is not None
+    assert payload["kind"] == "comment_added"
+
+
+def test_build_delivery_alert_payload_for_description_edit() -> None:
+    tracked = SimpleNamespace(sync_status="ok", target_issue_iid="55", target_state="opened", delivery_state="opened")
+    payload = _build_delivery_alert_payload(
+        tracked,
+        previous_snapshot={
+            "activity_source": "target",
+            "activity_comment_count": 2,
+            "activity_description_digest": "old",
+        },
+        current_snapshot={
+            "activity_source": "target",
+            "activity_comment_count": 2,
+            "activity_description_digest": "new",
+        },
+        is_new=False,
+    )
+    assert payload is not None
+    assert payload["kind"] == "description_edited"
+
+
+def test_build_delivery_alert_payload_for_assignee_change() -> None:
+    tracked = SimpleNamespace(sync_status="ok", target_issue_iid="55", target_state="opened", delivery_state="opened")
+    payload = _build_delivery_alert_payload(
+        tracked,
+        previous_snapshot={"target_assignees": ("Alice",)},
+        current_snapshot={"target_assignees": ("Bob",)},
+        is_new=False,
+    )
+    assert payload is not None
+    assert payload["kind"] == "assignee_changed"
+
+
+def test_build_delivery_alert_payload_skips_marker_bootstrap_noise() -> None:
+    tracked = SimpleNamespace(sync_status="ok", target_issue_iid="55", target_state="opened", delivery_state="opened")
+    payload = _build_delivery_alert_payload(
+        tracked,
+        previous_snapshot={
+            "activity_source": "",
+            "activity_comment_count": "",
+            "activity_description_digest": "",
+        },
+        current_snapshot={
+            "activity_source": "target",
+            "activity_comment_count": 4,
+            "activity_description_digest": "new-digest",
+        },
+        is_new=False,
+    )
+    assert payload is None
+
+
 def test_resolve_target_issue_without_hints_stays_in_delivery() -> None:
     class DummyClient:
         @staticmethod

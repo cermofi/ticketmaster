@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from dataclasses import dataclass
@@ -56,6 +57,8 @@ ALERT_FIELD_LABELS: tuple[tuple[str, str], ...] = (
     ("target_url", "target issue url"),
     ("target_labels", "labels"),
     ("target_assignees", "assignee"),
+    ("activity_comment_count", "comments"),
+    ("activity_description_digest", "description"),
     ("sync_status", "sync status"),
     ("resolution_source", "resolution source"),
     ("target_missing", "target missing"),
@@ -714,6 +717,8 @@ def serialize_tracked_issue(row: GitLabTrackedIssue) -> dict:
         "target_assignees": assignees,
         "target_assignee": assignee_name,
         "target_updated_at": row.target_updated_at,
+        "activity_source": row.activity_source,
+        "activity_comment_count": row.activity_comment_count,
         "target_missing": row.target_missing,
         "resolution_source": row.resolution_source,
         "sync_status": row.sync_status,
@@ -872,6 +877,7 @@ def set_manual_mapping(db: Session, *, tracked_issue_id: str, target_url: str, a
                 client=client,
                 project_cache=project_cache,
             )
+            _apply_activity_fields(tracked, issue_payload=target_issue, source="target")
             if chain_error:
                 tracked.sync_error = chain_error
             else:
@@ -961,6 +967,7 @@ def _sync_delivery_issue(
             client=client,
             project_cache=project_cache,
         )
+        _apply_activity_fields(tracked, issue_payload=resolution.issue, source="target")
         tracked.sync_status = "ok"
         tracked.sync_error = resolution.fatal_error
         tracked.target_missing = False
@@ -979,6 +986,7 @@ def _sync_delivery_issue(
 
     _clear_target_fields(tracked)
     if expected_sync_status == "error":
+        _apply_activity_fields(tracked, issue_payload=payload, source="delivery")
         tracked.sync_status = "error"
         tracked.sync_error = resolution.fatal_error
         tracked.target_missing = False
@@ -992,6 +1000,7 @@ def _sync_delivery_issue(
         )
 
     if expected_sync_status == "in_delivery":
+        _apply_activity_fields(tracked, issue_payload=payload, source="delivery")
         tracked.sync_status = "in_delivery"
         tracked.sync_error = None
         tracked.target_missing = False
@@ -1010,6 +1019,7 @@ def _sync_delivery_issue(
             ),
         )
 
+    _apply_activity_fields(tracked, issue_payload=payload, source="delivery")
     tracked.sync_status = "target_missing"
     tracked.sync_error = "Target issue could not be resolved automatically"
     tracked.target_missing = True
@@ -1104,9 +1114,20 @@ def _build_delivery_alert_payload(
         }
 
     changes = _tracked_issue_alert_changes(previous_snapshot, current_snapshot)
+    if _activity_markers_uninitialized(previous_snapshot):
+        changes = [
+            change
+            for change in changes
+            if change["field"] not in {"activity_comment_count", "activity_description_digest"}
+        ]
     if not changes:
         return None
-    kind, message = _delivery_alert_kind_and_message(tracked, changes)
+    kind, message = _delivery_alert_kind_and_message(
+        tracked,
+        changes,
+        previous_snapshot=previous_snapshot,
+        current_snapshot=current_snapshot,
+    )
     return {"kind": kind, "message": message, "changes": changes}
 
 
@@ -1122,6 +1143,9 @@ def _tracked_issue_alert_snapshot(tracked: GitLabTrackedIssue) -> dict[str, obje
         "target_url": tracked.target_url or "",
         "target_labels": tuple(_normalize_labels(tracked.target_labels)),
         "target_assignees": tuple(_assignee_names(tracked)),
+        "activity_source": tracked.activity_source or "",
+        "activity_comment_count": tracked.activity_comment_count if tracked.activity_comment_count is not None else "",
+        "activity_description_digest": tracked.activity_description_digest or "",
         "sync_status": tracked.sync_status or "",
         "resolution_source": tracked.resolution_source or "",
         "target_missing": bool(tracked.target_missing),
@@ -1137,12 +1161,20 @@ def _tracked_issue_alert_changes(previous_snapshot: dict[str, object], current_s
         current_value = current_snapshot.get(field)
         if previous_value == current_value:
             continue
+        before_text = _alert_value_text(previous_value)
+        after_text = _alert_value_text(current_value)
+        if field == "activity_description_digest":
+            before_text = "edited" if before_text else ""
+            after_text = "edited"
+        elif field == "activity_comment_count":
+            before_text = before_text or "0"
+            after_text = after_text or "0"
         changes.append(
             {
                 "field": field,
                 "label": label,
-                "before": _alert_value_text(previous_value),
-                "after": _alert_value_text(current_value),
+                "before": before_text,
+                "after": after_text,
             }
         )
     return changes
@@ -1151,6 +1183,9 @@ def _tracked_issue_alert_changes(previous_snapshot: dict[str, object], current_s
 def _delivery_alert_kind_and_message(
     tracked: GitLabTrackedIssue,
     changes: list[dict[str, str]],
+    *,
+    previous_snapshot: dict[str, object],
+    current_snapshot: dict[str, object],
 ) -> tuple[str, str]:
     changed_fields = {change["field"] for change in changes}
     if "sync_status" in changed_fields:
@@ -1167,6 +1202,29 @@ def _delivery_alert_kind_and_message(
             return "reassigned", f"Ticket moved to team id {tracked.target_issue_iid}."
         return "reassigned", "Ticket target assignment changed."
 
+    source_changed = previous_snapshot.get("activity_source") != current_snapshot.get("activity_source")
+    if "target_assignees" in changed_fields:
+        return "assignee_changed", "Ticket assignee changed."
+
+    comment_changed = "activity_comment_count" in changed_fields
+    description_changed = "activity_description_digest" in changed_fields
+    comment_delta = _activity_comment_delta(previous_snapshot, current_snapshot)
+
+    if not source_changed and comment_changed and description_changed:
+        if comment_delta and comment_delta > 0:
+            suffix = "comment" if comment_delta == 1 else "comments"
+            return "comment_and_description", f"{comment_delta} new {suffix} added and description was edited."
+        return "comment_and_description", "Ticket comments changed and description was edited."
+
+    if not source_changed and comment_changed:
+        if comment_delta and comment_delta > 0:
+            suffix = "comment" if comment_delta == 1 else "comments"
+            return "comment_added", f"{comment_delta} new {suffix} added."
+        return "comment_activity", "Ticket comments changed."
+
+    if not source_changed and description_changed:
+        return "description_edited", "Ticket description was edited."
+
     if {"target_state", "delivery_state"} & changed_fields:
         state = tracked.target_state or tracked.delivery_state or "unknown"
         return "state_changed", f"Ticket state changed to {state}."
@@ -1175,6 +1233,22 @@ def _delivery_alert_kind_and_message(
         return "activity", "Ticket has new GitLab activity (comment or update)."
 
     return "updated", "Tracked ticket details changed in GitLab."
+
+
+def _activity_comment_delta(previous_snapshot: dict[str, object], current_snapshot: dict[str, object]) -> int | None:
+    previous_count = _int_or_none(previous_snapshot.get("activity_comment_count"))
+    current_count = _int_or_none(current_snapshot.get("activity_comment_count"))
+    if previous_count is None or current_count is None:
+        return None
+    return current_count - previous_count
+
+
+def _activity_markers_uninitialized(snapshot: dict[str, object]) -> bool:
+    if _string_or_none(snapshot.get("activity_source")):
+        return False
+    if _string_or_none(snapshot.get("activity_description_digest")):
+        return False
+    return _int_or_none(snapshot.get("activity_comment_count")) is None
 
 
 def _alert_value_text(value: object) -> str:
@@ -1413,6 +1487,12 @@ def _apply_target_fields(
     tracked.target_labels = _normalize_labels(target_issue.get("labels"))
     tracked.target_assignees = _normalize_assignees(target_issue.get("assignees"))
     tracked.target_updated_at = _parse_gitlab_datetime(target_issue.get("updated_at"))
+
+
+def _apply_activity_fields(tracked: GitLabTrackedIssue, *, issue_payload: dict, source: str) -> None:
+    tracked.activity_source = source
+    tracked.activity_description_digest = _issue_description_digest(issue_payload)
+    tracked.activity_comment_count = _issue_comment_count(issue_payload)
 
 
 def _clear_target_fields(tracked: GitLabTrackedIssue) -> None:
@@ -1697,6 +1777,15 @@ def _normalize_assignees(raw: object) -> list[dict]:
     return assignees
 
 
+def _issue_description_digest(issue_payload: dict) -> str:
+    description = str(issue_payload.get("description") or "")
+    return hashlib.sha256(description.encode("utf-8")).hexdigest()
+
+
+def _issue_comment_count(issue_payload: dict) -> int | None:
+    return _int_or_none(issue_payload.get("user_notes_count"))
+
+
 def _parse_issue_url(url: str) -> tuple[str, str]:
     raw = url.strip()
     if not raw:
@@ -1735,6 +1824,15 @@ def _string_or_none(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _int_or_none(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
 
 
 def _utcnow() -> datetime:
