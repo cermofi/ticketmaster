@@ -11,6 +11,7 @@ from ticketmaster.services.gitlab_delivery_tracking import (
     GitLabApiError,
     TargetResolution,
     _build_delivery_alert_payload,
+    _emit_delivery_alert_if_needed,
     _expected_sync_status,
     _tracked_issue_invariant_errors,
     _tracked_issue_alert_changes,
@@ -22,6 +23,7 @@ from ticketmaster.services.gitlab_delivery_tracking import (
     normalize_sort,
     parse_updated_since,
 )
+from ticketmaster.models import GitLabTrackedIssue
 
 
 def test_parse_updated_since_accepts_date_only() -> None:
@@ -242,6 +244,43 @@ def test_build_delivery_alert_payload_skips_marker_bootstrap_noise() -> None:
         is_new=False,
     )
     assert payload is None
+
+
+def test_emit_delivery_alert_flushes_pending_tracked_issue_before_insert() -> None:
+    class DummySession:
+        def __init__(self, tracked_issue: GitLabTrackedIssue) -> None:
+            self.new = {tracked_issue}
+            self.flush_calls: list[list[GitLabTrackedIssue] | None] = []
+            self.added: list[object] = []
+
+        def flush(self, objects=None) -> None:  # noqa: ANN001
+            self.flush_calls.append(objects)
+
+        def add(self, obj) -> None:  # noqa: ANN001
+            self.added.append(obj)
+
+    tracked = GitLabTrackedIssue(
+        id="tracked-issue-1",
+        delivery_project_id="503",
+        delivery_issue_iid="15",
+        delivery_title="ICZ - Upgrade Elasticsearch",
+        delivery_url="http://gitlab.example/team/delivery/-/issues/15",
+        delivery_state="opened",
+        sync_status="ok",
+    )
+    session = DummySession(tracked)
+
+    _emit_delivery_alert_if_needed(
+        session,
+        tracked=tracked,
+        previous_snapshot=None,
+        is_new=True,
+    )
+
+    assert session.flush_calls == [[tracked]]
+    assert len(session.added) == 1
+    alert = session.added[0]
+    assert getattr(alert, "tracked_issue_id", None) == tracked.id
 
 
 def test_resolve_target_issue_without_hints_stays_in_delivery() -> None:
