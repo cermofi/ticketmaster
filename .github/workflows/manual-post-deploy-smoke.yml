@@ -46,10 +46,14 @@ jobs:
           SMOKE_CHECK_BASE_URL: ${{ inputs.base_url || github.event.inputs.base_url || 'https://ticketmaster.cermofi.cz' }}
         run: bash scripts/post-deploy-smoke.sh
       - name: Optional authenticated read-only checks
-        if: ${{ secrets.SMOKE_CHECK_EMAIL != '' && secrets.SMOKE_CHECK_PASSWORD != '' }}
         env:
           SMOKE_CHECK_BASE_URL: ${{ inputs.base_url || github.event.inputs.base_url || 'https://ticketmaster.cermofi.cz' }}
           SMOKE_ALLOW_AUTH: "1"
           SMOKE_CHECK_EMAIL: ${{ secrets.SMOKE_CHECK_EMAIL }}
           SMOKE_CHECK_PASSWORD: ${{ secrets.SMOKE_CHECK_PASSWORD }}
-        run: bash scripts/post-deploy-smoke.sh
+        run: |
+          if [ -z "${SMOKE_CHECK_EMAIL}" ] || [ -z "${SMOKE_CHECK_PASSWORD}" ]; then
+            echo "Skipping authenticated smoke checks (SMOKE_CHECK_EMAIL/PASSWORD not set)."
+            exit 0
+          fi
+          bash scripts/post-deploy-smoke.sh
