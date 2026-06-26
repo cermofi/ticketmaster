@@ -77,6 +77,14 @@ DELIVERY_TRACKING_EXPORT_COLUMNS: tuple[tuple[str, str], ...] = (
     ("target_issue_url", "team id"),
     ("assignee", "Asignee"),
     ("labels", "Labels"),
+    ("delivery_url", "delivery url"),
+    ("target_issue_full_url", "target issue url"),
+    ("target_team", "target team"),
+    ("target_project", "target project"),
+    ("sync_status", "sync status"),
+    ("resolution_source", "resolution source"),
+    ("last_synced_at", "last synced at"),
+    ("sync_error", "sync error"),
 )
 
 
@@ -162,11 +170,18 @@ def build_delivery_tracking_export(
         ticket_id = row.get("delivery_issue_iid") or ""
         labels_source = row.get("target_labels") or row.get("delivery_labels") or []
         labels = ", ".join(labels_source)
-        assignee = row.get("target_assignee") or ""
+        assignee = _delivery_tracking_assignee_text(row.get("target_assignees"))
         last_gitlab_update = row.get("target_updated_at") or row.get("delivery_updated_at")
+        last_synced_at = row.get("last_synced_at")
         current_state = row.get("target_state") or row.get("delivery_state") or ""
+        in_delivery = row.get("sync_status") == "in_delivery"
+        target_team = row.get("target_team_name") or ("Delivery" if in_delivery else "")
+        target_project = row.get("target_project_name") or ""
+        sync_status = _delivery_sync_status_label(row.get("sync_status"))
         if isinstance(last_gitlab_update, datetime):
             last_gitlab_update = format_ticket_export_datetime(last_gitlab_update)
+        if isinstance(last_synced_at, datetime):
+            last_synced_at = format_ticket_export_datetime(last_synced_at)
         sheet_rows.append(
             {
                 "last update": last_gitlab_update or "",
@@ -176,6 +191,14 @@ def build_delivery_tracking_export(
                 "team id": row.get("target_issue_iid") or "",
                 "Asignee": assignee,
                 "Labels": labels,
+                "delivery url": row.get("delivery_url") or "",
+                "target issue url": row.get("target_url") or "",
+                "target team": target_team,
+                "target project": target_project,
+                "sync status": sync_status,
+                "resolution source": row.get("resolution_source") or "",
+                "last synced at": last_synced_at or "",
+                "sync error": row.get("sync_error") or "",
             }
         )
 
@@ -580,5 +603,31 @@ def _json_ready(value: Any) -> Any:
 
 def _xml_safe(value: str) -> str:
     return "".join(char for char in value if char in "\n\r\t" or ord(char) >= 32)
+
+
+def _delivery_tracking_assignee_text(value: Any) -> str:
+    if not isinstance(value, list):
+        return ""
+    names: list[str] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or item.get("username") or "").strip()
+        if name:
+            names.append(name)
+    return ", ".join(names)
+
+
+def _delivery_sync_status_label(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if text == "ok":
+        return "Synced"
+    if text == "in_delivery":
+        return "In delivery"
+    if text == "target_missing":
+        return "Target missing"
+    if text == "error":
+        return "Sync error"
+    return str(value or "")
 
 
