@@ -90,9 +90,6 @@ jobs:
     permissions:
       contents: read
       packages: read
-    env:
-      DEPLOY_LOG_DIR: ${{ runner.temp }}/release-main-${{ github.run_id }}-${{ github.run_attempt }}
-      RELEASE_SMOKE_BASE_URL: ${{ inputs.smoke_base_url || 'https://ticketmaster.cermofi.cz' }}
     steps:
       - id: owner
         name: Lowercase owner
@@ -106,6 +103,13 @@ jobs:
           else
             echo "value=sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Resolve deploy runtime environment
+        run: |
+          set -euo pipefail
+          base_tmp="${RUNNER_TEMP:-/tmp}"
+          echo "DEPLOY_LOG_DIR=${base_tmp}/release-main-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+          echo "RELEASE_SMOKE_BASE_URL=${{ inputs.smoke_base_url || 'https://ticketmaster.cermofi.cz' }}" >> "$GITHUB_ENV"
 
       - name: Prepare deploy log directory
         run: |
