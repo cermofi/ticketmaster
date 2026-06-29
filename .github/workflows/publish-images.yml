@@ -1,7 +1,9 @@
 name: Publish Images
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -15,7 +17,14 @@ concurrency:
 
 jobs:
   publish:
+    if: >
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -31,7 +40,18 @@ jobs:
             dockerfile: frontend/Dockerfile
 
     steps:
+      - id: source
+        name: Resolve source commit
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source.outputs.sha }}
 
       - id: owner
         name: Lowercase owner
@@ -52,10 +72,10 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           build-args: |
-            APP_VERSION=sha-${{ github.sha }}
+            APP_VERSION=sha-${{ steps.source.outputs.sha }}
           push: true
           tags: |
-            ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image_name }}:sha-${{ github.sha }}
+            ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image_name }}:sha-${{ steps.source.outputs.sha }}
             ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image_name }}:main-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -25,6 +25,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: [self-hosted, prod-deploy]
     environment: production
+    timeout-minutes: 45
 
     steps:
       - name: Ensure app directory exists
