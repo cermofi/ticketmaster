@@ -109,6 +109,7 @@ jobs:
           set -euo pipefail
           base_tmp="${RUNNER_TEMP:-/tmp}"
           echo "DEPLOY_LOG_DIR=${base_tmp}/release-main-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+          echo "DEPLOY_ENV_FILE=${base_tmp}/release-main-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/deploy.env.images" >> "$GITHUB_ENV"
           echo "RELEASE_SMOKE_BASE_URL=${{ inputs.smoke_base_url || 'https://ticketmaster.cermofi.cz' }}" >> "$GITHUB_ENV"
 
       - name: Prepare deploy log directory
@@ -162,7 +163,7 @@ jobs:
               exit 1
             fi
 
-            extra_untracked="$(git ls-files --others --exclude-standard | awk '!/^\\.env\\.backup\\./ && $0 != \".env.images\"')"
+            extra_untracked="$(git ls-files --others --exclude-standard)"
             if [ -n "${extra_untracked}" ]; then
               echo "ERROR: unexpected untracked files detected in /opt/ticketmaster."
               echo "${extra_untracked}"
@@ -215,9 +216,8 @@ jobs:
         run: |
           set -euo pipefail
           {
-            cd /opt/ticketmaster
-            echo "IMAGE_TAG=${{ steps.tag.outputs.value }}" > .env.images
-            cat .env.images
+            echo "IMAGE_TAG=${{ steps.tag.outputs.value }}" > "${DEPLOY_ENV_FILE}"
+            cat "${DEPLOY_ENV_FILE}"
           } 2>&1 | tee "${DEPLOY_LOG_DIR}/05-write-image-tag.log"
 
       - name: Pull images, run migration, restart services
@@ -225,7 +225,7 @@ jobs:
           set -euo pipefail
           {
             cd /opt/ticketmaster
-            COMPOSE=(docker compose --env-file .env --env-file .env.images -f docker-compose.yml)
+            COMPOSE=(docker compose --env-file .env --env-file "${DEPLOY_ENV_FILE}" -f docker-compose.yml)
 
             "${COMPOSE[@]}" pull api docs frontend
             "${COMPOSE[@]}" run --rm -T api ticketmaster-cli db migrate
