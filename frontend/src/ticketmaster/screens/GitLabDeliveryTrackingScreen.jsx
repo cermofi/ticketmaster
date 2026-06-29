@@ -87,6 +87,8 @@ function TrackingDashboard({ user }) {
   const [createLabels, setCreateLabels] = useState('');
   const [createSaving, setCreateSaving] = useState(false);
   const [createError, setCreateError] = useState('');
+  const [createTemplateKey, setCreateTemplateKey] = useState('');
+  const createTemplates = useMemo(() => asArray(meta?.create_templates), [meta]);
 
   const setFilters = useCallback((next) => {
     const merged = typeof next === 'function' ? next(filtersRef.current) : next;
@@ -264,12 +266,30 @@ function TrackingDashboard({ user }) {
     }
   };
 
+  const applyTemplateToCreateForm = useCallback((template, { keepTitle = false } = {}) => {
+    if (!template) return;
+    const titlePrefix = String(template.title_prefix || '').trim();
+    const nextTitle = titlePrefix ? `${titlePrefix} ` : '';
+    if (!keepTitle || !createTitle.trim()) {
+      setCreateTitle(nextTitle);
+    }
+    setCreateDescription(String(template.default_description || '').trim());
+    setCreateLabels(formatCreateLabels(template.default_labels));
+    setCreateTemplateKey(String(template.key || ''));
+  }, [createTitle]);
+
   const openCreateDialog = () => {
     if (!canManage) return;
     setCreateError('');
-    setCreateTitle('');
-    setCreateDescription('');
-    setCreateLabels('');
+    const defaultTemplate = createTemplates[0] || null;
+    if (defaultTemplate) {
+      applyTemplateToCreateForm(defaultTemplate);
+    } else {
+      setCreateTitle('');
+      setCreateDescription('');
+      setCreateLabels('');
+      setCreateTemplateKey('');
+    }
     setCreateModalOpen(true);
   };
 
@@ -279,11 +299,43 @@ function TrackingDashboard({ user }) {
     setCreateError('');
   };
 
+  const onCreateTemplateChange = (event) => {
+    const nextKey = event.target.value || '';
+    if (!nextKey) {
+      setCreateTemplateKey('');
+      return;
+    }
+    const template = findCreateTemplateByKey(createTemplates, nextKey);
+    if (!template) {
+      setCreateTemplateKey('');
+      return;
+    }
+    applyTemplateToCreateForm(template, { keepTitle: false });
+  };
+
   const createTicket = async () => {
     if (!canManage) return;
     const title = createTitle.trim();
     if (!title) {
       setCreateError('Title is required.');
+      return;
+    }
+    if (title.length < 6) {
+      setCreateError('Title must have at least 6 characters.');
+      return;
+    }
+    const description = createDescription.trim();
+    if (description.length < 10) {
+      setCreateError('Description must have at least 10 characters.');
+      return;
+    }
+    const parsedLabels = parseLabelInput(createLabels);
+    if (parsedLabels.length === 0) {
+      setCreateError('At least one label is required.');
+      return;
+    }
+    if (!parsedLabels.some((label) => label.toLowerCase() === 'delivery')) {
+      setCreateError('Labels must include "delivery".');
       return;
     }
     setError('');
@@ -292,14 +344,16 @@ function TrackingDashboard({ user }) {
     try {
       const payload = {
         title,
-        description: createDescription.trim(),
-        labels: parseLabelInput(createLabels)
+        description,
+        labels: parsedLabels,
+        template_key: createTemplateKey || null
       };
       const response = await api.post('/gitlab/delivery-tracking/create', payload);
       setCreateModalOpen(false);
       setCreateTitle('');
       setCreateDescription('');
       setCreateLabels('');
+      setCreateTemplateKey('');
       await load();
       const issueUrl = response?.data?.issue?.web_url;
       if (issueUrl) {
@@ -416,6 +470,23 @@ function TrackingDashboard({ user }) {
           <ModalBody>
             <ErrorBanner error={createError} />
             <FormGroup>
+              <Label for="tm-create-ticket-template">Template</Label>
+              <Input
+                id="tm-create-ticket-template"
+                type="select"
+                value={createTemplateKey}
+                onChange={onCreateTemplateChange}
+              >
+                <option value="">Custom (no template)</option>
+                {createTemplates.map((template) => (
+                  <option key={template.key} value={template.key}>{template.name}</option>
+                ))}
+              </Input>
+              <div className="tm-muted tm-field-help">
+                Template pre-fills labels and description for delivery workflow.
+              </div>
+            </FormGroup>
+            <FormGroup>
               <Label for="tm-create-ticket-title">Title</Label>
               <Input
                 id="tm-create-ticket-title"
@@ -444,13 +515,26 @@ function TrackingDashboard({ user }) {
                 onChange={(event) => setCreateLabels(event.target.value)}
                 placeholder="Comma separated, for example: delivery, customer, urgent"
               />
+              <div className="tm-muted tm-field-help">
+                Required: include <code>delivery</code> label.
+              </div>
             </FormGroup>
           </ModalBody>
           <ModalFooter>
             <Button outline color="secondary" onClick={closeCreateDialog} disabled={createSaving}>
               Cancel
             </Button>
-            <Button color="primary" type="submit" disabled={!createTitle.trim() || createSaving}>
+            <Button
+              color="primary"
+              type="submit"
+              disabled={
+                !createTitle.trim()
+                || createDescription.trim().length < 10
+                || parseLabelInput(createLabels).length === 0
+                || !parseLabelInput(createLabels).some((label) => label.toLowerCase() === 'delivery')
+                || createSaving
+              }
+            >
               {createSaving ? 'Creating...' : 'Create in GitLab'}
             </Button>
           </ModalFooter>
@@ -828,11 +912,22 @@ function syncStatusTone(value) {
   return 'muted';
 }
 
+function findCreateTemplateByKey(templates, key) {
+  const token = String(key || '').trim();
+  if (!token) return null;
+  return templates.find((template) => String(template?.key || '') === token) || null;
+}
+
+function formatCreateLabels(labels) {
+  if (!Array.isArray(labels) || labels.length === 0) return '';
+  return labels.map((label) => String(label || '').trim()).filter(Boolean).join(', ');
+}
+
 function parseLabelInput(value) {
   if (!value) return [];
   const labels = [];
   const seen = new Set();
-  value.split(',').forEach((chunk) => {
+  value.split(/[\n,]/).forEach((chunk) => {
     const label = chunk.trim();
     if (!label) return;
     const key = label.toLowerCase();

@@ -203,6 +203,7 @@ class GitLabDeliveryIssueCreateBody(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     description: str = Field(default="", max_length=20000)
     labels: list[str] = Field(default_factory=list, max_length=30)
+    template_key: str | None = Field(default=None, max_length=80)
 
 
 @router.get("/health")
@@ -1204,6 +1205,7 @@ def gitlab_delivery_tracking_create_issue(
         title=body.title,
         description=body.description,
         labels=body.labels,
+        template_key=body.template_key,
     )
     run = gitlab_delivery_tracking.sync_delivery_issues(db, triggered_by=f"create:{user.id}")
     db.commit()
