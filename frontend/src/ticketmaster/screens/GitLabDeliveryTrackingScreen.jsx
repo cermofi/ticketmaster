@@ -81,6 +81,12 @@ function TrackingDashboard({ user }) {
   const [alertsLoading, setAlertsLoading] = useState(false);
   const [alertsActionLoading, setAlertsActionLoading] = useState(false);
   const [alertsError, setAlertsError] = useState('');
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createTitle, setCreateTitle] = useState('');
+  const [createDescription, setCreateDescription] = useState('');
+  const [createLabels, setCreateLabels] = useState('');
+  const [createSaving, setCreateSaving] = useState(false);
+  const [createError, setCreateError] = useState('');
 
   const setFilters = useCallback((next) => {
     const merged = typeof next === 'function' ? next(filtersRef.current) : next;
@@ -258,11 +264,59 @@ function TrackingDashboard({ user }) {
     }
   };
 
+  const openCreateDialog = () => {
+    if (!canManage) return;
+    setCreateError('');
+    setCreateTitle('');
+    setCreateDescription('');
+    setCreateLabels('');
+    setCreateModalOpen(true);
+  };
+
+  const closeCreateDialog = () => {
+    if (createSaving) return;
+    setCreateModalOpen(false);
+    setCreateError('');
+  };
+
+  const createTicket = async () => {
+    if (!canManage) return;
+    const title = createTitle.trim();
+    if (!title) {
+      setCreateError('Title is required.');
+      return;
+    }
+    setError('');
+    setCreateError('');
+    setCreateSaving(true);
+    try {
+      const payload = {
+        title,
+        description: createDescription.trim(),
+        labels: parseLabelInput(createLabels)
+      };
+      const response = await api.post('/gitlab/delivery-tracking/create', payload);
+      setCreateModalOpen(false);
+      setCreateTitle('');
+      setCreateDescription('');
+      setCreateLabels('');
+      await load();
+      const issueUrl = response?.data?.issue?.web_url;
+      if (issueUrl) {
+        window.open(issueUrl, '_blank', 'noopener,noreferrer');
+      }
+    } catch (err) {
+      setCreateError(apiError(err));
+    } finally {
+      setCreateSaving(false);
+    }
+  };
+
   if (!canView) {
     return (
       <div className="tm-screen">
-        <PageHeader title="Delivery tracking" />
-        <ErrorBanner error="Delivery tracking is available only to internal users." />
+        <PageHeader title="Tickets" />
+        <ErrorBanner error="Tickets are available only to internal users." />
       </div>
     );
   }
@@ -270,16 +324,21 @@ function TrackingDashboard({ user }) {
   return (
     <div className="tm-screen">
       <PageHeader
-        title="GitLab Delivery Tracking"
+        title="Tickets"
         actions={(
           <div className="d-flex gap-2">
+            {canManage && (
+              <Button color="primary" onClick={openCreateDialog}>
+                Create ticket
+              </Button>
+            )}
             <Button
               color="secondary"
               outline
               className="tm-delivery-alert-bell"
               onClick={openAlertsDialog}
-              aria-label="Open delivery alerts"
-              title="Delivery alerts"
+              aria-label="Open ticket alerts"
+              title="Ticket alerts"
             >
               <i className="bi bi-bell" aria-hidden="true" />
               {alertsUnreadCount > 0 && (
@@ -287,7 +346,7 @@ function TrackingDashboard({ user }) {
               )}
             </Button>
             {canManage && (
-              <Button color="primary" onClick={triggerSync} disabled={syncLoading}>
+              <Button color="secondary" outline onClick={triggerSync} disabled={syncLoading}>
                 {syncLoading ? 'Sync in progress...' : 'Sync now'}
               </Button>
             )}
@@ -347,6 +406,56 @@ function TrackingDashboard({ user }) {
         onMarkAllRead={markAllAlertsRead}
         onOpenAlert={openAlertIssue}
       />
+      <Modal isOpen={createModalOpen} toggle={closeCreateDialog}>
+        <Form onSubmit={(event) => {
+          event.preventDefault();
+          createTicket();
+        }}
+        >
+          <ModalHeader toggle={closeCreateDialog}>Create GitLab ticket</ModalHeader>
+          <ModalBody>
+            <ErrorBanner error={createError} />
+            <FormGroup>
+              <Label for="tm-create-ticket-title">Title</Label>
+              <Input
+                id="tm-create-ticket-title"
+                value={createTitle}
+                onChange={(event) => setCreateTitle(event.target.value)}
+                maxLength={255}
+                placeholder="Short summary for delivery issue"
+              />
+            </FormGroup>
+            <FormGroup>
+              <Label for="tm-create-ticket-description">Description</Label>
+              <Input
+                id="tm-create-ticket-description"
+                type="textarea"
+                rows={6}
+                value={createDescription}
+                onChange={(event) => setCreateDescription(event.target.value)}
+                placeholder="Optional context, acceptance criteria, links, notes..."
+              />
+            </FormGroup>
+            <FormGroup className="mb-0">
+              <Label for="tm-create-ticket-labels">Labels</Label>
+              <Input
+                id="tm-create-ticket-labels"
+                value={createLabels}
+                onChange={(event) => setCreateLabels(event.target.value)}
+                placeholder="Comma separated, for example: delivery, customer, urgent"
+              />
+            </FormGroup>
+          </ModalBody>
+          <ModalFooter>
+            <Button outline color="secondary" onClick={closeCreateDialog} disabled={createSaving}>
+              Cancel
+            </Button>
+            <Button color="primary" type="submit" disabled={!createTitle.trim() || createSaving}>
+              {createSaving ? 'Creating...' : 'Create in GitLab'}
+            </Button>
+          </ModalFooter>
+        </Form>
+      </Modal>
       <Modal isOpen={mappingModalOpen} toggle={closeMappingDialog}>
         <ModalHeader toggle={closeMappingDialog}>Manual issue mapping</ModalHeader>
         <ModalBody>
@@ -717,6 +826,21 @@ function syncStatusTone(value) {
   if (value === 'target_missing') return 'warning';
   if (value === 'error') return 'danger';
   return 'muted';
+}
+
+function parseLabelInput(value) {
+  if (!value) return [];
+  const labels = [];
+  const seen = new Set();
+  value.split(',').forEach((chunk) => {
+    const label = chunk.trim();
+    if (!label) return;
+    const key = label.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    labels.push(label);
+  });
+  return labels;
 }
 
 function buildRequestParams(filters) {
