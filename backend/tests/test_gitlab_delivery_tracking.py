@@ -123,7 +123,12 @@ def test_create_delivery_issue_maps_gitlab_api_errors() -> None:
         patch("ticketmaster.services.gitlab_delivery_tracking.httpx.post", return_value=response),
     ):
         with pytest.raises(ValidationError, match="GitLab API access forbidden"):
-            create_delivery_issue(actor=actor, title="Blocked issue")
+            create_delivery_issue(
+                actor=actor,
+                title="Blocked issue",
+                description="0123456789",
+                labels=["delivery"],
+            )
 
 
 def test_create_delivery_issue_applies_template_defaults() -> None:
