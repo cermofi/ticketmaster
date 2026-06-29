@@ -17,8 +17,9 @@ on:
 permissions:
   contents: read
 
+# Deploy every main merge in order; do not cancel in-progress production releases.
 concurrency:
-  group: release-main
+  group: release-main-mainline
   cancel-in-progress: false
 
 jobs:
@@ -45,7 +46,7 @@ jobs:
             context: .
             dockerfile: frontend/Dockerfile
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - id: owner
         name: Lowercase owner
@@ -55,17 +56,17 @@ jobs:
         name: Resolve image tag
         run: echo "value=sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push ${{ matrix.image_name }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
@@ -103,19 +104,96 @@ jobs:
             echo "value=sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Ensure app directory exists
-        run: test -d /opt/ticketmaster
-
-      - name: Sync production checkout
+      - name: Resolve deploy runtime environment
         run: |
           set -euo pipefail
-          cd /opt/ticketmaster
-          git fetch --prune origin
-          git checkout main
-          git pull --ff-only origin main
+          base_tmp="${RUNNER_TEMP:-/tmp}"
+          echo "DEPLOY_LOG_DIR=${base_tmp}/release-main-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+          echo "RELEASE_SMOKE_BASE_URL=${{ inputs.smoke_base_url || 'https://ticketmaster.cermofi.cz' }}" >> "$GITHUB_ENV"
+
+      - name: Prepare deploy log directory
+        run: |
+          set -euo pipefail
+          mkdir -p "${DEPLOY_LOG_DIR}"
+
+      - name: Preflight runner checks
+        run: |
+          set -euo pipefail
+          {
+            echo "timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo "runner_user=$(id -un)"
+            echo "runner_host=$(hostname)"
+            echo "git_version=$(git --version)"
+            echo "docker_version=$(docker --version)"
+            docker compose version
+            test -d /opt/ticketmaster
+            test -d /opt/ticketmaster/.git
+            test -f /opt/ticketmaster/docker-compose.yml
+            test -f /opt/ticketmaster/.env
+
+            ssh_rc=0
+            ssh -T -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 git@github.com || ssh_rc=$?
+            if [ "${ssh_rc}" -ne 1 ]; then
+              echo "ERROR: SSH connectivity/auth to git@github.com failed with code ${ssh_rc}."
+              exit "${ssh_rc}"
+            fi
+            echo "ssh_connectivity=ok"
+
+            docker info >/dev/null
+            echo "docker_info=ok"
+          } 2>&1 | tee "${DEPLOY_LOG_DIR}/01-preflight.log"
+
+      - name: Validate production checkout state
+        run: |
+          set -euo pipefail
+          {
+            cd /opt/ticketmaster
+            current_branch="$(git rev-parse --abbrev-ref HEAD)"
+            echo "current_branch=${current_branch}"
+            if [ "${current_branch}" != "main" ]; then
+              echo "ERROR: /opt/ticketmaster must be on main branch."
+              exit 1
+            fi
+
+            tracked_changes="$(git status --porcelain --untracked-files=no)"
+            if [ -n "${tracked_changes}" ]; then
+              echo "ERROR: tracked working tree changes detected in /opt/ticketmaster."
+              echo "${tracked_changes}"
+              exit 1
+            fi
+
+            extra_untracked="$(git ls-files --others --exclude-standard | awk '!/^\\.env\\.backup\\./')"
+            if [ -n "${extra_untracked}" ]; then
+              echo "ERROR: unexpected untracked files detected in /opt/ticketmaster."
+              echo "${extra_untracked}"
+              exit 1
+            fi
+
+            git fetch --prune origin
+            read -r ahead behind <<<"$(git rev-list --left-right --count main...origin/main)"
+            echo "ahead=${ahead} behind=${behind}"
+            if [ "${ahead}" -ne 0 ]; then
+              echo "ERROR: local main contains commits not on origin/main."
+              git log --oneline origin/main..main
+              exit 1
+            fi
+          } 2>&1 | tee "${DEPLOY_LOG_DIR}/02-checkout-guard.log"
+
+      - id: checkout_state
+        name: Sync production checkout
+        run: |
+          set -euo pipefail
+          {
+            cd /opt/ticketmaster
+            git checkout main
+            git pull --ff-only origin main
+            synced_head="$(git rev-parse HEAD)"
+            echo "synced_head=${synced_head}"
+            echo "head=${synced_head}" >> "$GITHUB_OUTPUT"
+          } 2>&1 | tee "${DEPLOY_LOG_DIR}/03-sync-checkout.log"
 
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -124,31 +202,66 @@ jobs:
       - name: Validate image tags exist in GHCR
         run: |
           set -euo pipefail
-          OWNER="${{ steps.owner.outputs.value }}"
-          TAG="${{ steps.tag.outputs.value }}"
-          docker manifest inspect "ghcr.io/${OWNER}/ticketmaster-api:${TAG}" >/dev/null
-          docker manifest inspect "ghcr.io/${OWNER}/ticketmaster-docs:${TAG}" >/dev/null
-          docker manifest inspect "ghcr.io/${OWNER}/ticketmaster-frontend:${TAG}" >/dev/null
+          {
+            OWNER="${{ steps.owner.outputs.value }}"
+            TAG="${{ steps.tag.outputs.value }}"
+            docker manifest inspect "ghcr.io/${OWNER}/ticketmaster-api:${TAG}" >/dev/null
+            docker manifest inspect "ghcr.io/${OWNER}/ticketmaster-docs:${TAG}" >/dev/null
+            docker manifest inspect "ghcr.io/${OWNER}/ticketmaster-frontend:${TAG}" >/dev/null
+            echo "validated_tag=${TAG}"
+          } 2>&1 | tee "${DEPLOY_LOG_DIR}/04-image-validation.log"
 
       - name: Write deploy image tag env
         run: |
           set -euo pipefail
-          cd /opt/ticketmaster
-          echo "IMAGE_TAG=${{ steps.tag.outputs.value }}" > .env.images
+          {
+            cd /opt/ticketmaster
+            echo "IMAGE_TAG=${{ steps.tag.outputs.value }}" > .env.images
+            cat .env.images
+          } 2>&1 | tee "${DEPLOY_LOG_DIR}/05-write-image-tag.log"
 
       - name: Pull images, run migration, restart services
         run: |
           set -euo pipefail
-          cd /opt/ticketmaster
-          COMPOSE=(docker compose --env-file .env --env-file .env.images -f docker-compose.yml)
+          {
+            cd /opt/ticketmaster
+            COMPOSE=(docker compose --env-file .env --env-file .env.images -f docker-compose.yml)
 
-          "${COMPOSE[@]}" pull api docs frontend
-          "${COMPOSE[@]}" run --rm -T api ticketmaster-cli db migrate
-          "${COMPOSE[@]}" up -d --no-build api docs frontend
-          "${COMPOSE[@]}" ps
+            "${COMPOSE[@]}" pull api docs frontend
+            "${COMPOSE[@]}" run --rm -T api ticketmaster-cli db migrate
+            "${COMPOSE[@]}" up -d --no-build api docs frontend
+            "${COMPOSE[@]}" ps
+          } 2>&1 | tee "${DEPLOY_LOG_DIR}/06-deploy.log"
 
       - name: Post-deploy smoke gate
         run: |
           set -euo pipefail
-          cd /opt/ticketmaster
-          SMOKE_CHECK_BASE_URL="${{ inputs.smoke_base_url || 'https://ticketmaster.cermofi.cz' }}" bash scripts/post-deploy-smoke.sh
+          {
+            cd /opt/ticketmaster
+            SMOKE_CHECK_BASE_URL="${RELEASE_SMOKE_BASE_URL}" bash scripts/post-deploy-smoke.sh
+          } 2>&1 | tee "${DEPLOY_LOG_DIR}/07-smoke.log"
+
+      - name: Upload deploy logs artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-main-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.DEPLOY_LOG_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Write release summary
+        if: always()
+        run: |
+          {
+            echo "## Release Main"
+            echo ""
+            echo "- Trigger: \`${GITHUB_EVENT_NAME}\`"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Synced checkout HEAD: \`${{ steps.checkout_state.outputs.head || 'n/a' }}\`"
+            echo "- Image tag: \`${{ steps.tag.outputs.value }}\`"
+            echo "- Smoke base URL: \`${RELEASE_SMOKE_BASE_URL}\`"
+            echo "- Publish job result: \`${{ needs.publish-images.result }}\`"
+            echo "- Deploy job result: \`${{ job.status }}\`"
+            echo "- Deploy logs artifact: \`release-main-logs-${{ github.run_id }}-${{ github.run_attempt }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
