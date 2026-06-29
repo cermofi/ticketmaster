@@ -162,7 +162,7 @@ jobs:
               exit 1
             fi
 
-            extra_untracked="$(git ls-files --others --exclude-standard | awk '!/^\\.env\\.backup\\./')"
+            extra_untracked="$(git ls-files --others --exclude-standard | awk '!/^\\.env\\.backup\\./ && $0 != \".env.images\"')"
             if [ -n "${extra_untracked}" ]; then
               echo "ERROR: unexpected untracked files detected in /opt/ticketmaster."
               echo "${extra_untracked}"
