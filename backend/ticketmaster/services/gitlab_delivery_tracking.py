@@ -29,64 +29,12 @@ logger = logging.getLogger("ticketmaster.gitlab.delivery_tracking")
 SYNC_ADVISORY_LOCK_ID = 90503
 CHECK_FINDINGS_LIMIT = 100
 ALERT_CHANGES_PREVIEW_LIMIT = 4
-CREATE_ISSUE_MIN_TITLE_LENGTH = 6
-CREATE_ISSUE_MIN_DESCRIPTION_LENGTH = 10
-CREATE_ISSUE_MAX_LABELS = 10
-CREATE_ISSUE_MAX_LABEL_LENGTH = 64
-DELIVERY_REQUIRED_LABEL = "delivery"
-
-DELIVERY_ISSUE_TEMPLATES: tuple[dict[str, object], ...] = (
-    {
-        "key": "delivery-task",
-        "name": "Delivery task",
-        "title_prefix": "[Task]",
-        "default_labels": ["delivery", "task"],
-        "default_description": (
-            "## Context\n"
-            "- What is the current situation?\n\n"
-            "## Goal\n"
-            "- What should be delivered?\n\n"
-            "## Acceptance criteria\n"
-            "- [ ] Criteria 1\n"
-            "- [ ] Criteria 2\n\n"
-            "## Notes\n"
-            "- Relevant links, dependencies, blockers\n"
-        ),
-    },
-    {
-        "key": "customer-request",
-        "name": "Customer request",
-        "title_prefix": "[Customer]",
-        "default_labels": ["delivery", "customer"],
-        "default_description": (
-            "## Customer\n"
-            "- Name / account\n\n"
-            "## Request summary\n"
-            "- What was asked?\n\n"
-            "## Impact\n"
-            "- Who is affected and how?\n\n"
-            "## Acceptance criteria\n"
-            "- [ ] Criteria 1\n"
-            "- [ ] Criteria 2\n"
-        ),
-    },
-    {
-        "key": "incident",
-        "name": "Incident",
-        "title_prefix": "[Incident]",
-        "default_labels": ["delivery", "incident"],
-        "default_description": (
-            "## Incident summary\n"
-            "- What happened?\n\n"
-            "## Severity\n"
-            "- Critical / High / Normal / Low\n\n"
-            "## Current impact\n"
-            "- Users/systems affected\n\n"
-            "## Next steps\n"
-            "- [ ] Immediate mitigation\n"
-            "- [ ] Root-cause follow-up\n"
-        ),
-    },
+CREATE_ISSUE_SUPPORTED_TYPES = {"issue", "incident", "test_case", "task"}
+CREATE_ISSUE_DEFAULT_TYPES: tuple[dict[str, str], ...] = (
+    {"value": "issue", "label": "Issue"},
+    {"value": "incident", "label": "Incident"},
+    {"value": "test_case", "label": "Test case"},
+    {"value": "task", "label": "Task"},
 )
 
 ISSUE_URL_PATH_RE = re.compile(r"^/(?P<project_path>.+)/-/issues/(?P<issue_iid>\d+)/?$")
@@ -248,6 +196,41 @@ class GitLabReadOnlyClient:
             raise GitLabApiError("GitLab project payload is invalid")
         return payload
 
+    def list_project_labels(self, project_id_or_path: str) -> list[dict]:
+        return self._list_paginated_dicts(
+            f"/projects/{quote_plus(str(project_id_or_path))}/labels",
+            params={"with_counts": "false", "include_ancestor_groups": "true"},
+        )
+
+    def list_project_milestones(self, project_id_or_path: str) -> list[dict]:
+        return self._list_paginated_dicts(
+            f"/projects/{quote_plus(str(project_id_or_path))}/milestones",
+            params={"state": "active"},
+        )
+
+    def list_project_members(self, project_id_or_path: str) -> list[dict]:
+        return self._list_paginated_dicts(
+            f"/projects/{quote_plus(str(project_id_or_path))}/members/all",
+            params={},
+        )
+
+    def _list_paginated_dicts(self, path: str, *, params: dict[str, str] | None = None) -> list[dict]:
+        rows: list[dict] = []
+        page = 1
+        while True:
+            request_params = dict(params or {})
+            request_params.update({"per_page": "100", "page": str(page)})
+            response = self._request(path, params=request_params)
+            payload = response.json()
+            if not isinstance(payload, list):
+                raise GitLabApiError("GitLab list payload is invalid")
+            rows.extend(item for item in payload if isinstance(item, dict))
+            next_page = response.headers.get("X-Next-Page", "").strip()
+            if not next_page:
+                break
+            page = int(next_page)
+        return rows
+
 
 def sync_enabled() -> bool:
     return _sync_configured() and settings.gitlab_sync_interval_seconds > 0
@@ -265,16 +248,74 @@ def list_target_teams() -> list[dict[str, str]]:
     return [{"project_id": project_id, "name": name} for project_id, name in settings.gitlab_target_projects]
 
 
-def delivery_issue_native_url() -> str | None:
-    base_url = _string_or_none(settings.gitlab_base_url)
-    project_ref = _string_or_none(settings.gitlab_delivery_project_id)
-    if not base_url or not project_ref:
-        return None
-    base = base_url.rstrip("/")
-    normalized_project = project_ref.strip("/")
-    if "/" in normalized_project:
-        return f"{base}/{normalized_project}/-/issues/new"
-    return f"{base}/-/projects/{quote_plus(normalized_project)}/issues/new"
+def get_delivery_issue_create_meta(*, actor: User) -> dict:
+    if actor.kind != "internal":
+        raise ValidationError("Only internal users can create delivery issues")
+    if not settings.gitlab_base_url:
+        raise ValidationError("GITLAB_BASE_URL is not configured")
+    if not settings.gitlab_delivery_project_id:
+        raise ValidationError("GITLAB_DELIVERY_PROJECT_ID is not configured")
+    if not settings.gitlab_token:
+        raise ValidationError("GITLAB_TOKEN is not configured")
+
+    client = GitLabReadOnlyClient(base_url=settings.gitlab_base_url, token=str(settings.gitlab_token))
+    try:
+        project = client.get_project(str(settings.gitlab_delivery_project_id))
+        project_ref = _string_or_none(project.get("id")) or str(settings.gitlab_delivery_project_id)
+        labels = [
+            {
+                "id": _int_or_none(label.get("id")),
+                "title": _string_or_none(label.get("name")),
+                "description": _string_or_none(label.get("description")),
+                "color": _string_or_none(label.get("color")),
+            }
+            for label in client.list_project_labels(project_ref)
+            if _string_or_none(label.get("name"))
+        ]
+        milestones = [
+            {
+                "id": _int_or_none(milestone.get("id")),
+                "title": _string_or_none(milestone.get("title")),
+                "description": _string_or_none(milestone.get("description")),
+                "due_date": _string_or_none(milestone.get("due_date")),
+                "web_url": _string_or_none(milestone.get("web_url")),
+            }
+            for milestone in client.list_project_milestones(project_ref)
+            if _string_or_none(milestone.get("title"))
+        ]
+        assignees = [
+            {
+                "id": _int_or_none(member.get("id")),
+                "username": _string_or_none(member.get("username")),
+                "name": _string_or_none(member.get("name")),
+                "avatar_url": _string_or_none(member.get("avatar_url")),
+                "web_url": _string_or_none(member.get("web_url")),
+                "state": _string_or_none(member.get("state")),
+            }
+            for member in client.list_project_members(project_ref)
+            if _int_or_none(member.get("id")) is not None
+        ]
+    finally:
+        client.close()
+
+    current_assignee_id = _resolve_current_assignee_id(actor=actor, assignees=assignees)
+
+    return {
+        "project": {
+            "id": _string_or_none(project.get("id")),
+            "name": _string_or_none(project.get("name")),
+            "path_with_namespace": _string_or_none(project.get("path_with_namespace")),
+            "web_url": _string_or_none(project.get("web_url")),
+        },
+        "issue_types": list(CREATE_ISSUE_DEFAULT_TYPES),
+        "labels": sorted(labels, key=lambda item: str(item["title"]).casefold()),
+        "milestones": sorted(milestones, key=lambda item: str(item["title"]).casefold()),
+        "assignees": sorted(
+            assignees,
+            key=lambda item: (str(item.get("name") or "").casefold(), str(item.get("username") or "").casefold()),
+        ),
+        "current_assignee_id": current_assignee_id,
+    }
 
 
 def parse_updated_since(value: str | None) -> datetime | None:
@@ -302,32 +343,6 @@ def normalize_sort(sort_by: str | None, sort_direction: str | None) -> tuple[str
     if normalized_direction not in SORT_DIRECTIONS:
         normalized_direction = "desc"
     return normalized_sort_by, normalized_direction
-
-
-def list_delivery_issue_templates() -> list[dict[str, object]]:
-    templates: list[dict[str, object]] = []
-    for template in DELIVERY_ISSUE_TEMPLATES:
-        templates.append(
-            {
-                "key": str(template["key"]),
-                "name": str(template["name"]),
-                "title_prefix": str(template["title_prefix"]),
-                "default_labels": [str(label) for label in template["default_labels"]],
-                "default_description": str(template["default_description"]),
-            }
-        )
-    return templates
-
-
-def _delivery_issue_template(key: str | None) -> dict[str, object] | None:
-    normalized = _string_or_none(key)
-    if not normalized:
-        return None
-    token = normalized.casefold()
-    for template in DELIVERY_ISSUE_TEMPLATES:
-        if str(template["key"]).casefold() == token:
-            return template
-    return None
 
 
 def list_dashboard_meta(db: Session) -> dict:
@@ -383,8 +398,6 @@ def list_dashboard_meta(db: Session) -> dict:
         "states": states,
         "assignees": assignees,
         "labels": labels,
-        "create_templates": list_delivery_issue_templates(),
-        "create_issue_native_url": delivery_issue_native_url(),
         "sync_interval_seconds": settings.gitlab_sync_interval_seconds,
         "last_sync_run": serialize_sync_run(latest_run) if latest_run else None,
     }
@@ -396,7 +409,11 @@ def create_delivery_issue(
     title: str,
     description: str | None = None,
     labels: list[str] | None = None,
-    template_key: str | None = None,
+    assignee_ids: list[int] | None = None,
+    milestone_id: int | None = None,
+    due_date: str | None = None,
+    confidential: bool = False,
+    issue_type: str | None = None,
 ) -> dict:
     if actor.kind != "internal":
         raise ValidationError("Only internal users can create delivery issues")
@@ -407,42 +424,32 @@ def create_delivery_issue(
     if not settings.gitlab_token:
         raise ValidationError("GITLAB_TOKEN is not configured")
 
-    normalized_template_key = _string_or_none(template_key)
-    selected_template = _delivery_issue_template(normalized_template_key)
-    if normalized_template_key and selected_template is None:
-        raise ValidationError("Unknown issue template")
-
     normalized_title = (title or "").strip()
     if not normalized_title:
         raise ValidationError("Issue title is required")
-    if len(normalized_title) < CREATE_ISSUE_MIN_TITLE_LENGTH:
-        raise ValidationError(f"Issue title must have at least {CREATE_ISSUE_MIN_TITLE_LENGTH} characters")
-
     normalized_description = (description or "").strip()
-    if not normalized_description and selected_template is not None:
-        normalized_description = str(selected_template["default_description"]).strip()
-    if len(normalized_description) < CREATE_ISSUE_MIN_DESCRIPTION_LENGTH:
-        raise ValidationError(
-            f"Issue description must have at least {CREATE_ISSUE_MIN_DESCRIPTION_LENGTH} characters"
-        )
-
-    template_labels = list(selected_template["default_labels"]) if selected_template is not None else []
-    normalized_labels = _sanitize_issue_labels([*template_labels, *(labels or [])])
-    if not normalized_labels:
-        raise ValidationError("At least one label is required")
-    if len(normalized_labels) > CREATE_ISSUE_MAX_LABELS:
-        raise ValidationError(f"At most {CREATE_ISSUE_MAX_LABELS} labels are allowed")
-    for label in normalized_labels:
-        if len(label) > CREATE_ISSUE_MAX_LABEL_LENGTH:
-            raise ValidationError(
-                f"Label '{label}' is too long (max {CREATE_ISSUE_MAX_LABEL_LENGTH} characters)"
-            )
-    if DELIVERY_REQUIRED_LABEL not in {label.casefold() for label in normalized_labels}:
-        raise ValidationError(f"Labels must include '{DELIVERY_REQUIRED_LABEL}'")
+    normalized_labels = _sanitize_issue_labels(labels)
+    normalized_assignee_ids = sorted({value for value in (_int_or_none(item) for item in (assignee_ids or [])) if value})
+    normalized_milestone_id = _int_or_none(milestone_id)
+    normalized_due_date = _normalize_due_date(due_date)
+    normalized_issue_type = _normalize_issue_type(issue_type)
+    normalized_confidential = bool(confidential)
 
     request_body: dict[str, object] = {"title": normalized_title}
-    request_body["description"] = normalized_description
-    request_body["labels"] = ",".join(normalized_labels)
+    if normalized_description:
+        request_body["description"] = normalized_description
+    if normalized_labels:
+        request_body["labels"] = ",".join(normalized_labels)
+    if normalized_assignee_ids:
+        request_body["assignee_ids"] = normalized_assignee_ids
+    if normalized_milestone_id is not None:
+        request_body["milestone_id"] = normalized_milestone_id
+    if normalized_due_date:
+        request_body["due_date"] = normalized_due_date
+    if normalized_confidential:
+        request_body["confidential"] = True
+    if normalized_issue_type:
+        request_body["issue_type"] = normalized_issue_type
 
     url = (
         f"{settings.gitlab_base_url.rstrip('/')}/api/v4/projects/"
@@ -477,7 +484,11 @@ def create_delivery_issue(
         "labels": _normalize_labels(payload.get("labels")),
         "web_url": _string_or_none(payload.get("web_url")),
         "created_at": _string_or_none(payload.get("created_at")),
-        "template_key": normalized_template_key,
+        "assignee_ids": normalized_assignee_ids,
+        "milestone_id": normalized_milestone_id,
+        "due_date": normalized_due_date,
+        "confidential": normalized_confidential,
+        "issue_type": normalized_issue_type or "issue",
     }
 
 
@@ -1989,6 +2000,39 @@ def _normalize_assignees(raw: object) -> list[dict]:
             }
         )
     return assignees
+
+
+def _normalize_due_date(value: str | None) -> str | None:
+    text = _string_or_none(value)
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise ValidationError("due_date must be in YYYY-MM-DD format") from exc
+    return parsed.date().isoformat()
+
+
+def _normalize_issue_type(value: str | None) -> str | None:
+    text = _string_or_none(value)
+    if not text:
+        return None
+    normalized = text.lower()
+    if normalized not in CREATE_ISSUE_SUPPORTED_TYPES:
+        raise ValidationError("Unsupported issue_type value")
+    return normalized
+
+
+def _resolve_current_assignee_id(*, actor: User, assignees: list[dict[str, object]]) -> int | None:
+    actor_email = _string_or_none(getattr(actor, "email", ""))
+    candidate_username = actor_email.split("@", 1)[0].lower() if actor_email else None
+    if not candidate_username:
+        return None
+    for assignee in assignees:
+        username = _string_or_none(assignee.get("username"))
+        if username and username.lower() == candidate_username:
+            return _int_or_none(assignee.get("id"))
+    return None
 
 
 def _issue_description_digest(issue_payload: dict) -> str:

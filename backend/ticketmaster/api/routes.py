@@ -203,7 +203,11 @@ class GitLabDeliveryIssueCreateBody(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     description: str = Field(default="", max_length=20000)
     labels: list[str] = Field(default_factory=list, max_length=30)
-    template_key: str | None = Field(default=None, max_length=80)
+    assignee_ids: list[int] = Field(default_factory=list, max_length=10)
+    milestone_id: int | None = None
+    due_date: str | None = Field(default=None, max_length=20)
+    confidential: bool = False
+    issue_type: str | None = Field(default=None, max_length=40)
 
 
 @router.get("/health")
@@ -1193,6 +1197,12 @@ def gitlab_delivery_tracking_sync(db: DbSession, user: CurrentUser) -> dict:
     return gitlab_delivery_tracking.serialize_sync_run(run)
 
 
+@router.get("/gitlab/delivery-tracking/create-meta")
+def gitlab_delivery_tracking_create_meta(user: CurrentUser) -> dict:
+    admin.require_admin_or_dm(user)
+    return gitlab_delivery_tracking.get_delivery_issue_create_meta(actor=user)
+
+
 @router.post("/gitlab/delivery-tracking/create")
 def gitlab_delivery_tracking_create_issue(
     db: DbSession,
@@ -1205,7 +1215,11 @@ def gitlab_delivery_tracking_create_issue(
         title=body.title,
         description=body.description,
         labels=body.labels,
-        template_key=body.template_key,
+        assignee_ids=body.assignee_ids,
+        milestone_id=body.milestone_id,
+        due_date=body.due_date,
+        confidential=body.confidential,
+        issue_type=body.issue_type,
     )
     run = gitlab_delivery_tracking.sync_delivery_issues(db, triggered_by=f"create:{user.id}")
     db.commit()
