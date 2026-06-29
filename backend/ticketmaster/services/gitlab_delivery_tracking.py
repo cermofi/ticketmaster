@@ -29,6 +29,7 @@ logger = logging.getLogger("ticketmaster.gitlab.delivery_tracking")
 SYNC_ADVISORY_LOCK_ID = 90503
 CHECK_FINDINGS_LIMIT = 100
 ALERT_CHANGES_PREVIEW_LIMIT = 4
+DETAIL_NOTES_LIMIT = 80
 CREATE_ISSUE_SUPPORTED_TYPES = {"issue", "incident", "test_case", "task"}
 CREATE_ISSUE_DEFAULT_TYPES: tuple[dict[str, str], ...] = (
     {"value": "issue", "label": "Issue"},
@@ -171,13 +172,20 @@ class GitLabReadOnlyClient:
             raise GitLabApiError("GitLab global issue payload is invalid")
         return payload
 
-    def get_issue_notes(self, project_id: str, issue_iid: str) -> list[dict]:
+    def get_issue_notes(
+        self,
+        project_id: str,
+        issue_iid: str,
+        *,
+        sort: str = "desc",
+        order_by: str = "updated_at",
+    ) -> list[dict]:
         notes: list[dict] = []
         page = 1
         while True:
             response = self._request(
                 f"/projects/{quote_plus(str(project_id))}/issues/{quote_plus(str(issue_iid))}/notes",
-                params={"per_page": 100, "page": page, "sort": "desc", "order_by": "updated_at"},
+                params={"per_page": 100, "page": page, "sort": sort, "order_by": order_by},
             )
             payload = response.json()
             if not isinstance(payload, list):
@@ -894,6 +902,41 @@ def list_tracked_issues(
         "offset": offset,
         "sort_by": normalized_sort_by,
         "sort_direction": normalized_sort_direction,
+    }
+
+
+def get_tracked_issue_detail(db: Session, *, actor: User, tracked_issue_id: str) -> dict:
+    if actor.kind != "internal":
+        raise ValidationError("Delivery tracking details are internal only")
+    tracked = db.get(GitLabTrackedIssue, tracked_issue_id)
+    if tracked is None:
+        raise NotFoundError("Tracked issue not found")
+    if not settings.gitlab_base_url:
+        raise ValidationError("GITLAB_BASE_URL is not configured")
+    if not settings.gitlab_token:
+        raise ValidationError("GITLAB_TOKEN is not configured")
+
+    project_id = tracked.target_project_id or tracked.delivery_project_id
+    issue_iid = tracked.target_issue_iid or tracked.delivery_issue_iid
+    source_issue = "target" if tracked.target_project_id and tracked.target_issue_iid else "delivery"
+    client = GitLabReadOnlyClient(base_url=settings.gitlab_base_url, token=str(settings.gitlab_token))
+    try:
+        issue_payload = client.get_project_issue(project_id, issue_iid)
+        notes_payload = client.get_issue_notes(project_id, issue_iid, sort="asc", order_by="created_at")
+    except GitLabApiError as exc:
+        raise ValidationError(f"GitLab issue detail unavailable: {exc}") from exc
+    finally:
+        client.close()
+
+    notes = [_normalize_issue_note(note) for note in notes_payload if isinstance(note, dict)]
+    if len(notes) > DETAIL_NOTES_LIMIT:
+        notes = notes[-DETAIL_NOTES_LIMIT:]
+
+    return {
+        "tracked_issue": serialize_tracked_issue(tracked),
+        "source_issue": source_issue,
+        "issue": _normalize_issue_detail(issue_payload),
+        "notes": notes,
     }
 
 
@@ -2000,6 +2043,77 @@ def _normalize_assignees(raw: object) -> list[dict]:
             }
         )
     return assignees
+
+
+def _normalize_issue_detail(raw: dict) -> dict:
+    assignees = _normalize_assignees(raw.get("assignees"))
+    if not assignees and isinstance(raw.get("assignee"), dict):
+        assignees = _normalize_assignees([raw.get("assignee")])
+    author_raw = raw.get("author")
+    author = author_raw if isinstance(author_raw, dict) else {}
+    milestone_raw = raw.get("milestone")
+    milestone = None
+    if isinstance(milestone_raw, dict):
+        milestone = {
+            "id": _string_or_none(milestone_raw.get("id")),
+            "iid": _string_or_none(milestone_raw.get("iid")),
+            "title": _string_or_none(milestone_raw.get("title")),
+            "description": _string_or_none(milestone_raw.get("description")),
+            "due_date": _string_or_none(milestone_raw.get("due_date")),
+            "state": _string_or_none(milestone_raw.get("state")),
+        }
+        if not any(milestone.values()):
+            milestone = None
+
+    references = raw.get("references")
+    references_dict = references if isinstance(references, dict) else {}
+    return {
+        "id": _string_or_none(raw.get("id")),
+        "iid": _string_or_none(raw.get("iid")),
+        "project_id": _string_or_none(raw.get("project_id")),
+        "title": _string_or_none(raw.get("title")) or "",
+        "description": _string_or_none(raw.get("description")) or "",
+        "state": _string_or_none(raw.get("state")) or "opened",
+        "issue_type": _string_or_none(raw.get("issue_type")) or "issue",
+        "confidential": bool(raw.get("confidential")),
+        "labels": _normalize_labels(raw.get("labels")),
+        "assignees": assignees,
+        "author": {
+            "id": _string_or_none(author.get("id")),
+            "username": _string_or_none(author.get("username")),
+            "name": _string_or_none(author.get("name")),
+            "avatar_url": _string_or_none(author.get("avatar_url")),
+            "web_url": _string_or_none(author.get("web_url")),
+        },
+        "milestone": milestone,
+        "due_date": _string_or_none(raw.get("due_date")),
+        "created_at": _string_or_none(raw.get("created_at")),
+        "updated_at": _string_or_none(raw.get("updated_at")),
+        "closed_at": _string_or_none(raw.get("closed_at")),
+        "web_url": _string_or_none(raw.get("web_url")),
+        "reference": _string_or_none(references_dict.get("full") or references_dict.get("short")),
+        "user_notes_count": _int_or_none(raw.get("user_notes_count")) or 0,
+    }
+
+
+def _normalize_issue_note(raw: dict) -> dict:
+    author_raw = raw.get("author")
+    author = author_raw if isinstance(author_raw, dict) else {}
+    return {
+        "id": _string_or_none(raw.get("id")),
+        "body": _string_or_none(raw.get("body")) or "",
+        "system": bool(raw.get("system")),
+        "internal": bool(raw.get("internal")) or bool(raw.get("confidential")),
+        "created_at": _string_or_none(raw.get("created_at")),
+        "updated_at": _string_or_none(raw.get("updated_at")),
+        "author": {
+            "id": _string_or_none(author.get("id")),
+            "username": _string_or_none(author.get("username")),
+            "name": _string_or_none(author.get("name")),
+            "avatar_url": _string_or_none(author.get("avatar_url")),
+            "web_url": _string_or_none(author.get("web_url")),
+        },
+    }
 
 
 def _normalize_due_date(value: str | None) -> str | None:

@@ -1226,6 +1226,20 @@ def gitlab_delivery_tracking_create_issue(
     return {"issue": issue, "sync_run": gitlab_delivery_tracking.serialize_sync_run(run)}
 
 
+@router.get("/gitlab/delivery-tracking/{tracked_issue_id}/detail")
+def gitlab_delivery_tracking_issue_detail(
+    db: DbSession,
+    user: CurrentUser,
+    tracked_issue_id: str,
+) -> dict:
+    admin.require_internal(user)
+    return gitlab_delivery_tracking.get_tracked_issue_detail(
+        db,
+        actor=user,
+        tracked_issue_id=tracked_issue_id,
+    )
+
+
 @router.post("/gitlab/delivery-tracking/{tracked_issue_id}/manual-mapping")
 def gitlab_delivery_tracking_set_manual_mapping(
     db: DbSession,
