@@ -197,6 +197,14 @@ class GitLabManualMappingBody(BaseModel):
     target_url: str = Field(min_length=1, max_length=1200)
 
 
+class GitLabDeliveryIssueCreateBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=255)
+    description: str = Field(default="", max_length=20000)
+    labels: list[str] = Field(default_factory=list, max_length=30)
+
+
 @router.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "ticketmaster-api"}
@@ -1182,6 +1190,24 @@ def gitlab_delivery_tracking_sync(db: DbSession, user: CurrentUser) -> dict:
     run = gitlab_delivery_tracking.sync_delivery_issues(db, triggered_by=f"manual:{user.id}")
     db.commit()
     return gitlab_delivery_tracking.serialize_sync_run(run)
+
+
+@router.post("/gitlab/delivery-tracking/create")
+def gitlab_delivery_tracking_create_issue(
+    db: DbSession,
+    user: CurrentUser,
+    body: GitLabDeliveryIssueCreateBody,
+) -> dict:
+    admin.require_admin_or_dm(user)
+    issue = gitlab_delivery_tracking.create_delivery_issue(
+        actor=user,
+        title=body.title,
+        description=body.description,
+        labels=body.labels,
+    )
+    run = gitlab_delivery_tracking.sync_delivery_issues(db, triggered_by=f"create:{user.id}")
+    db.commit()
+    return {"issue": issue, "sync_run": gitlab_delivery_tracking.serialize_sync_run(run)}
 
 
 @router.post("/gitlab/delivery-tracking/{tracked_issue_id}/manual-mapping")

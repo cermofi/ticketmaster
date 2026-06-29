@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 from datetime import timezone
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
+from ticketmaster.core.config import settings
 from ticketmaster.services.errors import ValidationError
 from ticketmaster.services.gitlab_delivery_tracking import (
     GitLabApiError,
@@ -20,10 +23,21 @@ from ticketmaster.services.gitlab_delivery_tracking import (
     _parse_issue_url,
     _resolve_target_issue,
     _sort_tracked_issue_rows,
+    create_delivery_issue,
     normalize_sort,
     parse_updated_since,
 )
 from ticketmaster.models import GitLabTrackedIssue
+
+
+class DummyGitLabResponse:
+    def __init__(self, *, status_code: int, payload: object, headers: dict[str, str] | None = None) -> None:
+        self.status_code = status_code
+        self._payload = payload
+        self.headers = headers or {}
+
+    def json(self):  # noqa: ANN201
+        return self._payload
 
 
 def test_parse_updated_since_accepts_date_only() -> None:
@@ -46,6 +60,68 @@ def test_parse_updated_since_accepts_iso_datetime() -> None:
 def test_parse_updated_since_rejects_invalid_value() -> None:
     with pytest.raises(ValidationError):
         parse_updated_since("20/06/2026")
+
+
+def test_create_delivery_issue_calls_gitlab_with_normalized_payload() -> None:
+    patched = replace(
+        settings,
+        gitlab_base_url="https://gitlab.example.com",
+        gitlab_token="secret-token",
+        gitlab_delivery_project_id="503",
+    )
+    actor = SimpleNamespace(kind="internal")
+    response = DummyGitLabResponse(
+        status_code=201,
+        payload={
+            "id": 9001,
+            "iid": 44,
+            "project_id": 503,
+            "title": "Create onboarding plan",
+            "description": "Detailed checklist",
+            "state": "opened",
+            "labels": ["Delivery", "Customer"],
+            "web_url": "https://gitlab.example.com/group/proj/-/issues/44",
+            "created_at": "2026-06-29T10:00:00Z",
+        },
+    )
+    with (
+        patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched),
+        patch("ticketmaster.services.gitlab_delivery_tracking.httpx.post", return_value=response) as post_mock,
+    ):
+        created = create_delivery_issue(
+            actor=actor,
+            title="  Create onboarding plan  ",
+            description="  Detailed checklist  ",
+            labels=["Delivery", "delivery", "Customer", " "],
+        )
+
+    assert created["iid"] == "44"
+    assert created["web_url"] == "https://gitlab.example.com/group/proj/-/issues/44"
+    assert created["labels"] == ["Delivery", "Customer"]
+    _, kwargs = post_mock.call_args
+    assert kwargs["json"] == {
+        "title": "Create onboarding plan",
+        "description": "Detailed checklist",
+        "labels": "Delivery,Customer",
+    }
+
+
+def test_create_delivery_issue_maps_gitlab_api_errors() -> None:
+    patched = replace(
+        settings,
+        gitlab_base_url="https://gitlab.example.com",
+        gitlab_token="secret-token",
+        gitlab_delivery_project_id="503",
+    )
+    actor = SimpleNamespace(kind="internal")
+    response = DummyGitLabResponse(status_code=403, payload={"message": "forbidden"})
+
+    with (
+        patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched),
+        patch("ticketmaster.services.gitlab_delivery_tracking.httpx.post", return_value=response),
+    ):
+        with pytest.raises(ValidationError, match="GitLab API access forbidden"):
+            create_delivery_issue(actor=actor, title="Blocked issue")
 
 
 def test_parse_issue_url_accepts_absolute_gitlab_url() -> None:

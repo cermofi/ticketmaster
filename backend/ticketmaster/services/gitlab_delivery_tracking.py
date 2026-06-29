@@ -92,6 +92,23 @@ class GitLabApiError(RuntimeError):
         self.status_code = status_code
 
 
+def _map_gitlab_error(response: httpx.Response) -> GitLabApiError:
+    status = response.status_code
+    if status == 401:
+        message = "GitLab API rejected token (401 unauthorized)"
+    elif status == 403:
+        message = "GitLab API access forbidden (403)"
+    elif status == 404:
+        message = "GitLab object not found (404)"
+    elif status == 429:
+        retry_after = response.headers.get("Retry-After")
+        suffix = f", retry after {retry_after}s" if retry_after else ""
+        message = f"GitLab API rate limited (429{suffix})"
+    else:
+        message = f"GitLab API request failed with status {status}"
+    return GitLabApiError(message, status_code=status)
+
+
 class GitLabReadOnlyClient:
     def __init__(self, *, base_url: str, token: str, timeout_seconds: float = 20) -> None:
         self._http = httpx.Client(
@@ -113,20 +130,7 @@ class GitLabReadOnlyClient:
         return response
 
     def _map_error(self, response: httpx.Response) -> GitLabApiError:
-        status = response.status_code
-        if status == 401:
-            message = "GitLab API rejected token (401 unauthorized)"
-        elif status == 403:
-            message = "GitLab API access forbidden (403)"
-        elif status == 404:
-            message = "GitLab object not found (404)"
-        elif status == 429:
-            retry_after = response.headers.get("Retry-After")
-            suffix = f", retry after {retry_after}s" if retry_after else ""
-            message = f"GitLab API rate limited (429{suffix})"
-        else:
-            message = f"GitLab API request failed with status {status}"
-        return GitLabApiError(message, status_code=status)
+        return _map_gitlab_error(response)
 
     def list_project_issues(self, project_id: str, *, state: str = "all") -> list[dict]:
         issues: list[dict] = []
@@ -284,6 +288,70 @@ def list_dashboard_meta(db: Session) -> dict:
         "labels": labels,
         "sync_interval_seconds": settings.gitlab_sync_interval_seconds,
         "last_sync_run": serialize_sync_run(latest_run) if latest_run else None,
+    }
+
+
+def create_delivery_issue(
+    *,
+    actor: User,
+    title: str,
+    description: str | None = None,
+    labels: list[str] | None = None,
+) -> dict:
+    if actor.kind != "internal":
+        raise ValidationError("Only internal users can create delivery issues")
+    if not settings.gitlab_base_url:
+        raise ValidationError("GITLAB_BASE_URL is not configured")
+    if not settings.gitlab_delivery_project_id:
+        raise ValidationError("GITLAB_DELIVERY_PROJECT_ID is not configured")
+    if not settings.gitlab_token:
+        raise ValidationError("GITLAB_TOKEN is not configured")
+
+    normalized_title = (title or "").strip()
+    if not normalized_title:
+        raise ValidationError("Issue title is required")
+    normalized_description = (description or "").strip()
+    normalized_labels = _sanitize_issue_labels(labels)
+
+    request_body: dict[str, object] = {"title": normalized_title}
+    if normalized_description:
+        request_body["description"] = normalized_description
+    if normalized_labels:
+        request_body["labels"] = ",".join(normalized_labels)
+
+    url = (
+        f"{settings.gitlab_base_url.rstrip('/')}/api/v4/projects/"
+        f"{quote_plus(str(settings.gitlab_delivery_project_id))}/issues"
+    )
+    try:
+        response = httpx.post(
+            url,
+            headers={"PRIVATE-TOKEN": str(settings.gitlab_token)},
+            json=request_body,
+            timeout=20,
+        )
+    except httpx.HTTPError as exc:
+        raise ValidationError("GitLab issue creation failed: request error") from exc
+    if response.status_code >= 400:
+        raise ValidationError(f"GitLab issue creation failed: {_map_gitlab_error(response)}")
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise ValidationError("GitLab issue creation failed: invalid JSON payload") from exc
+    if not isinstance(payload, dict):
+        raise ValidationError("GitLab issue creation failed: invalid payload")
+
+    return {
+        "id": _string_or_none(payload.get("id")),
+        "iid": _string_or_none(payload.get("iid")),
+        "project_id": _string_or_none(payload.get("project_id")) or str(settings.gitlab_delivery_project_id),
+        "title": _string_or_none(payload.get("title")) or normalized_title,
+        "description": _string_or_none(payload.get("description")) or normalized_description,
+        "state": _string_or_none(payload.get("state")) or "opened",
+        "labels": _normalize_labels(payload.get("labels")),
+        "web_url": _string_or_none(payload.get("web_url")),
+        "created_at": _string_or_none(payload.get("created_at")),
     }
 
 
@@ -1759,6 +1827,23 @@ def _normalize_labels(raw: object) -> list[str]:
             value = item.get("title") or item.get("name")
             if isinstance(value, str):
                 labels.append(value)
+    return labels
+
+
+def _sanitize_issue_labels(raw: list[str] | None) -> list[str]:
+    if not raw:
+        return []
+    labels: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        text = _string_or_none(item)
+        if not text:
+            continue
+        key = text.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        labels.append(text)
     return labels
 
 
