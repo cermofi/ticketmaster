@@ -1,0 +1,154 @@
+name: Release Main
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Optional existing GHCR image tag to deploy (leave empty to build from current main commit)
+        required: false
+        default: ""
+      smoke_base_url:
+        description: Public URL for smoke check (no trailing slash)
+        required: true
+        default: https://ticketmaster.cermofi.cz
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  publish-images:
+    if: >
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.image_tag == ''))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image_name: ticketmaster-api
+            context: backend
+            dockerfile: backend/Dockerfile
+          - image_name: ticketmaster-docs
+            context: docs-site
+            dockerfile: docs-site/Dockerfile
+          - image_name: ticketmaster-frontend
+            context: .
+            dockerfile: frontend/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: owner
+        name: Lowercase owner
+        run: echo "value=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      - id: tag
+        name: Resolve image tag
+        run: echo "value=sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.image_name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          build-args: |
+            APP_VERSION=${{ steps.tag.outputs.value }}
+          push: true
+          tags: |
+            ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image_name }}:${{ steps.tag.outputs.value }}
+            ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image_name }}:main-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-production:
+    needs: [publish-images]
+    if: >
+      github.ref == 'refs/heads/main' &&
+      (needs.publish-images.result == 'success' || needs.publish-images.result == 'skipped')
+    runs-on: [self-hosted, prod-deploy]
+    environment: production
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - id: owner
+        name: Lowercase owner
+        run: echo "value=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      - id: tag
+        name: Resolve deploy tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.image_tag }}" ]; then
+            echo "value=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ensure app directory exists
+        run: test -d /opt/ticketmaster
+
+      - name: Sync production checkout
+        run: |
+          set -euo pipefail
+          cd /opt/ticketmaster
+          git fetch --prune origin
+          git checkout main
+          git pull --ff-only origin main
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate image tags exist in GHCR
+        run: |
+          set -euo pipefail
+          OWNER="${{ steps.owner.outputs.value }}"
+          TAG="${{ steps.tag.outputs.value }}"
+          docker manifest inspect "ghcr.io/${OWNER}/ticketmaster-api:${TAG}" >/dev/null
+          docker manifest inspect "ghcr.io/${OWNER}/ticketmaster-docs:${TAG}" >/dev/null
+          docker manifest inspect "ghcr.io/${OWNER}/ticketmaster-frontend:${TAG}" >/dev/null
+
+      - name: Write deploy image tag env
+        run: |
+          set -euo pipefail
+          cd /opt/ticketmaster
+          echo "IMAGE_TAG=${{ steps.tag.outputs.value }}" > .env.images
+
+      - name: Pull images, run migration, restart services
+        run: |
+          set -euo pipefail
+          cd /opt/ticketmaster
+          COMPOSE=(docker compose --env-file .env --env-file .env.images -f docker-compose.yml)
+
+          "${COMPOSE[@]}" pull api docs frontend
+          "${COMPOSE[@]}" run --rm -T api ticketmaster-cli db migrate
+          "${COMPOSE[@]}" up -d --no-build api docs frontend
+          "${COMPOSE[@]}" ps
+
+      - name: Post-deploy smoke gate
+        run: |
+          set -euo pipefail
+          cd /opt/ticketmaster
+          SMOKE_CHECK_BASE_URL="${{ inputs.smoke_base_url || 'https://ticketmaster.cermofi.cz' }}" bash scripts/post-deploy-smoke.sh
