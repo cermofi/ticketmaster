@@ -23,6 +23,7 @@ import {
   ErrorBanner,
   exportError,
   Loading,
+  MarkdownText,
   PageHeader,
   StatusPill,
   TimeCell,
@@ -75,6 +76,10 @@ function TrackingDashboard({ user }) {
   const [mappingRow, setMappingRow] = useState(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
+  const [detailData, setDetailData] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  const detailRequestRef = useRef(0);
   const [alertsModalOpen, setAlertsModalOpen] = useState(false);
   const [alertsRows, setAlertsRows] = useState([]);
   const [alertsUnreadCount, setAlertsUnreadCount] = useState(0);
@@ -87,13 +92,14 @@ function TrackingDashboard({ user }) {
   const [createTitle, setCreateTitle] = useState('');
   const [createIssueType, setCreateIssueType] = useState('issue');
   const [createDescription, setCreateDescription] = useState('');
+  const [createDescriptionPreview, setCreateDescriptionPreview] = useState(false);
   const [createConfidential, setCreateConfidential] = useState(false);
   const [createAssigneeId, setCreateAssigneeId] = useState('');
   const [createDueDate, setCreateDueDate] = useState('');
-  const [createMilestoneId, setCreateMilestoneId] = useState('');
   const [createSelectedLabels, setCreateSelectedLabels] = useState([]);
   const [createSaving, setCreateSaving] = useState(false);
   const [createError, setCreateError] = useState('');
+  const createDescriptionRef = useRef(null);
 
   const setFilters = useCallback((next) => {
     const merged = typeof next === 'function' ? next(filtersRef.current) : next;
@@ -197,9 +203,33 @@ function TrackingDashboard({ user }) {
     setMappingModalOpen(true);
   };
 
+  const loadDetailDialog = useCallback(async (row) => {
+    if (!row?.id) return;
+    const requestId = detailRequestRef.current + 1;
+    detailRequestRef.current = requestId;
+    setDetailLoading(true);
+    setDetailError('');
+    try {
+      const response = await api.get(`/gitlab/delivery-tracking/${row.id}/detail`);
+      if (detailRequestRef.current !== requestId) return;
+      setDetailData(response.data || null);
+    } catch (err) {
+      if (detailRequestRef.current !== requestId) return;
+      setDetailError(apiError(err));
+    } finally {
+      if (detailRequestRef.current === requestId) {
+        setDetailLoading(false);
+      }
+    }
+  }, []);
+
   const openDetailDialog = (row) => {
+    if (!row) return;
     setDetailRow(row);
+    setDetailData(null);
+    setDetailError('');
     setDetailModalOpen(true);
+    loadDetailDialog(row);
   };
 
   const openAlertsDialog = () => {
@@ -240,8 +270,17 @@ function TrackingDashboard({ user }) {
   };
 
   const closeDetailDialog = () => {
+    detailRequestRef.current += 1;
     setDetailModalOpen(false);
     setDetailRow(null);
+    setDetailData(null);
+    setDetailError('');
+    setDetailLoading(false);
+  };
+
+  const refreshDetailDialog = () => {
+    if (!detailRow) return;
+    loadDetailDialog(detailRow);
   };
 
   const closeMappingDialog = () => {
@@ -295,10 +334,12 @@ function TrackingDashboard({ user }) {
     if (!canManage) return;
     setCreateError('');
     setCreateTitle('');
+    setCreateIssueType('issue');
     setCreateDescription('');
+    setCreateDescriptionPreview(false);
     setCreateConfidential(false);
+    setCreateAssigneeId('');
     setCreateDueDate('');
-    setCreateMilestoneId('');
     setCreateSelectedLabels([]);
     setCreateModalOpen(true);
     loadCreateMeta();
@@ -323,6 +364,56 @@ function TrackingDashboard({ user }) {
     setCreateSelectedLabels(selected);
   };
 
+  const setCreateDescriptionWithSelection = (nextValue, selectionStart, selectionEnd) => {
+    setCreateDescription(nextValue);
+    requestAnimationFrame(() => {
+      const input = createDescriptionRef.current;
+      if (!input) return;
+      input.focus();
+      if (typeof selectionStart === 'number' && typeof selectionEnd === 'number') {
+        input.setSelectionRange(selectionStart, selectionEnd);
+      }
+    });
+  };
+
+  const insertCreateWrapped = (prefix, suffix = '', placeholder = '') => {
+    const input = createDescriptionRef.current;
+    const currentValue = createDescription || '';
+    const selectionStart = input?.selectionStart ?? currentValue.length;
+    const selectionEnd = input?.selectionEnd ?? currentValue.length;
+    const selectedText = currentValue.slice(selectionStart, selectionEnd);
+    const body = selectedText || placeholder;
+    const nextValue = `${currentValue.slice(0, selectionStart)}${prefix}${body}${suffix}${currentValue.slice(selectionEnd)}`;
+    const cursorStart = selectionStart + prefix.length;
+    const cursorEnd = cursorStart + body.length;
+    setCreateDescriptionWithSelection(nextValue, cursorStart, cursorEnd);
+  };
+
+  const insertCreateAtCursor = (text) => {
+    const input = createDescriptionRef.current;
+    const currentValue = createDescription || '';
+    const selectionStart = input?.selectionStart ?? currentValue.length;
+    const selectionEnd = input?.selectionEnd ?? currentValue.length;
+    const nextValue = `${currentValue.slice(0, selectionStart)}${text}${currentValue.slice(selectionEnd)}`;
+    const cursor = selectionStart + text.length;
+    setCreateDescriptionWithSelection(nextValue, cursor, cursor);
+  };
+
+  const prefixCreateSelectedLines = (prefix) => {
+    const input = createDescriptionRef.current;
+    const currentValue = createDescription || '';
+    const selectionStart = input?.selectionStart ?? currentValue.length;
+    const selectionEnd = input?.selectionEnd ?? currentValue.length;
+    if (selectionStart === selectionEnd) {
+      insertCreateAtCursor(prefix);
+      return;
+    }
+    const selected = currentValue.slice(selectionStart, selectionEnd);
+    const prefixed = selected.split('\n').map((line) => (line ? `${prefix}${line}` : prefix.trimEnd())).join('\n');
+    const nextValue = `${currentValue.slice(0, selectionStart)}${prefixed}${currentValue.slice(selectionEnd)}`;
+    setCreateDescriptionWithSelection(nextValue, selectionStart, selectionStart + prefixed.length);
+  };
+
   const createTicket = async () => {
     if (!canManage) return;
     const title = createTitle.trim();
@@ -331,14 +422,12 @@ function TrackingDashboard({ user }) {
       return;
     }
     const assigneeId = Number.parseInt(createAssigneeId, 10);
-    const milestoneId = Number.parseInt(createMilestoneId, 10);
     const payload = {
       title,
       description: createDescription,
       issue_type: createIssueType || null,
       confidential: createConfidential,
       assignee_ids: Number.isInteger(assigneeId) ? [assigneeId] : [],
-      milestone_id: Number.isInteger(milestoneId) ? milestoneId : null,
       due_date: createDueDate || null,
       labels: createSelectedLabels
     };
@@ -430,8 +519,12 @@ function TrackingDashboard({ user }) {
       <TrackingDetailsModal
         isOpen={detailModalOpen}
         row={detailRow}
+        detailData={detailData}
+        loading={detailLoading}
+        error={detailError}
         canManage={canManage}
         onClose={closeDetailDialog}
+        onRefresh={refreshDetailDialog}
         onManualMapping={(row) => {
           if (!row) return;
           closeDetailDialog();
@@ -495,14 +588,147 @@ function TrackingDashboard({ user }) {
 
                 <FormGroup>
                   <Label for="tm-create-description">Description</Label>
-                  <Input
-                    id="tm-create-description"
-                    type="textarea"
-                    rows={8}
-                    value={createDescription}
-                    onChange={(event) => setCreateDescription(event.target.value)}
-                    placeholder="Write a description..."
-                  />
+                  <div className="tm-md-editor">
+                    <div className="tm-md-editor-toolbar" role="toolbar" aria-label="Issue description markdown toolbar">
+                      <Button
+                        type="button"
+                        color="secondary"
+                        outline
+                        size="sm"
+                        className="tm-md-toolbar-btn"
+                        title="Bold"
+                        aria-label="Bold"
+                        onClick={() => insertCreateWrapped('**', '**', 'bold text')}
+                      >
+                        <i className="bi bi-type-bold" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        type="button"
+                        color="secondary"
+                        outline
+                        size="sm"
+                        className="tm-md-toolbar-btn"
+                        title="Italic"
+                        aria-label="Italic"
+                        onClick={() => insertCreateWrapped('_', '_', 'italic text')}
+                      >
+                        <i className="bi bi-type-italic" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        type="button"
+                        color="secondary"
+                        outline
+                        size="sm"
+                        className="tm-md-toolbar-btn"
+                        title="Heading"
+                        aria-label="Heading"
+                        onClick={() => insertCreateAtCursor('## ')}
+                      >
+                        <i className="bi bi-type-h2" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        type="button"
+                        color="secondary"
+                        outline
+                        size="sm"
+                        className="tm-md-toolbar-btn"
+                        title="Quote"
+                        aria-label="Quote"
+                        onClick={() => prefixCreateSelectedLines('> ')}
+                      >
+                        <i className="bi bi-chat-square-quote" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        type="button"
+                        color="secondary"
+                        outline
+                        size="sm"
+                        className="tm-md-toolbar-btn"
+                        title="Bulleted list"
+                        aria-label="Bulleted list"
+                        onClick={() => prefixCreateSelectedLines('- ')}
+                      >
+                        <i className="bi bi-list-ul" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        type="button"
+                        color="secondary"
+                        outline
+                        size="sm"
+                        className="tm-md-toolbar-btn"
+                        title="Numbered list"
+                        aria-label="Numbered list"
+                        onClick={() => prefixCreateSelectedLines('1. ')}
+                      >
+                        <i className="bi bi-list-ol" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        type="button"
+                        color="secondary"
+                        outline
+                        size="sm"
+                        className="tm-md-toolbar-btn"
+                        title="Link"
+                        aria-label="Link"
+                        onClick={() => insertCreateWrapped('[', '](https://)', 'link text')}
+                      >
+                        <i className="bi bi-link-45deg" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        type="button"
+                        color="secondary"
+                        outline
+                        size="sm"
+                        className="tm-md-toolbar-btn"
+                        title="Code block"
+                        aria-label="Code block"
+                        onClick={() => insertCreateWrapped('```\n', '\n```', 'code')}
+                      >
+                        <i className="bi bi-code-slash" aria-hidden="true" />
+                      </Button>
+                      <span className="tm-md-editor-separator" />
+                      <Button
+                        type="button"
+                        color={createDescriptionPreview ? 'secondary' : 'primary'}
+                        outline
+                        size="sm"
+                        className="tm-md-toolbar-btn"
+                        onClick={() => setCreateDescriptionPreview(false)}
+                      >
+                        Write
+                      </Button>
+                      <Button
+                        type="button"
+                        color={createDescriptionPreview ? 'primary' : 'secondary'}
+                        outline
+                        size="sm"
+                        className="tm-md-toolbar-btn"
+                        onClick={() => setCreateDescriptionPreview(true)}
+                      >
+                        Preview
+                      </Button>
+                    </div>
+                    {createDescriptionPreview ? (
+                      <div className="tm-create-md-preview">
+                        <MarkdownText
+                          content={createDescription}
+                          className="tm-markdown tm-markdown-preview-body"
+                          emptyMessage="Nothing to preview yet."
+                        />
+                      </div>
+                    ) : (
+                      <Input
+                        id="tm-create-description"
+                        innerRef={createDescriptionRef}
+                        type="textarea"
+                        rows={10}
+                        value={createDescription}
+                        onChange={(event) => setCreateDescription(event.target.value)}
+                        placeholder="Write a description..."
+                      />
+                    )}
+                  </div>
+                  <div className="tm-muted tm-field-help">GitLab Flavored Markdown is supported.</div>
                 </FormGroup>
 
                 <FormGroup check className="mb-3">
@@ -558,23 +784,7 @@ function TrackingDashboard({ user }) {
                       />
                     </FormGroup>
                   </div>
-                  <div className="col-12 col-md-6">
-                    <FormGroup>
-                      <Label for="tm-create-milestone">Milestone</Label>
-                      <Input
-                        id="tm-create-milestone"
-                        type="select"
-                        value={createMilestoneId}
-                        onChange={(event) => setCreateMilestoneId(event.target.value)}
-                      >
-                        <option value="">Select milestone</option>
-                        {asArray(createMeta?.milestones).map((milestone) => (
-                          <option key={milestone.id} value={String(milestone.id)}>{milestone.title}</option>
-                        ))}
-                      </Input>
-                    </FormGroup>
-                  </div>
-                  <div className="col-12 col-md-6">
+                  <div className="col-12">
                     <FormGroup>
                       <Label for="tm-create-labels">Labels</Label>
                       <Input
@@ -855,71 +1065,155 @@ function DeliveryAlertsModal({
   );
 }
 
-function TrackingDetailsModal({ isOpen, row, canManage, onClose, onManualMapping }) {
-  const currentState = row?.target_state || row?.delivery_state;
-  const labels = (Array.isArray(row?.target_labels) && row.target_labels.length > 0)
-    ? row.target_labels
-    : row?.delivery_labels;
-  const targetTeam = row?.target_team_name || (row?.sync_status === 'in_delivery' ? 'Delivery' : '-');
-  const lastGitlabUpdate = row ? (row.target_updated_at || row.delivery_updated_at) : null;
-  const lastSyncedAt = row?.last_synced_at || null;
+function TrackingDetailsModal({
+  isOpen,
+  row,
+  detailData,
+  loading,
+  error,
+  canManage,
+  onClose,
+  onRefresh,
+  onManualMapping
+}) {
+  const tracked = detailData?.tracked_issue || row;
+  const issue = detailData?.issue || null;
+  const notes = asArray(detailData?.notes);
+  const currentState = issue?.state || tracked?.target_state || tracked?.delivery_state;
+  const labels = (Array.isArray(issue?.labels) && issue.labels.length > 0)
+    ? issue.labels
+    : (Array.isArray(tracked?.target_labels) && tracked.target_labels.length > 0)
+      ? tracked.target_labels
+      : tracked?.delivery_labels;
+  const assignees = (Array.isArray(issue?.assignees) && issue.assignees.length > 0)
+    ? issue.assignees
+    : tracked?.target_assignees;
+  const targetTeam = tracked?.target_team_name || (tracked?.sync_status === 'in_delivery' ? 'Delivery' : '-');
+  const lastGitlabUpdate = issue?.updated_at || (tracked ? (tracked.target_updated_at || tracked.delivery_updated_at) : null);
+  const issueReference = issue?.reference || (issue?.iid ? `#${issue.iid}` : formatTicketId(tracked?.delivery_issue_iid));
+  const noteCount = Number(issue?.user_notes_count || notes.length || 0);
 
   return (
-    <Modal isOpen={isOpen} toggle={onClose} size="lg">
-      <ModalHeader toggle={onClose}>Delivery issue detail</ModalHeader>
-      <ModalBody>
-        {!row ? null : (
-          <div className="row g-3">
-            <DetailItem label="Delivery issue">
-              <div>{row.delivery_title || '-'}</div>
-              <div className="tm-muted">{formatTicketId(row.delivery_issue_iid)}</div>
-            </DetailItem>
-            <DetailItem label="Delivery URL">
-              <ExternalLink href={row.delivery_url} label="Open delivery issue" />
-            </DetailItem>
-            <DetailItem label="Current state">
-              {currentState ? <StatusPill value={currentState} /> : <span className="tm-muted">-</span>}
-            </DetailItem>
-            <DetailItem label="Target team / project">
-              <div>{targetTeam}</div>
-              <div className="tm-muted">{row.target_project_name || '-'}</div>
-            </DetailItem>
-            <DetailItem label="Target issue URL">
-              <ExternalLink href={row.target_url} label={row.target_issue_iid ? `#${row.target_issue_iid}` : 'Open target issue'} />
-            </DetailItem>
-            <DetailItem label="Asignee">
-              {formatAssignees(row.target_assignees)}
-            </DetailItem>
-            <DetailItem label="Labels">
-              {formatLabels(labels)}
-            </DetailItem>
-            <DetailItem label="Sync status">
-              <StatusPill value={syncStatusLabel(row.sync_status)} tone={syncStatusTone(row.sync_status)} />
-            </DetailItem>
-            <DetailItem label="Resolution source">
-              <span>{row.resolution_source || '-'}</span>
-            </DetailItem>
-            <DetailItem label="Last update">
-              <TimeCell value={lastGitlabUpdate} />
-            </DetailItem>
-            <DetailItem label="Last synced at">
-              <TimeCell value={lastSyncedAt} />
-            </DetailItem>
-            {row.sync_error && (
-              <div className="col-12">
-                <div className="tm-muted mb-1">Sync error</div>
-                <div>{row.sync_error}</div>
-              </div>
-            )}
+    <Modal isOpen={isOpen} toggle={onClose} size="xl" className="tm-delivery-detail-modal">
+      <ModalHeader toggle={onClose}>
+        <div className="tm-delivery-detail-head">
+          <div className="tm-muted text-uppercase small">GitLab issue detail</div>
+          <div className="tm-delivery-detail-title-row">
+            <strong>{issueReference}</strong>
+            {currentState ? <StatusPill value={currentState} /> : null}
+            {issue?.issue_type ? <span className="tm-muted">{formatIssueType(issue.issue_type)}</span> : null}
           </div>
+          <div>{issue?.title || tracked?.delivery_title || '-'}</div>
+        </div>
+      </ModalHeader>
+      <ModalBody>
+        <ErrorBanner error={error} />
+        {loading && !detailData ? <Loading /> : (
+          !tracked ? null : (
+            <div className="tm-delivery-detail-layout">
+              <div className="tm-delivery-detail-main">
+                <section className="tm-delivery-detail-block">
+                  <div className="tm-delivery-detail-block-head">Description</div>
+                  <MarkdownText
+                    content={issue?.description || ''}
+                    className="tm-markdown tm-delivery-detail-description"
+                    emptyMessage="No description."
+                  />
+                </section>
+                <section className="tm-delivery-detail-block">
+                  <div className="tm-delivery-detail-block-head">Discussion ({noteCount})</div>
+                  {notes.length === 0 ? (
+                    <div className="tm-muted">No comments yet.</div>
+                  ) : (
+                    <div className="tm-delivery-note-list">
+                      {notes.map((note, index) => (
+                        <article
+                          key={note.id || `${note.created_at || note.updated_at || 'note'}-${index}`}
+                          className={`tm-delivery-note${note.system ? ' is-system' : ''}`}
+                        >
+                          <div className="tm-delivery-note-head">
+                            <strong>{note.author?.name || note.author?.username || 'GitLab user'}</strong>
+                            <span className="tm-muted">
+                              <TimeCell value={note.updated_at || note.created_at} />
+                            </span>
+                          </div>
+                          {note.internal ? <span className="badge text-bg-warning mb-1">Internal note</span> : null}
+                          <MarkdownText
+                            content={note.body}
+                            className="tm-markdown tm-delivery-note-body"
+                            emptyMessage={note.system ? 'System note' : 'Empty note'}
+                          />
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </div>
+              <aside className="tm-delivery-detail-side">
+                <section className="tm-delivery-detail-block">
+                  <div className="tm-delivery-detail-block-head">Metadata</div>
+                  <div className="tm-delivery-meta-list">
+                    <DetailMetaRow label="State">
+                      {currentState ? <StatusPill value={currentState} /> : <span className="tm-muted">-</span>}
+                    </DetailMetaRow>
+                    <DetailMetaRow label="Type">
+                      <span>{issue?.issue_type ? formatIssueType(issue.issue_type) : '-'}</span>
+                    </DetailMetaRow>
+                    <DetailMetaRow label="Confidential">
+                      <span>{issue?.confidential ? 'Yes' : 'No'}</span>
+                    </DetailMetaRow>
+                    <DetailMetaRow label="Assignee">
+                      <span>{formatAssignees(assignees)}</span>
+                    </DetailMetaRow>
+                    <DetailMetaRow label="Labels">
+                      <span>{formatLabels(labels)}</span>
+                    </DetailMetaRow>
+                    <DetailMetaRow label="Milestone">
+                      <span>{issue?.milestone?.title || '-'}</span>
+                    </DetailMetaRow>
+                    <DetailMetaRow label="Due date">
+                      <span>{issue?.due_date || '-'}</span>
+                    </DetailMetaRow>
+                    <DetailMetaRow label="Target team">
+                      <div>
+                        <div>{targetTeam}</div>
+                        <div className="tm-muted">{tracked?.target_project_name || '-'}</div>
+                      </div>
+                    </DetailMetaRow>
+                    <DetailMetaRow label="Sync status">
+                      <StatusPill value={syncStatusLabel(tracked?.sync_status)} tone={syncStatusTone(tracked?.sync_status)} />
+                    </DetailMetaRow>
+                    <DetailMetaRow label="Resolution">
+                      <span>{tracked?.resolution_source || '-'}</span>
+                    </DetailMetaRow>
+                    <DetailMetaRow label="Updated">
+                      <TimeCell value={lastGitlabUpdate} />
+                    </DetailMetaRow>
+                    <DetailMetaRow label="Synced">
+                      <TimeCell value={tracked?.last_synced_at} />
+                    </DetailMetaRow>
+                  </div>
+                  {tracked?.sync_error ? (
+                    <div className="mt-3">
+                      <div className="tm-muted mb-1">Sync error</div>
+                      <div>{tracked.sync_error}</div>
+                    </div>
+                  ) : null}
+                </section>
+              </aside>
+            </div>
+          )
         )}
       </ModalBody>
       <ModalFooter>
-        {canManage && row?.target_missing && (
-          <Button color="secondary" outline onClick={() => onManualMapping(row)}>
+        {canManage && tracked?.target_missing ? (
+          <Button color="secondary" outline onClick={() => onManualMapping(tracked)}>
             Map manually
           </Button>
-        )}
+        ) : null}
+        <Button color="secondary" outline onClick={onRefresh} disabled={loading || !tracked}>
+          {loading ? 'Refreshing...' : 'Refresh'}
+        </Button>
         <Button outline color="secondary" onClick={onClose}>
           Close
         </Button>
@@ -928,10 +1222,10 @@ function TrackingDetailsModal({ isOpen, row, canManage, onClose, onManualMapping
   );
 }
 
-function DetailItem({ label, children }) {
+function DetailMetaRow({ label, children }) {
   return (
-    <div className="col-12 col-md-6">
-      <div className="tm-muted mb-1">{label}</div>
+    <div className="tm-delivery-meta-row">
+      <div className="tm-muted">{label}</div>
       <div>{children}</div>
     </div>
   );
@@ -959,6 +1253,15 @@ function formatAssignees(assignees) {
 function formatTicketId(value) {
   if (!value) return '-';
   return String(value);
+}
+
+function formatIssueType(value) {
+  if (!value) return 'Issue';
+  return String(value)
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }
 
 function syncStatusLabel(value) {

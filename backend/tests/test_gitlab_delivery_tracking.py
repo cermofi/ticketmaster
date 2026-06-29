@@ -25,6 +25,7 @@ from ticketmaster.services.gitlab_delivery_tracking import (
     _sort_tracked_issue_rows,
     create_delivery_issue,
     get_delivery_issue_create_meta,
+    get_tracked_issue_detail,
     normalize_sort,
     parse_updated_since,
 )
@@ -229,6 +230,97 @@ def test_get_delivery_issue_create_meta_collects_live_fields() -> None:
     assert meta["milestones"][0]["title"] == "Sprint 27"
     assert len(meta["assignees"]) == 2
     assert meta["current_assignee_id"] == 77
+
+
+def test_get_tracked_issue_detail_collects_issue_and_notes() -> None:
+    patched = replace(
+        settings,
+        gitlab_base_url="https://gitlab.example.com",
+        gitlab_token="secret-token",
+        gitlab_delivery_project_id="503",
+    )
+    actor = SimpleNamespace(kind="internal")
+    tracked = GitLabTrackedIssue(
+        id="tracked-1",
+        delivery_project_id="503",
+        delivery_issue_iid="11",
+        delivery_title="Delivery issue title",
+        delivery_url="https://gitlab.example.com/team/delivery/-/issues/11",
+        delivery_state="opened",
+        target_project_id="777",
+        target_issue_iid="42",
+        sync_status="ok",
+    )
+
+    class DummySession:
+        @staticmethod
+        def get(model, tracked_issue_id: str):  # noqa: ANN205, ANN001
+            assert model is GitLabTrackedIssue
+            if tracked_issue_id == tracked.id:
+                return tracked
+            return None
+
+    class DummyClient:
+        def __init__(self, **kwargs):  # noqa: ANN003, ANN204
+            pass
+
+        def close(self) -> None:
+            return None
+
+        @staticmethod
+        def get_project_issue(project_id: str, issue_iid: str) -> dict:
+            assert project_id == "777"
+            assert issue_iid == "42"
+            return {
+                "id": 4002,
+                "iid": 42,
+                "project_id": 777,
+                "title": "Target issue title",
+                "description": "## Body",
+                "state": "opened",
+                "labels": ["delivery", "backend"],
+                "issue_type": "task",
+                "confidential": False,
+                "assignees": [{"id": 77, "name": "Jane Doe", "username": "jane"}],
+                "author": {"id": 1, "name": "Author", "username": "author"},
+                "due_date": "2026-07-01",
+                "created_at": "2026-06-20T08:00:00Z",
+                "updated_at": "2026-06-21T09:00:00Z",
+                "web_url": "https://gitlab.example.com/team/target/-/issues/42",
+                "user_notes_count": 1,
+                "references": {"full": "team/target#42"},
+            }
+
+        @staticmethod
+        def get_issue_notes(project_id: str, issue_iid: str, *, sort: str = "desc", order_by: str = "updated_at") -> list[dict]:
+            assert project_id == "777"
+            assert issue_iid == "42"
+            assert sort == "asc"
+            assert order_by == "created_at"
+            return [
+                {
+                    "id": 9001,
+                    "body": "First note",
+                    "system": False,
+                    "internal": False,
+                    "created_at": "2026-06-20T10:00:00Z",
+                    "updated_at": "2026-06-20T10:00:00Z",
+                    "author": {"id": 2, "name": "Reviewer", "username": "reviewer"},
+                }
+            ]
+
+    with (
+        patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched),
+        patch("ticketmaster.services.gitlab_delivery_tracking.GitLabReadOnlyClient", DummyClient),
+    ):
+        detail = get_tracked_issue_detail(DummySession(), actor=actor, tracked_issue_id="tracked-1")
+
+    assert detail["source_issue"] == "target"
+    assert detail["issue"]["title"] == "Target issue title"
+    assert detail["issue"]["reference"] == "team/target#42"
+    assert detail["issue"]["assignees"][0]["name"] == "Jane Doe"
+    assert detail["notes"][0]["body"] == "First note"
+    assert detail["tracked_issue"]["delivery_issue_iid"] == "11"
 
 
 def test_parse_issue_url_accepts_absolute_gitlab_url() -> None:

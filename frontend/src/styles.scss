@@ -1482,6 +1482,118 @@ body[data-tm-density="compact"] .tm-login-form {
   box-shadow: 0 0 0 .14rem rgba(37, 99, 235, .2);
 }
 
+.tm-create-md-preview {
+  min-height: 11rem;
+  padding: .7rem .8rem;
+}
+
+.tm-delivery-detail-modal .modal-body {
+  max-height: min(78vh, 52rem);
+  overflow-y: auto;
+}
+
+.tm-delivery-detail-head {
+  min-width: 0;
+}
+
+.tm-delivery-detail-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .45rem;
+  margin-bottom: .2rem;
+}
+
+.tm-delivery-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  gap: .85rem;
+}
+
+.tm-delivery-detail-main,
+.tm-delivery-detail-side {
+  display: grid;
+  gap: .85rem;
+  align-content: start;
+}
+
+.tm-delivery-detail-block {
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-radius-sm);
+  background: var(--tm-panel-soft);
+  padding: .7rem .78rem;
+}
+
+.tm-delivery-detail-block-head {
+  margin-bottom: .55rem;
+  color: var(--tm-muted);
+  font-size: .8rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+
+.tm-delivery-detail-description {
+  min-height: 2rem;
+}
+
+.tm-delivery-note-list {
+  display: grid;
+  gap: .65rem;
+}
+
+.tm-delivery-note {
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: var(--tm-radius-sm);
+  background: rgba(255, 255, 255, .02);
+  padding: .6rem .65rem;
+}
+
+.tm-delivery-note.is-system {
+  border-color: rgba(148, 163, 184, .35);
+  background: rgba(148, 163, 184, .08);
+}
+
+.tm-delivery-note-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: .35rem;
+}
+
+.tm-delivery-note-body {
+  margin: 0;
+}
+
+.tm-delivery-meta-list {
+  display: grid;
+  gap: 0;
+}
+
+.tm-delivery-meta-row {
+  display: grid;
+  grid-template-columns: minmax(88px, .55fr) minmax(0, 1fr);
+  gap: .65rem;
+  align-items: center;
+  padding: .3rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
+}
+
+.tm-delivery-meta-row:last-child {
+  border-bottom: 0;
+}
+
+.tm-delivery-meta-row > :nth-child(2) {
+  text-align: right;
+}
+
+@media (max-width: 992px) {
+  .tm-delivery-detail-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .tm-tickets-table-wrap {
   border-color: var(--tm-tickets-table-border);
   border-radius: 10px;
