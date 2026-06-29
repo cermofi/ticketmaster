@@ -81,6 +81,19 @@ function TrackingDashboard({ user }) {
   const [alertsLoading, setAlertsLoading] = useState(false);
   const [alertsActionLoading, setAlertsActionLoading] = useState(false);
   const [alertsError, setAlertsError] = useState('');
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createMeta, setCreateMeta] = useState(null);
+  const [createMetaLoading, setCreateMetaLoading] = useState(false);
+  const [createTitle, setCreateTitle] = useState('');
+  const [createIssueType, setCreateIssueType] = useState('issue');
+  const [createDescription, setCreateDescription] = useState('');
+  const [createConfidential, setCreateConfidential] = useState(false);
+  const [createAssigneeId, setCreateAssigneeId] = useState('');
+  const [createDueDate, setCreateDueDate] = useState('');
+  const [createMilestoneId, setCreateMilestoneId] = useState('');
+  const [createSelectedLabels, setCreateSelectedLabels] = useState([]);
+  const [createSaving, setCreateSaving] = useState(false);
+  const [createError, setCreateError] = useState('');
 
   const setFilters = useCallback((next) => {
     const merged = typeof next === 'function' ? next(filtersRef.current) : next;
@@ -258,14 +271,89 @@ function TrackingDashboard({ user }) {
     }
   };
 
-  const openCreateInGitLab = () => {
+  const loadCreateMeta = useCallback(async () => {
     if (!canManage) return;
-    const createUrl = String(meta?.create_issue_native_url || '').trim();
-    if (!createUrl) {
-      setError('GitLab create issue URL is not available. Check delivery project settings.');
+    setCreateMetaLoading(true);
+    setCreateError('');
+    try {
+      const response = await api.get('/gitlab/delivery-tracking/create-meta');
+      const payload = response.data || {};
+      setCreateMeta(payload);
+      const types = asArray(payload.issue_types);
+      const defaultType = String(types.find((item) => item?.value === 'issue')?.value || types[0]?.value || 'issue');
+      setCreateIssueType(defaultType);
+      const currentAssignee = payload?.current_assignee_id;
+      setCreateAssigneeId(currentAssignee ? String(currentAssignee) : '');
+    } catch (err) {
+      setCreateError(apiError(err));
+    } finally {
+      setCreateMetaLoading(false);
+    }
+  }, [canManage]);
+
+  const openCreateDialog = () => {
+    if (!canManage) return;
+    setCreateError('');
+    setCreateTitle('');
+    setCreateDescription('');
+    setCreateConfidential(false);
+    setCreateDueDate('');
+    setCreateMilestoneId('');
+    setCreateSelectedLabels([]);
+    setCreateModalOpen(true);
+    loadCreateMeta();
+  };
+
+  const closeCreateDialog = () => {
+    if (createSaving) return;
+    setCreateModalOpen(false);
+    setCreateError('');
+  };
+
+  const assignToMe = () => {
+    const assigneeId = createMeta?.current_assignee_id;
+    if (!assigneeId) return;
+    setCreateAssigneeId(String(assigneeId));
+  };
+
+  const onCreateLabelsChange = (event) => {
+    const selected = Array.from(event.target.selectedOptions || [])
+      .map((option) => option.value)
+      .filter(Boolean);
+    setCreateSelectedLabels(selected);
+  };
+
+  const createTicket = async () => {
+    if (!canManage) return;
+    const title = createTitle.trim();
+    if (!title) {
+      setCreateError('Title is required.');
       return;
     }
-    window.open(createUrl, '_blank', 'noopener,noreferrer');
+    const assigneeId = Number.parseInt(createAssigneeId, 10);
+    const milestoneId = Number.parseInt(createMilestoneId, 10);
+    const payload = {
+      title,
+      description: createDescription,
+      issue_type: createIssueType || null,
+      confidential: createConfidential,
+      assignee_ids: Number.isInteger(assigneeId) ? [assigneeId] : [],
+      milestone_id: Number.isInteger(milestoneId) ? milestoneId : null,
+      due_date: createDueDate || null,
+      labels: createSelectedLabels
+    };
+    setCreateSaving(true);
+    setCreateError('');
+    setError('');
+    try {
+      await api.post('/gitlab/delivery-tracking/create', payload);
+      setCreateModalOpen(false);
+      await load();
+    } catch (err) {
+      setCreateError(apiError(err));
+    } finally {
+      setCreateSaving(false);
+    }
   };
 
   if (!canView) {
@@ -284,7 +372,7 @@ function TrackingDashboard({ user }) {
         actions={(
           <div className="d-flex gap-2">
             {canManage && (
-              <Button color="primary" onClick={openCreateInGitLab} title="Open native GitLab issue form">
+              <Button color="primary" onClick={openCreateDialog}>
                 Create ticket
               </Button>
             )}
@@ -362,6 +450,161 @@ function TrackingDashboard({ user }) {
         onMarkAllRead={markAllAlertsRead}
         onOpenAlert={openAlertIssue}
       />
+      <Modal isOpen={createModalOpen} toggle={closeCreateDialog} size="lg">
+        <Form onSubmit={(event) => {
+          event.preventDefault();
+          createTicket();
+        }}
+        >
+          <ModalHeader toggle={closeCreateDialog}>
+            New Issue
+            {createMeta?.project?.path_with_namespace ? (
+              <div className="tm-muted mt-1 fs-6">{createMeta.project.path_with_namespace}</div>
+            ) : null}
+          </ModalHeader>
+          <ModalBody>
+            <ErrorBanner error={createError} />
+            {createMetaLoading && !createMeta ? <Loading /> : (
+              <>
+                <FormGroup>
+                  <Label for="tm-create-title">Title (required)</Label>
+                  <Input
+                    id="tm-create-title"
+                    value={createTitle}
+                    onChange={(event) => setCreateTitle(event.target.value)}
+                    maxLength={255}
+                    required
+                  />
+                </FormGroup>
+
+                <FormGroup>
+                  <Label for="tm-create-issue-type">Type</Label>
+                  <Input
+                    id="tm-create-issue-type"
+                    type="select"
+                    value={createIssueType}
+                    onChange={(event) => setCreateIssueType(event.target.value)}
+                  >
+                    {(asArray(createMeta?.issue_types).length > 0
+                      ? asArray(createMeta?.issue_types)
+                      : [{ value: 'issue', label: 'Issue' }]).map((issueType) => (
+                      <option key={issueType.value} value={issueType.value}>{issueType.label}</option>
+                    ))}
+                  </Input>
+                </FormGroup>
+
+                <FormGroup>
+                  <Label for="tm-create-description">Description</Label>
+                  <Input
+                    id="tm-create-description"
+                    type="textarea"
+                    rows={8}
+                    value={createDescription}
+                    onChange={(event) => setCreateDescription(event.target.value)}
+                    placeholder="Write a description..."
+                  />
+                </FormGroup>
+
+                <FormGroup check className="mb-3">
+                  <Input
+                    id="tm-create-confidential"
+                    type="checkbox"
+                    checked={createConfidential}
+                    onChange={(event) => setCreateConfidential(event.target.checked)}
+                  />
+                  <Label for="tm-create-confidential" check>
+                    This issue is confidential
+                  </Label>
+                </FormGroup>
+
+                <div className="row g-3">
+                  <div className="col-12 col-md-6">
+                    <FormGroup>
+                      <Label for="tm-create-assignee">Assignee</Label>
+                      <div className="d-flex align-items-center gap-2">
+                        <Input
+                          id="tm-create-assignee"
+                          type="select"
+                          value={createAssigneeId}
+                          onChange={(event) => setCreateAssigneeId(event.target.value)}
+                        >
+                          <option value="">Unassigned</option>
+                          {asArray(createMeta?.assignees).map((assignee) => (
+                            <option key={assignee.id} value={String(assignee.id)}>
+                              {assignee.name || assignee.username || `User ${assignee.id}`}
+                            </option>
+                          ))}
+                        </Input>
+                        <Button
+                          type="button"
+                          color="link"
+                          className="p-0 text-nowrap"
+                          disabled={!createMeta?.current_assignee_id}
+                          onClick={assignToMe}
+                        >
+                          Assign to me
+                        </Button>
+                      </div>
+                    </FormGroup>
+                  </div>
+                  <div className="col-12 col-md-6">
+                    <FormGroup>
+                      <Label for="tm-create-due-date">Due date</Label>
+                      <Input
+                        id="tm-create-due-date"
+                        type="date"
+                        value={createDueDate}
+                        onChange={(event) => setCreateDueDate(event.target.value)}
+                      />
+                    </FormGroup>
+                  </div>
+                  <div className="col-12 col-md-6">
+                    <FormGroup>
+                      <Label for="tm-create-milestone">Milestone</Label>
+                      <Input
+                        id="tm-create-milestone"
+                        type="select"
+                        value={createMilestoneId}
+                        onChange={(event) => setCreateMilestoneId(event.target.value)}
+                      >
+                        <option value="">Select milestone</option>
+                        {asArray(createMeta?.milestones).map((milestone) => (
+                          <option key={milestone.id} value={String(milestone.id)}>{milestone.title}</option>
+                        ))}
+                      </Input>
+                    </FormGroup>
+                  </div>
+                  <div className="col-12 col-md-6">
+                    <FormGroup>
+                      <Label for="tm-create-labels">Labels</Label>
+                      <Input
+                        id="tm-create-labels"
+                        type="select"
+                        multiple
+                        value={createSelectedLabels}
+                        onChange={onCreateLabelsChange}
+                      >
+                        {asArray(createMeta?.labels).map((label) => (
+                          <option key={label.id || label.title} value={label.title}>{label.title}</option>
+                        ))}
+                      </Input>
+                      <div className="tm-muted tm-field-help">Use Ctrl/Cmd to select multiple labels.</div>
+                    </FormGroup>
+                  </div>
+                </div>
+              </>
+            )}
+          </ModalBody>
+          <ModalFooter>
+            <Button color="secondary" outline type="button" onClick={closeCreateDialog} disabled={createSaving}>
+              Cancel
+            </Button>
+            <Button color="primary" type="submit" disabled={!createTitle.trim() || createSaving || createMetaLoading}>
+              {createSaving ? 'Creating...' : 'Create issue'}
+            </Button>
+          </ModalFooter>
+        </Form>
+      </Modal>
       <Modal isOpen={mappingModalOpen} toggle={closeMappingDialog}>
         <ModalHeader toggle={closeMappingDialog}>Manual issue mapping</ModalHeader>
         <ModalBody>

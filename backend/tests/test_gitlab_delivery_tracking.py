@@ -24,8 +24,7 @@ from ticketmaster.services.gitlab_delivery_tracking import (
     _resolve_target_issue,
     _sort_tracked_issue_rows,
     create_delivery_issue,
-    delivery_issue_native_url,
-    list_delivery_issue_templates,
+    get_delivery_issue_create_meta,
     normalize_sort,
     parse_updated_since,
 )
@@ -123,15 +122,10 @@ def test_create_delivery_issue_maps_gitlab_api_errors() -> None:
         patch("ticketmaster.services.gitlab_delivery_tracking.httpx.post", return_value=response),
     ):
         with pytest.raises(ValidationError, match="GitLab API access forbidden"):
-            create_delivery_issue(
-                actor=actor,
-                title="Blocked issue",
-                description="0123456789",
-                labels=["delivery"],
-            )
+            create_delivery_issue(actor=actor, title="Blocked issue")
 
 
-def test_create_delivery_issue_applies_template_defaults() -> None:
+def test_create_delivery_issue_sends_extended_gitlab_fields() -> None:
     patched = replace(
         settings,
         gitlab_base_url="https://gitlab.example.com",
@@ -160,81 +154,81 @@ def test_create_delivery_issue_applies_template_defaults() -> None:
         create_delivery_issue(
             actor=actor,
             title="Incident in production",
-            description="",
+            description="Incident body",
             labels=["custom"],
-            template_key="incident",
+            assignee_ids=[77],
+            milestone_id=12,
+            due_date="2026-06-30",
+            confidential=True,
+            issue_type="incident",
         )
 
     _, kwargs = post_mock.call_args
     sent = kwargs["json"]
     assert sent["title"] == "Incident in production"
-    assert "Incident summary" in sent["description"]
-    assert sent["labels"] == "delivery,incident,custom"
+    assert sent["description"] == "Incident body"
+    assert sent["labels"] == "custom"
+    assert sent["assignee_ids"] == [77]
+    assert sent["milestone_id"] == 12
+    assert sent["due_date"] == "2026-06-30"
+    assert sent["confidential"] is True
+    assert sent["issue_type"] == "incident"
 
 
-def test_create_delivery_issue_rejects_unknown_template() -> None:
+def test_get_delivery_issue_create_meta_collects_live_fields() -> None:
     patched = replace(
         settings,
         gitlab_base_url="https://gitlab.example.com",
         gitlab_token="secret-token",
-        gitlab_delivery_project_id="503",
-    )
-    actor = SimpleNamespace(kind="internal")
-    with patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched):
-        with pytest.raises(ValidationError, match="Unknown issue template"):
-            create_delivery_issue(
-                actor=actor,
-                title="Unknown template",
-                description="1234567890",
-                labels=["delivery"],
-                template_key="nope",
-            )
-
-
-def test_create_delivery_issue_validates_required_delivery_label() -> None:
-    patched = replace(
-        settings,
-        gitlab_base_url="https://gitlab.example.com",
-        gitlab_token="secret-token",
-        gitlab_delivery_project_id="503",
-    )
-    actor = SimpleNamespace(kind="internal")
-    with patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched):
-        with pytest.raises(ValidationError, match="include 'delivery'"):
-            create_delivery_issue(
-                actor=actor,
-                title="Valid title",
-                description="1234567890",
-                labels=["customer"],
-            )
-
-
-def test_list_delivery_issue_templates_contains_defaults() -> None:
-    templates = list_delivery_issue_templates()
-    keys = {template["key"] for template in templates}
-    assert "delivery-task" in keys
-    assert "customer-request" in keys
-    assert "incident" in keys
-
-
-def test_delivery_issue_native_url_from_project_path() -> None:
-    patched = replace(
-        settings,
-        gitlab_base_url="https://gitlab.example.com/",
         gitlab_delivery_project_id="team/delivery",
     )
-    with patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched):
-        assert delivery_issue_native_url() == "https://gitlab.example.com/team/delivery/-/issues/new"
+    actor = SimpleNamespace(kind="internal", email="jane.doe@example.com")
 
+    class DummyClient:
+        def __init__(self, **kwargs):  # noqa: ANN003, ANN204
+            pass
 
-def test_delivery_issue_native_url_from_project_id() -> None:
-    patched = replace(
-        settings,
-        gitlab_base_url="https://gitlab.example.com",
-        gitlab_delivery_project_id="503",
-    )
-    with patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched):
-        assert delivery_issue_native_url() == "https://gitlab.example.com/-/projects/503/issues/new"
+        def close(self) -> None:
+            return None
+
+        def get_project(self, project_id_or_path: str) -> dict:
+            assert project_id_or_path == "team/delivery"
+            return {
+                "id": 503,
+                "name": "Delivery",
+                "path_with_namespace": "team/delivery",
+                "web_url": "https://gitlab.example.com/team/delivery",
+            }
+
+        def list_project_labels(self, project_id_or_path: str) -> list[dict]:
+            assert project_id_or_path == "503"
+            return [
+                {"id": 1, "name": "delivery", "description": "Delivery label", "color": "#00ff00"},
+                {"id": 2, "name": "customer", "description": "", "color": "#0000ff"},
+            ]
+
+        def list_project_milestones(self, project_id_or_path: str) -> list[dict]:
+            assert project_id_or_path == "503"
+            return [{"id": 12, "title": "Sprint 27", "description": "", "due_date": "2026-07-05", "web_url": "https://gitlab.example.com/-/milestones/12"}]
+
+        def list_project_members(self, project_id_or_path: str) -> list[dict]:
+            assert project_id_or_path == "503"
+            return [
+                {"id": 77, "username": "jane.doe", "name": "Jane Doe", "avatar_url": None, "web_url": "https://gitlab.example.com/jane.doe", "state": "active"},
+                {"id": 99, "username": "john", "name": "John", "avatar_url": None, "web_url": "https://gitlab.example.com/john", "state": "active"},
+            ]
+
+    with (
+        patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched),
+        patch("ticketmaster.services.gitlab_delivery_tracking.GitLabReadOnlyClient", DummyClient),
+    ):
+        meta = get_delivery_issue_create_meta(actor=actor)
+
+    assert meta["project"]["path_with_namespace"] == "team/delivery"
+    assert [label["title"] for label in meta["labels"]] == ["customer", "delivery"]
+    assert meta["milestones"][0]["title"] == "Sprint 27"
+    assert len(meta["assignees"]) == 2
+    assert meta["current_assignee_id"] == 77
 
 
 def test_parse_issue_url_accepts_absolute_gitlab_url() -> None:
