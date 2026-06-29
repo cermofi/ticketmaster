@@ -261,8 +261,8 @@ function TrackingDashboard({ user }) {
   if (!canView) {
     return (
       <div className="tm-screen">
-        <PageHeader title="Delivery tracking" />
-        <ErrorBanner error="Delivery tracking is available only to internal users." />
+        <PageHeader title="Tickets" />
+        <ErrorBanner error="Tickets are available only to internal users." />
       </div>
     );
   }
@@ -270,7 +270,7 @@ function TrackingDashboard({ user }) {
   return (
     <div className="tm-screen">
       <PageHeader
-        title="GitLab Delivery Tracking"
+        title="Tickets"
         actions={(
           <div className="d-flex gap-2">
             <Button
@@ -278,8 +278,8 @@ function TrackingDashboard({ user }) {
               outline
               className="tm-delivery-alert-bell"
               onClick={openAlertsDialog}
-              aria-label="Open delivery alerts"
-              title="Delivery alerts"
+              aria-label="Open ticket alerts"
+              title="Ticket alerts"
             >
               <i className="bi bi-bell" aria-hidden="true" />
               {alertsUnreadCount > 0 && (

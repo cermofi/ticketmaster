@@ -17,8 +17,9 @@ export default class TicketMasterModule extends Module {
   constructor(app) {
     super(app, 'TicketMasterModule');
 
-    app.Router.addRoute({ path: '/', end: true, name: 'Tickets', component: DashboardScreen, resource: '*' });
-    app.Router.addRoute({ path: '/delivery-tracking', end: true, name: 'Delivery tracking', component: GitLabDeliveryTrackingScreen, resource: '*' });
+    app.Router.addRoute({ path: '/', end: true, name: 'Tickets', component: GitLabDeliveryTrackingScreen, resource: '*' });
+    app.Router.addRoute({ path: '/delivery-tracking', end: true, name: 'Tickets', component: GitLabDeliveryTrackingScreen, resource: '*' });
+    app.Router.addRoute({ path: '/legacy-tickets', end: true, name: 'Legacy tickets', component: DashboardScreen, resource: '*' });
     app.Router.addRoute({ path: '/tickets/new', end: true, name: 'Create ticket', component: NewTicketScreen, resource: '*' });
     app.Router.addRoute({ path: '/tickets/:ticketId', end: true, name: 'Ticket detail', component: TicketDetailScreen, resource: '*' });
     app.Router.addRoute({ path: '/partner-overview', end: true, name: 'Partner overview', component: PartnerOverviewScreen, resource: '*' });
@@ -29,7 +30,6 @@ export default class TicketMasterModule extends Module {
     app.Router.addRoute({ path: '/settings', end: true, name: 'Settings', component: SettingsScreen, resource: '*' });
 
     app.Navigation.addItem({ name: 'Tickets', url: '/', icon: 'bi bi-ticket-detailed' });
-    app.Navigation.addItem({ name: 'Delivery tracking', url: '/delivery-tracking', icon: 'bi bi-diagram-3' });
     app.Navigation.addItem({ name: 'Admin', url: '/admin', icon: 'bi bi-sliders' });
     app.Navigation.addItem({ name: 'Audit', url: '/audit', icon: 'bi bi-journal-check' });
     app.Navigation.addItem({ name: 'Settings', url: '/settings', icon: 'bi bi-gear' });
