@@ -265,6 +265,18 @@ def list_target_teams() -> list[dict[str, str]]:
     return [{"project_id": project_id, "name": name} for project_id, name in settings.gitlab_target_projects]
 
 
+def delivery_issue_native_url() -> str | None:
+    base_url = _string_or_none(settings.gitlab_base_url)
+    project_ref = _string_or_none(settings.gitlab_delivery_project_id)
+    if not base_url or not project_ref:
+        return None
+    base = base_url.rstrip("/")
+    normalized_project = project_ref.strip("/")
+    if "/" in normalized_project:
+        return f"{base}/{normalized_project}/-/issues/new"
+    return f"{base}/-/projects/{quote_plus(normalized_project)}/issues/new"
+
+
 def parse_updated_since(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -372,6 +384,7 @@ def list_dashboard_meta(db: Session) -> dict:
         "assignees": assignees,
         "labels": labels,
         "create_templates": list_delivery_issue_templates(),
+        "create_issue_native_url": delivery_issue_native_url(),
         "sync_interval_seconds": settings.gitlab_sync_interval_seconds,
         "last_sync_run": serialize_sync_run(latest_run) if latest_run else None,
     }

@@ -24,6 +24,7 @@ from ticketmaster.services.gitlab_delivery_tracking import (
     _resolve_target_issue,
     _sort_tracked_issue_rows,
     create_delivery_issue,
+    delivery_issue_native_url,
     list_delivery_issue_templates,
     normalize_sort,
     parse_updated_since,
@@ -209,6 +210,26 @@ def test_list_delivery_issue_templates_contains_defaults() -> None:
     assert "delivery-task" in keys
     assert "customer-request" in keys
     assert "incident" in keys
+
+
+def test_delivery_issue_native_url_from_project_path() -> None:
+    patched = replace(
+        settings,
+        gitlab_base_url="https://gitlab.example.com/",
+        gitlab_delivery_project_id="team/delivery",
+    )
+    with patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched):
+        assert delivery_issue_native_url() == "https://gitlab.example.com/team/delivery/-/issues/new"
+
+
+def test_delivery_issue_native_url_from_project_id() -> None:
+    patched = replace(
+        settings,
+        gitlab_base_url="https://gitlab.example.com",
+        gitlab_delivery_project_id="503",
+    )
+    with patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched):
+        assert delivery_issue_native_url() == "https://gitlab.example.com/-/projects/503/issues/new"
 
 
 def test_parse_issue_url_accepts_absolute_gitlab_url() -> None:
