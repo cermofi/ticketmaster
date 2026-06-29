@@ -24,6 +24,8 @@ from ticketmaster.services.gitlab_delivery_tracking import (
     _resolve_target_issue,
     _sort_tracked_issue_rows,
     create_delivery_issue,
+    delivery_issue_native_url,
+    list_delivery_issue_templates,
     normalize_sort,
     parse_updated_since,
 )
@@ -121,7 +123,118 @@ def test_create_delivery_issue_maps_gitlab_api_errors() -> None:
         patch("ticketmaster.services.gitlab_delivery_tracking.httpx.post", return_value=response),
     ):
         with pytest.raises(ValidationError, match="GitLab API access forbidden"):
-            create_delivery_issue(actor=actor, title="Blocked issue")
+            create_delivery_issue(
+                actor=actor,
+                title="Blocked issue",
+                description="0123456789",
+                labels=["delivery"],
+            )
+
+
+def test_create_delivery_issue_applies_template_defaults() -> None:
+    patched = replace(
+        settings,
+        gitlab_base_url="https://gitlab.example.com",
+        gitlab_token="secret-token",
+        gitlab_delivery_project_id="503",
+    )
+    actor = SimpleNamespace(kind="internal")
+    response = DummyGitLabResponse(
+        status_code=201,
+        payload={
+            "id": 9002,
+            "iid": 45,
+            "project_id": 503,
+            "title": "Incident in production",
+            "description": "Incident body",
+            "state": "opened",
+            "labels": ["delivery", "incident", "custom"],
+            "web_url": "https://gitlab.example.com/group/proj/-/issues/45",
+            "created_at": "2026-06-29T10:05:00Z",
+        },
+    )
+    with (
+        patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched),
+        patch("ticketmaster.services.gitlab_delivery_tracking.httpx.post", return_value=response) as post_mock,
+    ):
+        create_delivery_issue(
+            actor=actor,
+            title="Incident in production",
+            description="",
+            labels=["custom"],
+            template_key="incident",
+        )
+
+    _, kwargs = post_mock.call_args
+    sent = kwargs["json"]
+    assert sent["title"] == "Incident in production"
+    assert "Incident summary" in sent["description"]
+    assert sent["labels"] == "delivery,incident,custom"
+
+
+def test_create_delivery_issue_rejects_unknown_template() -> None:
+    patched = replace(
+        settings,
+        gitlab_base_url="https://gitlab.example.com",
+        gitlab_token="secret-token",
+        gitlab_delivery_project_id="503",
+    )
+    actor = SimpleNamespace(kind="internal")
+    with patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched):
+        with pytest.raises(ValidationError, match="Unknown issue template"):
+            create_delivery_issue(
+                actor=actor,
+                title="Unknown template",
+                description="1234567890",
+                labels=["delivery"],
+                template_key="nope",
+            )
+
+
+def test_create_delivery_issue_validates_required_delivery_label() -> None:
+    patched = replace(
+        settings,
+        gitlab_base_url="https://gitlab.example.com",
+        gitlab_token="secret-token",
+        gitlab_delivery_project_id="503",
+    )
+    actor = SimpleNamespace(kind="internal")
+    with patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched):
+        with pytest.raises(ValidationError, match="include 'delivery'"):
+            create_delivery_issue(
+                actor=actor,
+                title="Valid title",
+                description="1234567890",
+                labels=["customer"],
+            )
+
+
+def test_list_delivery_issue_templates_contains_defaults() -> None:
+    templates = list_delivery_issue_templates()
+    keys = {template["key"] for template in templates}
+    assert "delivery-task" in keys
+    assert "customer-request" in keys
+    assert "incident" in keys
+
+
+def test_delivery_issue_native_url_from_project_path() -> None:
+    patched = replace(
+        settings,
+        gitlab_base_url="https://gitlab.example.com/",
+        gitlab_delivery_project_id="team/delivery",
+    )
+    with patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched):
+        assert delivery_issue_native_url() == "https://gitlab.example.com/team/delivery/-/issues/new"
+
+
+def test_delivery_issue_native_url_from_project_id() -> None:
+    patched = replace(
+        settings,
+        gitlab_base_url="https://gitlab.example.com",
+        gitlab_delivery_project_id="503",
+    )
+    with patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched):
+        assert delivery_issue_native_url() == "https://gitlab.example.com/-/projects/503/issues/new"
 
 
 def test_parse_issue_url_accepts_absolute_gitlab_url() -> None:

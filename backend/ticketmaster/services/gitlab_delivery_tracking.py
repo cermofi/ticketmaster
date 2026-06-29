@@ -29,6 +29,65 @@ logger = logging.getLogger("ticketmaster.gitlab.delivery_tracking")
 SYNC_ADVISORY_LOCK_ID = 90503
 CHECK_FINDINGS_LIMIT = 100
 ALERT_CHANGES_PREVIEW_LIMIT = 4
+CREATE_ISSUE_MIN_TITLE_LENGTH = 6
+CREATE_ISSUE_MIN_DESCRIPTION_LENGTH = 10
+CREATE_ISSUE_MAX_LABELS = 10
+CREATE_ISSUE_MAX_LABEL_LENGTH = 64
+DELIVERY_REQUIRED_LABEL = "delivery"
+
+DELIVERY_ISSUE_TEMPLATES: tuple[dict[str, object], ...] = (
+    {
+        "key": "delivery-task",
+        "name": "Delivery task",
+        "title_prefix": "[Task]",
+        "default_labels": ["delivery", "task"],
+        "default_description": (
+            "## Context\n"
+            "- What is the current situation?\n\n"
+            "## Goal\n"
+            "- What should be delivered?\n\n"
+            "## Acceptance criteria\n"
+            "- [ ] Criteria 1\n"
+            "- [ ] Criteria 2\n\n"
+            "## Notes\n"
+            "- Relevant links, dependencies, blockers\n"
+        ),
+    },
+    {
+        "key": "customer-request",
+        "name": "Customer request",
+        "title_prefix": "[Customer]",
+        "default_labels": ["delivery", "customer"],
+        "default_description": (
+            "## Customer\n"
+            "- Name / account\n\n"
+            "## Request summary\n"
+            "- What was asked?\n\n"
+            "## Impact\n"
+            "- Who is affected and how?\n\n"
+            "## Acceptance criteria\n"
+            "- [ ] Criteria 1\n"
+            "- [ ] Criteria 2\n"
+        ),
+    },
+    {
+        "key": "incident",
+        "name": "Incident",
+        "title_prefix": "[Incident]",
+        "default_labels": ["delivery", "incident"],
+        "default_description": (
+            "## Incident summary\n"
+            "- What happened?\n\n"
+            "## Severity\n"
+            "- Critical / High / Normal / Low\n\n"
+            "## Current impact\n"
+            "- Users/systems affected\n\n"
+            "## Next steps\n"
+            "- [ ] Immediate mitigation\n"
+            "- [ ] Root-cause follow-up\n"
+        ),
+    },
+)
 
 ISSUE_URL_PATH_RE = re.compile(r"^/(?P<project_path>.+)/-/issues/(?P<issue_iid>\d+)/?$")
 ISSUE_URL_IN_TEXT_RE = re.compile(r"https?://[^\s)]+/-/issues/\d+", re.IGNORECASE)
@@ -206,6 +265,18 @@ def list_target_teams() -> list[dict[str, str]]:
     return [{"project_id": project_id, "name": name} for project_id, name in settings.gitlab_target_projects]
 
 
+def delivery_issue_native_url() -> str | None:
+    base_url = _string_or_none(settings.gitlab_base_url)
+    project_ref = _string_or_none(settings.gitlab_delivery_project_id)
+    if not base_url or not project_ref:
+        return None
+    base = base_url.rstrip("/")
+    normalized_project = project_ref.strip("/")
+    if "/" in normalized_project:
+        return f"{base}/{normalized_project}/-/issues/new"
+    return f"{base}/-/projects/{quote_plus(normalized_project)}/issues/new"
+
+
 def parse_updated_since(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -231,6 +302,32 @@ def normalize_sort(sort_by: str | None, sort_direction: str | None) -> tuple[str
     if normalized_direction not in SORT_DIRECTIONS:
         normalized_direction = "desc"
     return normalized_sort_by, normalized_direction
+
+
+def list_delivery_issue_templates() -> list[dict[str, object]]:
+    templates: list[dict[str, object]] = []
+    for template in DELIVERY_ISSUE_TEMPLATES:
+        templates.append(
+            {
+                "key": str(template["key"]),
+                "name": str(template["name"]),
+                "title_prefix": str(template["title_prefix"]),
+                "default_labels": [str(label) for label in template["default_labels"]],
+                "default_description": str(template["default_description"]),
+            }
+        )
+    return templates
+
+
+def _delivery_issue_template(key: str | None) -> dict[str, object] | None:
+    normalized = _string_or_none(key)
+    if not normalized:
+        return None
+    token = normalized.casefold()
+    for template in DELIVERY_ISSUE_TEMPLATES:
+        if str(template["key"]).casefold() == token:
+            return template
+    return None
 
 
 def list_dashboard_meta(db: Session) -> dict:
@@ -286,6 +383,8 @@ def list_dashboard_meta(db: Session) -> dict:
         "states": states,
         "assignees": assignees,
         "labels": labels,
+        "create_templates": list_delivery_issue_templates(),
+        "create_issue_native_url": delivery_issue_native_url(),
         "sync_interval_seconds": settings.gitlab_sync_interval_seconds,
         "last_sync_run": serialize_sync_run(latest_run) if latest_run else None,
     }
@@ -297,6 +396,7 @@ def create_delivery_issue(
     title: str,
     description: str | None = None,
     labels: list[str] | None = None,
+    template_key: str | None = None,
 ) -> dict:
     if actor.kind != "internal":
         raise ValidationError("Only internal users can create delivery issues")
@@ -307,17 +407,42 @@ def create_delivery_issue(
     if not settings.gitlab_token:
         raise ValidationError("GITLAB_TOKEN is not configured")
 
+    normalized_template_key = _string_or_none(template_key)
+    selected_template = _delivery_issue_template(normalized_template_key)
+    if normalized_template_key and selected_template is None:
+        raise ValidationError("Unknown issue template")
+
     normalized_title = (title or "").strip()
     if not normalized_title:
         raise ValidationError("Issue title is required")
+    if len(normalized_title) < CREATE_ISSUE_MIN_TITLE_LENGTH:
+        raise ValidationError(f"Issue title must have at least {CREATE_ISSUE_MIN_TITLE_LENGTH} characters")
+
     normalized_description = (description or "").strip()
-    normalized_labels = _sanitize_issue_labels(labels)
+    if not normalized_description and selected_template is not None:
+        normalized_description = str(selected_template["default_description"]).strip()
+    if len(normalized_description) < CREATE_ISSUE_MIN_DESCRIPTION_LENGTH:
+        raise ValidationError(
+            f"Issue description must have at least {CREATE_ISSUE_MIN_DESCRIPTION_LENGTH} characters"
+        )
+
+    template_labels = list(selected_template["default_labels"]) if selected_template is not None else []
+    normalized_labels = _sanitize_issue_labels([*template_labels, *(labels or [])])
+    if not normalized_labels:
+        raise ValidationError("At least one label is required")
+    if len(normalized_labels) > CREATE_ISSUE_MAX_LABELS:
+        raise ValidationError(f"At most {CREATE_ISSUE_MAX_LABELS} labels are allowed")
+    for label in normalized_labels:
+        if len(label) > CREATE_ISSUE_MAX_LABEL_LENGTH:
+            raise ValidationError(
+                f"Label '{label}' is too long (max {CREATE_ISSUE_MAX_LABEL_LENGTH} characters)"
+            )
+    if DELIVERY_REQUIRED_LABEL not in {label.casefold() for label in normalized_labels}:
+        raise ValidationError(f"Labels must include '{DELIVERY_REQUIRED_LABEL}'")
 
     request_body: dict[str, object] = {"title": normalized_title}
-    if normalized_description:
-        request_body["description"] = normalized_description
-    if normalized_labels:
-        request_body["labels"] = ",".join(normalized_labels)
+    request_body["description"] = normalized_description
+    request_body["labels"] = ",".join(normalized_labels)
 
     url = (
         f"{settings.gitlab_base_url.rstrip('/')}/api/v4/projects/"
@@ -352,6 +477,7 @@ def create_delivery_issue(
         "labels": _normalize_labels(payload.get("labels")),
         "web_url": _string_or_none(payload.get("web_url")),
         "created_at": _string_or_none(payload.get("created_at")),
+        "template_key": normalized_template_key,
     }
 
 
