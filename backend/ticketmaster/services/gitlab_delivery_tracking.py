@@ -1249,6 +1249,7 @@ def _sync_delivery_issue(
     project_cache: dict[str, dict[str, str]],
 ) -> IssueSyncOutcome:
     delivery_project_id = str(payload.get("project_id") or settings.gitlab_delivery_project_id or "")
+    delivery_issue_id = _string_or_none(payload.get("id"))
     delivery_issue_iid = str(payload.get("iid") or "")
     if not delivery_project_id or not delivery_issue_iid:
         raise ValidationError("Delivery issue payload is missing project_id or iid")
@@ -1259,6 +1260,13 @@ def _sync_delivery_issue(
             GitLabTrackedIssue.delivery_issue_iid == delivery_issue_iid,
         )
     )
+    if tracked is None:
+        tracked = _find_reusable_tracked_issue(
+            db,
+            delivery_project_id=delivery_project_id,
+            delivery_issue_iid=delivery_issue_iid,
+            delivery_issue_id=delivery_issue_id,
+        )
     is_new = tracked is None
     previous_snapshot = None if tracked is None else _tracked_issue_alert_snapshot(tracked)
     if tracked is None:
@@ -1371,6 +1379,27 @@ def _sync_delivery_issue(
             used_note_fallback=resolution.used_note_fallback,
         ),
     )
+
+
+def _find_reusable_tracked_issue(
+    db: Session,
+    *,
+    delivery_project_id: str,
+    delivery_issue_iid: str,
+    delivery_issue_id: str | None,
+) -> GitLabTrackedIssue | None:
+    if not delivery_issue_id:
+        return None
+    candidates = db.scalars(
+        select(GitLabTrackedIssue).where(
+            GitLabTrackedIssue.delivery_project_id == delivery_project_id,
+            GitLabTrackedIssue.delivery_issue_iid != delivery_issue_iid,
+            GitLabTrackedIssue.target_issue_id == delivery_issue_id,
+        )
+    ).all()
+    if not candidates:
+        return None
+    return sorted(candidates, key=_tracked_issue_dedupe_score, reverse=True)[0]
 
 
 def _expected_sync_status(resolution: TargetResolution) -> str:
@@ -1935,9 +1964,9 @@ def _dedupe_tracked_issue_rows(rows: list[GitLabTrackedIssue]) -> list[GitLabTra
 
 
 def _tracked_issue_dedupe_key(row: GitLabTrackedIssue) -> tuple[str, ...]:
-    target_issue_id = _string_or_none(getattr(row, "target_issue_id", None))
-    if target_issue_id:
-        return ("target_issue_id", target_issue_id)
+    terminal_issue_id = _tracked_issue_terminal_issue_id(row)
+    if terminal_issue_id:
+        return ("terminal_issue_id", terminal_issue_id)
 
     target_project_id = _string_or_none(getattr(row, "target_project_id", None))
     target_issue_iid = _string_or_none(getattr(row, "target_issue_iid", None))
@@ -1958,9 +1987,12 @@ def _tracked_issue_dedupe_key(row: GitLabTrackedIssue) -> tuple[str, ...]:
 
 
 def _tracked_issue_dedupe_score(row: GitLabTrackedIssue) -> tuple[object, ...]:
+    terminal_issue_id = _tracked_issue_terminal_issue_id(row)
+    delivery_issue_id = _string_or_none(getattr(row, "delivery_issue_id", None))
+    is_terminal_delivery_row = bool(terminal_issue_id and delivery_issue_id and terminal_issue_id == delivery_issue_id)
     delivery_state = (_string_or_none(getattr(row, "delivery_state", None)) or "").lower()
     return (
-        1 if _string_or_none(getattr(row, "target_issue_id", None)) else 0,
+        1 if is_terminal_delivery_row else 0,
         _sync_status_priority(_string_or_none(getattr(row, "sync_status", None))),
         _datetime_sort_key(getattr(row, "target_updated_at", None)),
         _datetime_sort_key(getattr(row, "delivery_updated_at", None)),
@@ -1971,6 +2003,10 @@ def _tracked_issue_dedupe_score(row: GitLabTrackedIssue) -> tuple[object, ...]:
         _string_or_none(getattr(row, "delivery_issue_iid", None)) or "",
         _string_or_none(getattr(row, "id", None)) or "",
     )
+
+
+def _tracked_issue_terminal_issue_id(row: GitLabTrackedIssue) -> str | None:
+    return _string_or_none(getattr(row, "target_issue_id", None)) or _string_or_none(getattr(row, "delivery_issue_id", None))
 
 
 def _sync_status_priority(value: str | None) -> int:

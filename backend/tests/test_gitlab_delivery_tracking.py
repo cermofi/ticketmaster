@@ -17,6 +17,7 @@ from ticketmaster.services.gitlab_delivery_tracking import (
     _dedupe_tracked_issue_rows,
     _emit_delivery_alert_if_needed,
     _expected_sync_status,
+    _sync_delivery_issue,
     _tracked_issue_invariant_errors,
     _tracked_issue_alert_changes,
     _row_matches_assignee_filter,
@@ -648,6 +649,90 @@ def test_sort_rows_by_team_id_uses_target_issue_iid() -> None:
     assert [row.delivery_issue_iid for row in sorted_rows] == ["2", "1"]
 
 
+def test_sync_delivery_issue_reuses_existing_row_when_issue_returns_to_delivery() -> None:
+    tracked = GitLabTrackedIssue(
+        id="tracked-existing",
+        delivery_project_id="503",
+        delivery_issue_iid="20",
+        delivery_title="Plan workshop with Seyfor",
+        delivery_url="https://gitlab.example.com/team/delivery/-/issues/20",
+        delivery_state="opened",
+        target_project_id="777",
+        target_issue_id="9001",
+        target_issue_iid="45",
+        sync_status="ok",
+        resolution_source="moved_to_id",
+    )
+
+    class DummyScalarResult:
+        def __init__(self, rows: list[GitLabTrackedIssue]) -> None:
+            self._rows = rows
+
+        def all(self) -> list[GitLabTrackedIssue]:
+            return list(self._rows)
+
+    class DummySession:
+        def __init__(self, reusable_row: GitLabTrackedIssue) -> None:
+            self._scalar_calls = 0
+            self._reusable_row = reusable_row
+            self.added: list[object] = []
+
+        def scalar(self, stmt):  # noqa: ANN001, ANN201
+            self._scalar_calls += 1
+            if self._scalar_calls == 1:
+                return None
+            if self._scalar_calls == 2:
+                return None
+            raise AssertionError("Unexpected scalar call")
+
+        def scalars(self, stmt) -> DummyScalarResult:  # noqa: ANN001
+            return DummyScalarResult([self._reusable_row])
+
+        def add(self, obj) -> None:  # noqa: ANN001
+            self.added.append(obj)
+
+    session = DummySession(tracked)
+    resolution = TargetResolution(
+        issue=None,
+        source="none",
+        used_manual_mapping=False,
+        used_moved_to=False,
+        used_note_fallback=False,
+        has_target_hint=False,
+        fatal_error=None,
+    )
+    payload = {
+        "id": "9001",
+        "project_id": "503",
+        "iid": "18",
+        "title": "Plan workshop with Seyfor",
+        "web_url": "https://gitlab.example.com/team/delivery/-/issues/18",
+        "state": "opened",
+        "updated_at": "2026-06-30T09:21:00Z",
+    }
+
+    with (
+        patch("ticketmaster.services.gitlab_delivery_tracking._resolve_target_issue", return_value=resolution),
+        patch(
+            "ticketmaster.services.gitlab_delivery_tracking._sync_outcome_with_alert",
+            side_effect=lambda db, tracked, previous_snapshot, is_new, outcome: outcome,
+        ),
+    ):
+        outcome = _sync_delivery_issue(
+            session,
+            client=SimpleNamespace(),
+            payload=payload,
+            target_teams={},
+            project_cache={},
+        )
+
+    assert outcome.status == "ok"
+    assert tracked.delivery_issue_iid == "18"
+    assert tracked.delivery_issue_id == "9001"
+    assert tracked.sync_status == "in_delivery"
+    assert session.added == []
+
+
 def test_dedupe_tracked_issue_rows_prefers_latest_same_target_issue() -> None:
     older = SimpleNamespace(
         id="old-row",
@@ -727,6 +812,49 @@ def test_dedupe_tracked_issue_rows_keeps_distinct_targets() -> None:
 
     assert len(deduped) == 2
     assert {row.id for row in deduped} == {"left", "right"}
+
+
+def test_dedupe_tracked_issue_rows_prefers_returned_delivery_terminal_row() -> None:
+    predecessor = SimpleNamespace(
+        id="row-old",
+        target_issue_id="9001",
+        target_project_id="777",
+        target_issue_iid="20",
+        moved_to_id="9001",
+        delivery_project_id="503",
+        delivery_issue_id="8000",
+        delivery_issue_iid="20",
+        sync_status="ok",
+        target_updated_at=datetime(2026, 6, 30, 9, 19, tzinfo=timezone.utc),
+        delivery_updated_at=datetime(2026, 6, 30, 9, 19, tzinfo=timezone.utc),
+        last_synced_at=datetime(2026, 6, 30, 9, 20, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 6, 30, 9, 20, tzinfo=timezone.utc),
+        created_at=datetime(2026, 6, 30, 9, 10, tzinfo=timezone.utc),
+        delivery_state="opened",
+    )
+    returned_to_delivery = SimpleNamespace(
+        id="row-final",
+        target_issue_id=None,
+        target_project_id=None,
+        target_issue_iid=None,
+        moved_to_id=None,
+        delivery_project_id="503",
+        delivery_issue_id="9001",
+        delivery_issue_iid="18",
+        sync_status="in_delivery",
+        target_updated_at=None,
+        delivery_updated_at=datetime(2026, 6, 30, 9, 21, tzinfo=timezone.utc),
+        last_synced_at=datetime(2026, 6, 30, 9, 22, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 6, 30, 9, 22, tzinfo=timezone.utc),
+        created_at=datetime(2026, 6, 30, 9, 21, tzinfo=timezone.utc),
+        delivery_state="opened",
+    )
+
+    deduped = _dedupe_tracked_issue_rows([predecessor, returned_to_delivery])
+
+    assert len(deduped) == 1
+    assert deduped[0].id == "row-final"
+    assert deduped[0].delivery_issue_iid == "18"
 
 
 def test_row_matches_label_filter_prefers_target_labels_with_delivery_fallback() -> None:
