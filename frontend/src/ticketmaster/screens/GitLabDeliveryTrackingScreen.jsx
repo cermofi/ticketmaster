@@ -157,6 +157,18 @@ function TrackingDashboard({ user }) {
   }, [canView, loadAlerts]);
 
   const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
+  const moveProjectOptions = useMemo(() => {
+    const dedup = new Map();
+    asArray(meta?.target_teams).forEach((team) => {
+      const projectId = String(team?.project_id || '').trim();
+      if (!projectId || dedup.has(projectId)) return;
+      dedup.set(projectId, {
+        value: projectId,
+        label: team?.name ? `${team.name} (${projectId})` : projectId
+      });
+    });
+    return Array.from(dedup.values()).sort((left, right) => left.label.localeCompare(right.label));
+  }, [meta]);
 
   useEffect(() => {
     load(filters);
@@ -415,7 +427,7 @@ function TrackingDashboard({ user }) {
 
   const openDetailMoveDialog = () => {
     if (!canManage || !detailData?.issue) return;
-    setDetailMoveProjectId('');
+    setDetailMoveProjectId(moveProjectOptions[0]?.value || '');
     setDetailMoveError('');
     setDetailMoveModalOpen(true);
   };
@@ -865,21 +877,27 @@ function TrackingDashboard({ user }) {
           <ModalHeader toggle={closeDetailMoveDialog}>Move issue</ModalHeader>
           <ModalBody>
             <ErrorBanner error={detailMoveError} />
-            <p className="tm-muted">
-              Move this issue to another project by entering target project path or ID
-              {' '}
-              <code>group/project</code>
-              .
-            </p>
+            <p className="tm-muted">Move this issue to one of the configured target projects.</p>
             <FormGroup>
               <Label for="tm-detail-move-project">Target project</Label>
               <Input
                 id="tm-detail-move-project"
+                type="select"
                 value={detailMoveProjectId}
                 onChange={(event) => setDetailMoveProjectId(event.target.value)}
-                placeholder="group/project or 123"
                 required
-              />
+              >
+                {moveProjectOptions.length === 0 ? (
+                  <option value="">No configured projects</option>
+                ) : (
+                  <>
+                    <option value="">Select project</option>
+                    {moveProjectOptions.map((project) => (
+                      <option key={project.value} value={project.value}>{project.label}</option>
+                    ))}
+                  </>
+                )}
+              </Input>
             </FormGroup>
           </ModalBody>
           <ModalFooter>
