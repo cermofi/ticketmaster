@@ -1184,7 +1184,9 @@ def sync_delivery_issues(db: Session, *, triggered_by: str = "manual") -> GitLab
         project_cache: dict[str, dict[str, str]] = {}
         client = GitLabReadOnlyClient(base_url=settings.gitlab_base_url, token=str(settings.gitlab_token))
         try:
-            issues = client.list_project_issues(str(settings.gitlab_delivery_project_id), state="all")
+            issues = _sort_delivery_issues_for_sync(
+                client.list_project_issues(str(settings.gitlab_delivery_project_id), state="all")
+            )
             run.total_issues = len(issues)
             for payload in issues:
                 try:
@@ -1463,18 +1465,39 @@ def _find_reusable_tracked_issue(
     delivery_issue_iid: str,
     delivery_issue_id: str | None,
 ) -> GitLabTrackedIssue | None:
-    if not delivery_issue_id:
+    matchers: list[object] = []
+    if delivery_issue_id:
+        matchers.append(GitLabTrackedIssue.target_issue_id == delivery_issue_id)
+        matchers.append(GitLabTrackedIssue.moved_to_id == delivery_issue_id)
+    if delivery_issue_iid:
+        matchers.append(
+            and_(
+                GitLabTrackedIssue.target_project_id == delivery_project_id,
+                GitLabTrackedIssue.target_issue_iid == delivery_issue_iid,
+            )
+        )
+    if not matchers:
         return None
     candidates = db.scalars(
         select(GitLabTrackedIssue).where(
             GitLabTrackedIssue.delivery_project_id == delivery_project_id,
             GitLabTrackedIssue.delivery_issue_iid != delivery_issue_iid,
-            GitLabTrackedIssue.target_issue_id == delivery_issue_id,
+            or_(*matchers),
         )
     ).all()
     if not candidates:
         return None
     return sorted(candidates, key=_tracked_issue_dedupe_score, reverse=True)[0]
+
+
+def _sort_delivery_issues_for_sync(issues: list[dict]) -> list[dict]:
+    return sorted(
+        [issue for issue in issues if isinstance(issue, dict)],
+        key=lambda payload: (
+            _safe_iid_sort(_string_or_none(payload.get("iid"))),
+            _datetime_sort_key(_parse_gitlab_datetime(payload.get("updated_at"))),
+        ),
+    )
 
 
 def _expected_sync_status(resolution: TargetResolution) -> str:

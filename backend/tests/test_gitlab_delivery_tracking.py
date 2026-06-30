@@ -36,6 +36,7 @@ from ticketmaster.services.gitlab_delivery_tracking import (
     move_tracked_issue,
     normalize_sort,
     parse_updated_since,
+    sync_delivery_issues,
 )
 from ticketmaster.models import GitLabTrackedIssue
 
@@ -837,6 +838,79 @@ def test_sync_delivery_issue_reuses_existing_row_when_issue_returns_to_delivery(
     assert tracked.delivery_issue_id == "9001"
     assert tracked.sync_status == "in_delivery"
     assert session.added == []
+
+
+def test_sync_delivery_issues_processes_oldest_delivery_iids_first() -> None:
+    patched = replace(
+        settings,
+        gitlab_base_url="https://gitlab.example.com",
+        gitlab_token="secret-token",
+        gitlab_delivery_project_id="503",
+    )
+    seen_iids: list[str] = []
+
+    class DummyResult:
+        def __init__(self, value: object) -> None:
+            self._value = value
+
+        def scalar(self) -> object:
+            return self._value
+
+    class DummySession:
+        def __init__(self) -> None:
+            self.added: list[object] = []
+
+        def execute(self, statement, params=None):  # noqa: ANN001, ANN201
+            text_stmt = str(statement)
+            if "pg_try_advisory_lock" in text_stmt:
+                return DummyResult(True)
+            if "pg_advisory_unlock" in text_stmt:
+                return DummyResult(True)
+            raise AssertionError(f"Unexpected execute call: {text_stmt}")
+
+        def add(self, obj) -> None:  # noqa: ANN001
+            self.added.append(obj)
+
+        def flush(self, objects=None) -> None:  # noqa: ANN001
+            return None
+
+    class DummyClient:
+        def __init__(self, **kwargs):  # noqa: ANN003, ANN204
+            pass
+
+        @staticmethod
+        def list_project_issues(project_id: str, *, state: str = "all") -> list[dict]:
+            assert project_id == "503"
+            assert state == "all"
+            return [
+                {"id": "3003", "iid": "25", "updated_at": "2026-06-30T11:25:00Z"},
+                {"id": "3001", "iid": "23", "updated_at": "2026-06-30T11:23:00Z"},
+                {"id": "3002", "iid": "24", "updated_at": "2026-06-30T11:24:00Z"},
+            ]
+
+        def close(self) -> None:
+            return None
+
+    def fake_sync_issue(db, *, client, payload, target_teams, project_cache):  # noqa: ANN001, ANN202
+        seen_iids.append(str(payload.get("iid") or ""))
+        return SimpleNamespace(
+            status="ok",
+            used_manual_mapping=False,
+            used_moved_to=False,
+            used_note_fallback=False,
+        )
+
+    with (
+        patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched),
+        patch("ticketmaster.services.gitlab_delivery_tracking._sync_configured", return_value=True),
+        patch("ticketmaster.services.gitlab_delivery_tracking._target_team_map", return_value={}),
+        patch("ticketmaster.services.gitlab_delivery_tracking.GitLabReadOnlyClient", DummyClient),
+        patch("ticketmaster.services.gitlab_delivery_tracking._sync_delivery_issue", side_effect=fake_sync_issue),
+    ):
+        run = sync_delivery_issues(DummySession(), triggered_by="test")
+
+    assert run.status == "ok"
+    assert seen_iids == ["23", "24", "25"]
 
 
 def test_dedupe_tracked_issue_rows_prefers_latest_same_target_issue() -> None:
