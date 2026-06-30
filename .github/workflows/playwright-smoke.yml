@@ -7,6 +7,10 @@ on:
         description: Staging app base URL (no trailing slash)
         required: false
         default: ""
+      shards:
+        description: Number of parallel shards (1-4)
+        required: false
+        default: "2"
 
 permissions:
   contents: read
@@ -16,9 +20,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  plan-shards:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      total: ${{ steps.plan.outputs.total }}
+    steps:
+      - id: plan
+        env:
+          SHARDS_INPUT: ${{ github.event.inputs.shards || '2' }}
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+
+          raw = (os.getenv("SHARDS_INPUT") or "2").strip()
+          try:
+              shards = int(raw)
+          except ValueError as exc:
+              raise SystemExit(f"Invalid shard count '{raw}'. Use integer 1-4.") from exc
+          if shards < 1 or shards > 4:
+              raise SystemExit(f"Invalid shard count '{shards}'. Use integer 1-4.")
+
+          print(f"total={shards}")
+          print(f"matrix={json.dumps({'shard': list(range(1, shards + 1))})}")
+          PY
+
   smoke:
+    needs: [plan-shards]
+    name: smoke (shard ${{ matrix.shard }}/${{ needs.plan-shards.outputs.total }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan-shards.outputs.matrix) }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -26,23 +61,46 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install frontend + Playwright
+      - name: Restore Playwright browser cache
+        id: playwright-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+      - name: Install frontend deps
         working-directory: frontend
-        run: |
-          npm ci
-          npx playwright install chromium --with-deps
+        run: npm ci --prefer-offline --no-audit
+      - name: Install Playwright OS dependencies
+        working-directory: frontend
+        run: npx playwright install-deps chromium
+      - name: Install Playwright browser (cache miss)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: frontend
+        run: npx playwright install chromium
       - name: Run smoke specs against staging
         working-directory: frontend
         env:
           PLAYWRIGHT_BASE_URL: ${{ github.event.inputs.base_url || secrets.E2E_STAGING_BASE_URL || 'https://staging.ticketmaster.cermofi.cz' }}
           E2E_ADMIN_EMAIL: ${{ secrets.E2E_STAGING_ADMIN_EMAIL || secrets.E2E_ADMIN_EMAIL }}
           E2E_ADMIN_PASSWORD: ${{ secrets.E2E_STAGING_ADMIN_PASSWORD || secrets.E2E_ADMIN_PASSWORD }}
-        run: npm run test:e2e
-      - name: Upload Playwright report
+        run: |
+          set -o pipefail
+          npm run test:e2e -- --shard=${{ matrix.shard }}/${{ needs.plan-shards.outputs.total }} 2>&1 | tee playwright-shard.log
+      - name: Upload Playwright report (shard)
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: playwright-report
+          name: playwright-report-shard-${{ matrix.shard }}
           path: frontend/playwright-report
           if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload Playwright shard log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-log-shard-${{ matrix.shard }}
+          path: frontend/playwright-shard.log
+          if-no-files-found: warn
           retention-days: 7
