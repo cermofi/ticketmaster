@@ -4,6 +4,7 @@ import LanguageDropdown from 'asab_webui_shell/dist/modules/i18n/dropdown.js';
 
 const DashboardScreen = lazy(() => import('./screens/DashboardScreen.jsx'));
 const GitLabDeliveryTrackingScreen = lazy(() => import('./screens/GitLabDeliveryTrackingScreen.jsx'));
+const GitLabDeliveryIssueDetailScreen = lazy(() => import('./screens/GitLabDeliveryIssueDetailScreen.jsx'));
 const NewTicketScreen = lazy(() => import('./screens/NewTicketScreen.jsx'));
 const TicketDetailScreen = lazy(() => import('./screens/TicketDetailScreen.jsx'));
 const PartnerOverviewScreen = lazy(() => import('./screens/PartnerOverviewScreen.jsx'));
@@ -19,6 +20,7 @@ export default class TicketMasterModule extends Module {
 
     app.Router.addRoute({ path: '/', end: true, name: 'Tickets', component: GitLabDeliveryTrackingScreen, resource: '*' });
     app.Router.addRoute({ path: '/delivery-tracking', end: true, name: 'Tickets', component: GitLabDeliveryTrackingScreen, resource: '*' });
+    app.Router.addRoute({ path: '/delivery-tracking/:trackedIssueId', end: true, name: 'Ticket detail', component: GitLabDeliveryIssueDetailScreen, resource: '*' });
     app.Router.addRoute({ path: '/legacy-tickets', end: true, name: 'Legacy tickets', component: DashboardScreen, resource: '*' });
     app.Router.addRoute({ path: '/tickets/new', end: true, name: 'Create ticket', component: NewTicketScreen, resource: '*' });
     app.Router.addRoute({ path: '/tickets/:ticketId', end: true, name: 'Ticket detail', component: TicketDetailScreen, resource: '*' });
