@@ -113,9 +113,11 @@ jobs:
         run: |
           set -euo pipefail
           base_tmp="${RUNNER_TEMP:-/tmp}"
-          echo "DEPLOY_LOG_DIR=${base_tmp}/release-main-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
-          echo "DEPLOY_ENV_FILE=${base_tmp}/release-main-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/deploy.env.images" >> "$GITHUB_ENV"
-          echo "RELEASE_SMOKE_BASE_URL=${{ inputs.smoke_base_url || 'https://ticketmaster.cermofi.cz' }}" >> "$GITHUB_ENV"
+          {
+            echo "DEPLOY_LOG_DIR=${base_tmp}/release-main-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            echo "DEPLOY_ENV_FILE=${base_tmp}/release-main-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/deploy.env.images"
+            echo "RELEASE_SMOKE_BASE_URL=${{ inputs.smoke_base_url || 'https://ticketmaster.cermofi.cz' }}"
+          } >> "$GITHUB_ENV"
 
       - name: Prepare deploy log directory
         run: |

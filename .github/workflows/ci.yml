@@ -26,10 +26,12 @@ jobs:
       - id: force_all
         if: github.event_name == 'merge_group'
         run: |
-          echo "backend=true" >> "$GITHUB_OUTPUT"
-          echo "frontend=true" >> "$GITHUB_OUTPUT"
-          echo "docs=true" >> "$GITHUB_OUTPUT"
-          echo "workflows=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "backend=true"
+            echo "frontend=true"
+            echo "docs=true"
+            echo "workflows=true"
+          } >> "$GITHUB_OUTPUT"
       - id: filter
         if: github.event_name != 'merge_group'
         uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
