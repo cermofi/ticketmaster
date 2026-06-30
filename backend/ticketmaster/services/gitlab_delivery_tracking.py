@@ -940,6 +940,66 @@ def get_tracked_issue_detail(db: Session, *, actor: User, tracked_issue_id: str)
     }
 
 
+def close_tracked_issue(db: Session, *, actor: User, tracked_issue_id: str) -> dict:
+    _require_delivery_issue_write_access(actor=actor)
+    _, project_id, issue_iid = _resolve_tracked_issue_reference(db, tracked_issue_id=tracked_issue_id)
+    payload = _request_gitlab_issue_mutation(
+        method="PUT",
+        project_id=project_id,
+        issue_iid=issue_iid,
+        body={"state_event": "close"},
+        action_label="GitLab close issue failed",
+    )
+    return _normalize_issue_detail(payload)
+
+
+def edit_tracked_issue(
+    db: Session,
+    *,
+    actor: User,
+    tracked_issue_id: str,
+    title: str,
+    description: str | None = None,
+) -> dict:
+    _require_delivery_issue_write_access(actor=actor)
+    _, project_id, issue_iid = _resolve_tracked_issue_reference(db, tracked_issue_id=tracked_issue_id)
+    normalized_title = _string_or_none(title)
+    if not normalized_title:
+        raise ValidationError("Issue title is required")
+    normalized_description = "" if description is None else str(description)
+    payload = _request_gitlab_issue_mutation(
+        method="PUT",
+        project_id=project_id,
+        issue_iid=issue_iid,
+        body={"title": normalized_title, "description": normalized_description},
+        action_label="GitLab issue edit failed",
+    )
+    return _normalize_issue_detail(payload)
+
+
+def move_tracked_issue(
+    db: Session,
+    *,
+    actor: User,
+    tracked_issue_id: str,
+    to_project_id: str,
+) -> dict:
+    _require_delivery_issue_write_access(actor=actor)
+    _, project_id, issue_iid = _resolve_tracked_issue_reference(db, tracked_issue_id=tracked_issue_id)
+    normalized_target_project = _string_or_none(to_project_id)
+    if not normalized_target_project:
+        raise ValidationError("to_project_id is required")
+    payload = _request_gitlab_issue_mutation(
+        method="POST",
+        project_id=project_id,
+        issue_iid=issue_iid,
+        body={"to_project_id": normalized_target_project},
+        action_label="GitLab issue move failed",
+        endpoint_suffix="/move",
+    )
+    return _normalize_issue_detail(payload)
+
+
 def serialize_tracked_issue(row: GitLabTrackedIssue) -> dict:
     assignees = row.target_assignees or []
     assignee_name = assignees[0]["name"] if assignees and isinstance(assignees[0], dict) else None
@@ -2043,6 +2103,60 @@ def _normalize_assignees(raw: object) -> list[dict]:
             }
         )
     return assignees
+
+
+def _require_delivery_issue_write_access(*, actor: User) -> None:
+    if actor.kind != "internal":
+        raise ValidationError("Only internal users can modify delivery issues")
+    if not settings.gitlab_base_url:
+        raise ValidationError("GITLAB_BASE_URL is not configured")
+    if not settings.gitlab_token:
+        raise ValidationError("GITLAB_TOKEN is not configured")
+
+
+def _resolve_tracked_issue_reference(db: Session, *, tracked_issue_id: str) -> tuple[GitLabTrackedIssue, str, str]:
+    tracked = db.get(GitLabTrackedIssue, tracked_issue_id)
+    if tracked is None:
+        raise NotFoundError("Tracked issue not found")
+    project_id = _string_or_none(tracked.target_project_id) or _string_or_none(tracked.delivery_project_id)
+    issue_iid = _string_or_none(tracked.target_issue_iid) or _string_or_none(tracked.delivery_issue_iid)
+    if not project_id or not issue_iid:
+        raise ValidationError("Tracked issue is missing project or issue reference")
+    return tracked, project_id, issue_iid
+
+
+def _request_gitlab_issue_mutation(
+    *,
+    method: str,
+    project_id: str,
+    issue_iid: str,
+    body: dict[str, object] | None,
+    action_label: str,
+    endpoint_suffix: str = "",
+) -> dict:
+    url = (
+        f"{settings.gitlab_base_url.rstrip('/')}/api/v4/projects/"
+        f"{quote_plus(str(project_id))}/issues/{quote_plus(str(issue_iid))}{endpoint_suffix}"
+    )
+    try:
+        response = httpx.request(
+            method=method,
+            url=url,
+            headers={"PRIVATE-TOKEN": str(settings.gitlab_token)},
+            json=body,
+            timeout=20,
+        )
+    except httpx.HTTPError as exc:
+        raise ValidationError(f"{action_label}: request error") from exc
+    if response.status_code >= 400:
+        raise ValidationError(f"{action_label}: {_map_gitlab_error(response)}")
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise ValidationError(f"{action_label}: invalid JSON payload") from exc
+    if not isinstance(payload, dict):
+        raise ValidationError(f"{action_label}: invalid payload")
+    return payload
 
 
 def _normalize_issue_detail(raw: dict) -> dict:

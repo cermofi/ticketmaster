@@ -23,9 +23,12 @@ from ticketmaster.services.gitlab_delivery_tracking import (
     _parse_issue_url,
     _resolve_target_issue,
     _sort_tracked_issue_rows,
+    close_tracked_issue,
     create_delivery_issue,
+    edit_tracked_issue,
     get_delivery_issue_create_meta,
     get_tracked_issue_detail,
+    move_tracked_issue,
     normalize_sort,
     parse_updated_since,
 )
@@ -321,6 +324,176 @@ def test_get_tracked_issue_detail_collects_issue_and_notes() -> None:
     assert detail["issue"]["assignees"][0]["name"] == "Jane Doe"
     assert detail["notes"][0]["body"] == "First note"
     assert detail["tracked_issue"]["delivery_issue_iid"] == "11"
+
+
+def test_close_tracked_issue_closes_target_issue() -> None:
+    patched = replace(
+        settings,
+        gitlab_base_url="https://gitlab.example.com",
+        gitlab_token="secret-token",
+        gitlab_delivery_project_id="503",
+    )
+    actor = SimpleNamespace(kind="internal")
+    tracked = GitLabTrackedIssue(
+        id="tracked-1",
+        delivery_project_id="503",
+        delivery_issue_iid="11",
+        delivery_title="Delivery issue title",
+        delivery_url="https://gitlab.example.com/team/delivery/-/issues/11",
+        delivery_state="opened",
+        target_project_id="777",
+        target_issue_iid="42",
+        sync_status="ok",
+    )
+
+    class DummySession:
+        @staticmethod
+        def get(model, tracked_issue_id: str):  # noqa: ANN205, ANN001
+            assert model is GitLabTrackedIssue
+            if tracked_issue_id == tracked.id:
+                return tracked
+            return None
+
+    response = DummyGitLabResponse(
+        status_code=200,
+        payload={
+            "id": 4002,
+            "iid": 42,
+            "project_id": 777,
+            "title": "Target issue title",
+            "description": "Body",
+            "state": "closed",
+            "labels": ["delivery"],
+        },
+    )
+    with (
+        patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched),
+        patch("ticketmaster.services.gitlab_delivery_tracking.httpx.request", return_value=response) as request_mock,
+    ):
+        issue = close_tracked_issue(DummySession(), actor=actor, tracked_issue_id="tracked-1")
+
+    _, kwargs = request_mock.call_args
+    assert kwargs["method"] == "PUT"
+    assert "/projects/777/issues/42" in kwargs["url"]
+    assert kwargs["json"] == {"state_event": "close"}
+    assert issue["state"] == "closed"
+
+
+def test_edit_tracked_issue_updates_title_and_description() -> None:
+    patched = replace(
+        settings,
+        gitlab_base_url="https://gitlab.example.com",
+        gitlab_token="secret-token",
+        gitlab_delivery_project_id="503",
+    )
+    actor = SimpleNamespace(kind="internal")
+    tracked = GitLabTrackedIssue(
+        id="tracked-1",
+        delivery_project_id="503",
+        delivery_issue_iid="11",
+        delivery_title="Delivery issue title",
+        delivery_url="https://gitlab.example.com/team/delivery/-/issues/11",
+        delivery_state="opened",
+        target_project_id="777",
+        target_issue_iid="42",
+        sync_status="ok",
+    )
+
+    class DummySession:
+        @staticmethod
+        def get(model, tracked_issue_id: str):  # noqa: ANN205, ANN001
+            assert model is GitLabTrackedIssue
+            if tracked_issue_id == tracked.id:
+                return tracked
+            return None
+
+    response = DummyGitLabResponse(
+        status_code=200,
+        payload={
+            "id": 4002,
+            "iid": 42,
+            "project_id": 777,
+            "title": "Updated issue title",
+            "description": "Updated markdown body",
+            "state": "opened",
+            "labels": ["delivery"],
+        },
+    )
+    with (
+        patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched),
+        patch("ticketmaster.services.gitlab_delivery_tracking.httpx.request", return_value=response) as request_mock,
+    ):
+        issue = edit_tracked_issue(
+            DummySession(),
+            actor=actor,
+            tracked_issue_id="tracked-1",
+            title="  Updated issue title  ",
+            description="Updated markdown body",
+        )
+
+    _, kwargs = request_mock.call_args
+    assert kwargs["method"] == "PUT"
+    assert "/projects/777/issues/42" in kwargs["url"]
+    assert kwargs["json"] == {"title": "Updated issue title", "description": "Updated markdown body"}
+    assert issue["title"] == "Updated issue title"
+
+
+def test_move_tracked_issue_calls_gitlab_move_endpoint() -> None:
+    patched = replace(
+        settings,
+        gitlab_base_url="https://gitlab.example.com",
+        gitlab_token="secret-token",
+        gitlab_delivery_project_id="503",
+    )
+    actor = SimpleNamespace(kind="internal")
+    tracked = GitLabTrackedIssue(
+        id="tracked-1",
+        delivery_project_id="503",
+        delivery_issue_iid="11",
+        delivery_title="Delivery issue title",
+        delivery_url="https://gitlab.example.com/team/delivery/-/issues/11",
+        delivery_state="opened",
+        target_project_id="777",
+        target_issue_iid="42",
+        sync_status="ok",
+    )
+
+    class DummySession:
+        @staticmethod
+        def get(model, tracked_issue_id: str):  # noqa: ANN205, ANN001
+            assert model is GitLabTrackedIssue
+            if tracked_issue_id == tracked.id:
+                return tracked
+            return None
+
+    response = DummyGitLabResponse(
+        status_code=200,
+        payload={
+            "id": 5001,
+            "iid": 75,
+            "project_id": 888,
+            "title": "Moved issue",
+            "description": "Body",
+            "state": "opened",
+            "labels": ["delivery"],
+        },
+    )
+    with (
+        patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched),
+        patch("ticketmaster.services.gitlab_delivery_tracking.httpx.request", return_value=response) as request_mock,
+    ):
+        issue = move_tracked_issue(
+            DummySession(),
+            actor=actor,
+            tracked_issue_id="tracked-1",
+            to_project_id="team/new-target",
+        )
+
+    _, kwargs = request_mock.call_args
+    assert kwargs["method"] == "POST"
+    assert kwargs["url"].endswith("/projects/777/issues/42/move")
+    assert kwargs["json"] == {"to_project_id": "team/new-target"}
+    assert issue["project_id"] == "888"
 
 
 def test_parse_issue_url_accepts_absolute_gitlab_url() -> None:
