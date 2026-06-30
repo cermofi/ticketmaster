@@ -886,7 +886,7 @@ def list_tracked_issues(
             )
         )
 
-    all_rows = db.scalars(stmt).all()
+    all_rows = _dedupe_tracked_issue_rows(db.scalars(stmt).all())
     if assignee:
         all_rows = [row for row in all_rows if _row_matches_assignee_filter(row, assignee)]
     if label:
@@ -1892,6 +1892,78 @@ def _tracked_issue_invariant_errors(row: GitLabTrackedIssue) -> list[str]:
     if row.sync_status == "in_delivery" and row.resolution_source != "delivery":
         errors.append("in_delivery issue should have resolution_source=delivery")
     return errors
+
+
+def _dedupe_tracked_issue_rows(rows: list[GitLabTrackedIssue]) -> list[GitLabTrackedIssue]:
+    chosen: dict[tuple[str, ...], GitLabTrackedIssue] = {}
+    for row in rows:
+        dedupe_key = _tracked_issue_dedupe_key(row)
+        current = chosen.get(dedupe_key)
+        if current is None:
+            chosen[dedupe_key] = row
+            continue
+        if _tracked_issue_dedupe_score(row) > _tracked_issue_dedupe_score(current):
+            chosen[dedupe_key] = row
+    return list(chosen.values())
+
+
+def _tracked_issue_dedupe_key(row: GitLabTrackedIssue) -> tuple[str, ...]:
+    target_issue_id = _string_or_none(getattr(row, "target_issue_id", None))
+    if target_issue_id:
+        return ("target_issue_id", target_issue_id)
+
+    target_project_id = _string_or_none(getattr(row, "target_project_id", None))
+    target_issue_iid = _string_or_none(getattr(row, "target_issue_iid", None))
+    if target_project_id and target_issue_iid:
+        return ("target_issue", target_project_id, target_issue_iid)
+
+    moved_to_id = _string_or_none(getattr(row, "moved_to_id", None))
+    if moved_to_id:
+        return ("moved_to_id", moved_to_id)
+
+    delivery_project_id = _string_or_none(getattr(row, "delivery_project_id", None))
+    delivery_issue_iid = _string_or_none(getattr(row, "delivery_issue_iid", None))
+    if delivery_project_id or delivery_issue_iid:
+        return ("delivery_issue", delivery_project_id or "", delivery_issue_iid or "")
+
+    fallback_id = _string_or_none(getattr(row, "id", None))
+    return ("row_id", fallback_id or "")
+
+
+def _tracked_issue_dedupe_score(row: GitLabTrackedIssue) -> tuple[object, ...]:
+    delivery_state = (_string_or_none(getattr(row, "delivery_state", None)) or "").lower()
+    return (
+        1 if _string_or_none(getattr(row, "target_issue_id", None)) else 0,
+        _sync_status_priority(_string_or_none(getattr(row, "sync_status", None))),
+        _datetime_sort_key(getattr(row, "target_updated_at", None)),
+        _datetime_sort_key(getattr(row, "delivery_updated_at", None)),
+        _datetime_sort_key(getattr(row, "last_synced_at", None)),
+        _datetime_sort_key(getattr(row, "updated_at", None)),
+        _datetime_sort_key(getattr(row, "created_at", None)),
+        1 if delivery_state != "closed" else 0,
+        _string_or_none(getattr(row, "delivery_issue_iid", None)) or "",
+        _string_or_none(getattr(row, "id", None)) or "",
+    )
+
+
+def _sync_status_priority(value: str | None) -> int:
+    if value == "ok":
+        return 4
+    if value == "in_delivery":
+        return 3
+    if value == "target_missing":
+        return 2
+    if value == "error":
+        return 1
+    return 0
+
+
+def _datetime_sort_key(value: datetime | None) -> float:
+    if not isinstance(value, datetime):
+        return float("-inf")
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.timestamp()
 
 
 def _safe_iid_sort(value: str | None) -> tuple[int, str]:
