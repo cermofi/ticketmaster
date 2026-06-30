@@ -729,6 +729,49 @@ def test_dedupe_tracked_issue_rows_keeps_distinct_targets() -> None:
     assert {row.id for row in deduped} == {"left", "right"}
 
 
+def test_dedupe_tracked_issue_rows_follows_delivery_move_chain_terminal() -> None:
+    predecessor = SimpleNamespace(
+        id="row-predecessor",
+        delivery_project_id="503",
+        delivery_issue_id="111",
+        delivery_issue_iid="11",
+        moved_to_id="222",
+        target_issue_id="7001",
+        target_project_id="700",
+        target_issue_iid="10",
+        sync_status="ok",
+        target_updated_at=datetime(2026, 6, 30, 10, 10, tzinfo=timezone.utc),
+        delivery_updated_at=datetime(2026, 6, 30, 10, 10, tzinfo=timezone.utc),
+        last_synced_at=datetime(2026, 6, 30, 10, 11, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 6, 30, 10, 11, tzinfo=timezone.utc),
+        created_at=datetime(2026, 6, 30, 10, 0, tzinfo=timezone.utc),
+        delivery_state="closed",
+    )
+    terminal = SimpleNamespace(
+        id="row-terminal",
+        delivery_project_id="503",
+        delivery_issue_id="222",
+        delivery_issue_iid="22",
+        moved_to_id=None,
+        target_issue_id="9001",
+        target_project_id="900",
+        target_issue_iid="50",
+        sync_status="ok",
+        target_updated_at=datetime(2026, 6, 30, 9, 0, tzinfo=timezone.utc),
+        delivery_updated_at=datetime(2026, 6, 30, 9, 0, tzinfo=timezone.utc),
+        last_synced_at=datetime(2026, 6, 30, 9, 1, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 6, 30, 9, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 6, 30, 9, 0, tzinfo=timezone.utc),
+        delivery_state="opened",
+    )
+
+    deduped = _dedupe_tracked_issue_rows([predecessor, terminal])
+
+    assert len(deduped) == 1
+    assert deduped[0].id == "row-terminal"
+    assert deduped[0].delivery_issue_iid == "22"
+
+
 def test_row_matches_label_filter_prefers_target_labels_with_delivery_fallback() -> None:
     with_target = SimpleNamespace(target_labels=["Ops"], delivery_labels=["Delivery"])
     with_delivery_only = SimpleNamespace(target_labels=[], delivery_labels=["Delivery"])
