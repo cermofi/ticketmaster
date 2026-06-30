@@ -37,13 +37,16 @@ jobs:
       matrix:
         include:
           - image_name: ticketmaster-api
+            cache_scope: ticketmaster-api
             context: backend
             dockerfile: backend/Dockerfile
           - image_name: ticketmaster-docs
+            cache_scope: ticketmaster-docs
             context: docs-site
             dockerfile: docs-site/Dockerfile
           - image_name: ticketmaster-frontend
-            context: .
+            cache_scope: ticketmaster-frontend
+            context: frontend
             dockerfile: frontend/Dockerfile
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -73,11 +76,13 @@ jobs:
           build-args: |
             APP_VERSION=${{ steps.tag.outputs.value }}
           push: true
+          provenance: false
+          sbom: false
           tags: |
             ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image_name }}:${{ steps.tag.outputs.value }}
             ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image_name }}:main-latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.cache_scope }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.cache_scope }}
 
   deploy-production:
     needs: [publish-images]

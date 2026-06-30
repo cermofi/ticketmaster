@@ -41,7 +41,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend deps
         working-directory: frontend
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit
       - name: Run frontend tests
         working-directory: frontend
         run: npm test
@@ -58,13 +58,16 @@ jobs:
       matrix:
         include:
           - image_name: api
+            cache_scope: ticketmaster-api
             context: backend
             dockerfile: backend/Dockerfile
           - image_name: docs
+            cache_scope: ticketmaster-docs
             context: docs-site
             dockerfile: docs-site/Dockerfile
           - image_name: frontend
-            context: .
+            cache_scope: ticketmaster-frontend
+            context: frontend
             dockerfile: frontend/Dockerfile
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -75,5 +78,7 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=${{ matrix.cache_scope }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.cache_scope }}
