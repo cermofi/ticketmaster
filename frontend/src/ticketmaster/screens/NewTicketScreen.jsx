@@ -28,10 +28,10 @@ function NewTicket({ user }) {
   const [partners, setPartners] = useState([]);
   const [users, setUsers] = useState([]);
   const [error, setError] = useState('');
-  const handleCancel = () => navigate('/');
+  const handleCancel = () => navigate('/legacy-tickets');
   const handleCreated = (ticket, failedUploads = []) => {
     const notice = buildUploadNotice(failedUploads);
-    navigate(`/tickets/${ticket.id}`, notice ? { state: { notice } } : undefined);
+    navigate(`/legacy-tickets/${ticket.id}`, notice ? { state: { notice } } : undefined);
   };
 
   useEffect(() => {

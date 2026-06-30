@@ -86,12 +86,9 @@ function TrackingDashboard({ user }) {
   const [createMeta, setCreateMeta] = useState(null);
   const [createMetaLoading, setCreateMetaLoading] = useState(false);
   const [createTitle, setCreateTitle] = useState('');
-  const [createIssueType, setCreateIssueType] = useState('issue');
   const [createDescription, setCreateDescription] = useState('');
   const [createDescriptionPreview, setCreateDescriptionPreview] = useState(false);
-  const [createConfidential, setCreateConfidential] = useState(false);
   const [createAssigneeId, setCreateAssigneeId] = useState('');
-  const [createDueDate, setCreateDueDate] = useState('');
   const [createSelectedLabels, setCreateSelectedLabels] = useState([]);
   const [createLabelSearch, setCreateLabelSearch] = useState('');
   const [createSaving, setCreateSaving] = useState(false);
@@ -213,7 +210,7 @@ function TrackingDashboard({ user }) {
 
   const openDetailDialog = (row) => {
     if (!row?.id) return;
-    navigate(`/delivery-tracking/${encodeURIComponent(row.id)}`);
+    navigate(`/tickets/${encodeURIComponent(row.id)}`);
   };
 
   const openAlertsDialog = () => {
@@ -242,13 +239,13 @@ function TrackingDashboard({ user }) {
   const openAlertIssue = (alert) => {
     if (alert?.tracked_issue_id) {
       closeAlertsDialog();
-      navigate(`/delivery-tracking/${encodeURIComponent(alert.tracked_issue_id)}`);
+      navigate(`/tickets/${encodeURIComponent(alert.tracked_issue_id)}`);
       return;
     }
     const matched = rows.find((row) => row.delivery_issue_iid === alert.delivery_issue_iid);
     if (matched?.id) {
       closeAlertsDialog();
-      navigate(`/delivery-tracking/${encodeURIComponent(matched.id)}`);
+      navigate(`/tickets/${encodeURIComponent(matched.id)}`);
       return;
     }
     if (alert.delivery_url) {
@@ -291,11 +288,6 @@ function TrackingDashboard({ user }) {
       const response = await api.get('/gitlab/delivery-tracking/create-meta');
       const payload = response.data || {};
       setCreateMeta(payload);
-      const types = asArray(payload.issue_types);
-      const defaultType = String(types.find((item) => item?.value === 'issue')?.value || types[0]?.value || 'issue');
-      setCreateIssueType(defaultType);
-      const currentAssignee = payload?.current_assignee_id;
-      setCreateAssigneeId(currentAssignee ? String(currentAssignee) : '');
     } catch (err) {
       setCreateError(apiError(err));
     } finally {
@@ -307,12 +299,9 @@ function TrackingDashboard({ user }) {
     if (!canManage) return;
     setCreateError('');
     setCreateTitle('');
-    setCreateIssueType('issue');
     setCreateDescription('');
     setCreateDescriptionPreview(false);
-    setCreateConfidential(false);
     setCreateAssigneeId('');
-    setCreateDueDate('');
     setCreateSelectedLabels([]);
     setCreateLabelSearch('');
     setCreateModalOpen(true);
@@ -323,12 +312,6 @@ function TrackingDashboard({ user }) {
     if (createSaving) return;
     setCreateModalOpen(false);
     setCreateError('');
-  };
-
-  const assignToMe = () => {
-    const assigneeId = createMeta?.current_assignee_id;
-    if (!assigneeId) return;
-    setCreateAssigneeId(String(assigneeId));
   };
 
   const toggleCreateLabel = (labelTitle) => {
@@ -405,10 +388,10 @@ function TrackingDashboard({ user }) {
     const payload = {
       title,
       description: createDescription,
-      issue_type: createIssueType || null,
-      confidential: createConfidential,
+      issue_type: 'issue',
+      confidential: false,
       assignee_ids: Number.isInteger(assigneeId) ? [assigneeId] : [],
-      due_date: createDueDate || null,
+      due_date: null,
       labels: createSelectedLabels
     };
     setCreateSaving(true);
@@ -533,22 +516,6 @@ function TrackingDashboard({ user }) {
                     maxLength={255}
                     required
                   />
-                </FormGroup>
-
-                <FormGroup>
-                  <Label for="tm-create-issue-type">Type</Label>
-                  <Input
-                    id="tm-create-issue-type"
-                    type="select"
-                    value={createIssueType}
-                    onChange={(event) => setCreateIssueType(event.target.value)}
-                  >
-                    {(asArray(createMeta?.issue_types).length > 0
-                      ? asArray(createMeta?.issue_types)
-                      : [{ value: 'issue', label: 'Issue' }]).map((issueType) => (
-                      <option key={issueType.value} value={issueType.value}>{issueType.label}</option>
-                    ))}
-                  </Input>
                 </FormGroup>
 
                 <FormGroup>
@@ -696,57 +663,23 @@ function TrackingDashboard({ user }) {
                   <div className="tm-muted tm-field-help">GitLab Flavored Markdown is supported.</div>
                 </FormGroup>
 
-                <FormGroup check className="mb-3">
-                  <Input
-                    id="tm-create-confidential"
-                    type="checkbox"
-                    checked={createConfidential}
-                    onChange={(event) => setCreateConfidential(event.target.checked)}
-                  />
-                  <Label for="tm-create-confidential" check>
-                    This issue is confidential
-                  </Label>
-                </FormGroup>
-
                 <div className="row g-3">
-                  <div className="col-12 col-md-6">
+                  <div className="col-12">
                     <FormGroup>
                       <Label for="tm-create-assignee">Assignee</Label>
-                      <div className="d-flex align-items-center gap-2">
-                        <Input
-                          id="tm-create-assignee"
-                          type="select"
-                          value={createAssigneeId}
-                          onChange={(event) => setCreateAssigneeId(event.target.value)}
-                        >
-                          <option value="">Unassigned</option>
-                          {asArray(createMeta?.assignees).map((assignee) => (
-                            <option key={assignee.id} value={String(assignee.id)}>
-                              {assignee.name || assignee.username || `User ${assignee.id}`}
-                            </option>
-                          ))}
-                        </Input>
-                        <Button
-                          type="button"
-                          color="link"
-                          className="p-0 text-nowrap"
-                          disabled={!createMeta?.current_assignee_id}
-                          onClick={assignToMe}
-                        >
-                          Assign to me
-                        </Button>
-                      </div>
-                    </FormGroup>
-                  </div>
-                  <div className="col-12 col-md-6">
-                    <FormGroup>
-                      <Label for="tm-create-due-date">Due date</Label>
                       <Input
-                        id="tm-create-due-date"
-                        type="date"
-                        value={createDueDate}
-                        onChange={(event) => setCreateDueDate(event.target.value)}
-                      />
+                        id="tm-create-assignee"
+                        type="select"
+                        value={createAssigneeId}
+                        onChange={(event) => setCreateAssigneeId(event.target.value)}
+                      >
+                        <option value="">Unassigned</option>
+                        {asArray(createMeta?.assignees).map((assignee) => (
+                          <option key={assignee.id} value={String(assignee.id)}>
+                            {assignee.name || assignee.username || `User ${assignee.id}`}
+                          </option>
+                        ))}
+                      </Input>
                     </FormGroup>
                   </div>
                   <div className="col-12">
@@ -777,7 +710,6 @@ function TrackingDashboard({ user }) {
                           );
                         })}
                       </div>
-                      <div className="tm-muted tm-field-help">Pick multiple labels and quickly search in the list.</div>
                       {createSelectedLabels.length > 0 ? (
                         <div className="tm-create-selected-labels">
                           {createSelectedLabels.map((labelTitle) => (

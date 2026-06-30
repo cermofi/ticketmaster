@@ -130,15 +130,15 @@ function Dashboard({ user }) {
           <>
             {user.kind === 'internal' ? (
               <>
-                <Button color="primary" tag={Link} to="/tickets/new">
+                <Button color="primary" tag={Link} to="/legacy-tickets/new">
                   Create ticket
                 </Button>
-                <Button color="secondary" outline tag={Link} to="/tickets/new?target=partner">
+                <Button color="secondary" outline tag={Link} to="/legacy-tickets/new?target=partner">
                   To partner
                 </Button>
               </>
             ) : (
-              <Button color="primary" tag={Link} to="/tickets/new">
+              <Button color="primary" tag={Link} to="/legacy-tickets/new">
                 Create ticket
               </Button>
             )}
@@ -296,7 +296,7 @@ function TicketTable({ tickets, sortConfig, onSortChange }) {
           {tickets.map((ticket) => (
             <tr key={ticket.id}>
               <td className="tm-row-title">
-                <Link className="tm-row-title-link" to={`/tickets/${ticket.id}`}>
+                <Link className="tm-row-title-link" to={`/legacy-tickets/${ticket.id}`}>
                   {ticket.title}
                 </Link>
                 <div className="tm-ticket-meta">
