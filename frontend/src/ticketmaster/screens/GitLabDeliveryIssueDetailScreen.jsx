@@ -57,6 +57,10 @@ function IssueDetailPage({ user, trackedIssueId }) {
   const [moveProjectId, setMoveProjectId] = useState('');
   const [moveError, setMoveError] = useState('');
   const [moveSaving, setMoveSaving] = useState(false);
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assignUserId, setAssignUserId] = useState('');
+  const [assignError, setAssignError] = useState('');
+  const [assignSaving, setAssignSaving] = useState(false);
   const [moveProjectOptions, setMoveProjectOptions] = useState([]);
   const [mappingModalOpen, setMappingModalOpen] = useState(false);
   const [mappingTargetUrl, setMappingTargetUrl] = useState('');
@@ -119,6 +123,7 @@ function IssueDetailPage({ user, trackedIssueId }) {
   const tracked = detailData?.tracked_issue || null;
   const issue = detailData?.issue || null;
   const notes = asArray(detailData?.notes);
+  const assignableUsers = asArray(detailData?.assignable_users);
   const currentState = issue?.state || tracked?.target_state || tracked?.delivery_state;
   const labels = (Array.isArray(issue?.labels) && issue.labels.length > 0)
     ? issue.labels
@@ -274,6 +279,40 @@ function IssueDetailPage({ user, trackedIssueId }) {
       setMoveError(apiError(err));
     } finally {
       setMoveSaving(false);
+    }
+  };
+
+  const openAssignDialog = () => {
+    if (!canManage || !issue) return;
+    const currentAssigneeId = asArray(issue.assignees)[0]?.id;
+    setAssignUserId(currentAssigneeId ? String(currentAssigneeId) : '');
+    setAssignError('');
+    setAssignModalOpen(true);
+  };
+
+  const closeAssignDialog = () => {
+    if (assignSaving) return;
+    setAssignModalOpen(false);
+    setAssignError('');
+  };
+
+  const saveIssueAssign = async () => {
+    if (!canManage || !trackedIssueId) return;
+    const assigneeId = Number.parseInt(assignUserId, 10);
+    const assigneeIds = Number.isInteger(assigneeId) ? [assigneeId] : [];
+    setActionLoading('assign');
+    setAssignSaving(true);
+    setAssignError('');
+    setError('');
+    try {
+      await api.patch(`/gitlab/delivery-tracking/${trackedIssueId}/assign`, { assignee_ids: assigneeIds });
+      setAssignModalOpen(false);
+      await loadDetail();
+    } catch (err) {
+      setAssignError(apiError(err));
+    } finally {
+      setActionLoading('');
+      setAssignSaving(false);
     }
   };
 
@@ -663,6 +702,15 @@ function IssueDetailPage({ user, trackedIssueId }) {
                     <button
                       type="button"
                       className="tm-workflow-action-btn"
+                      onClick={openAssignDialog}
+                      disabled={Boolean(actionLoading) || loading || !issue}
+                    >
+                      <i className="bi bi-person-plus" aria-hidden="true" />
+                      <span>{actionLoading === 'assign' ? 'Assigning...' : 'Assign issue'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="tm-workflow-action-btn"
                       onClick={openMoveDialog}
                       disabled={Boolean(actionLoading) || loading || !issue}
                     >
@@ -931,6 +979,45 @@ function IssueDetailPage({ user, trackedIssueId }) {
             </Button>
             <Button color="primary" type="submit" disabled={!moveProjectId.trim() || moveSaving}>
               {moveSaving ? 'Moving...' : 'Move issue'}
+            </Button>
+          </ModalFooter>
+        </Form>
+      </Modal>
+      <Modal isOpen={assignModalOpen} toggle={closeAssignDialog}>
+        <Form onSubmit={(event) => {
+          event.preventDefault();
+          saveIssueAssign();
+        }}
+        >
+          <ModalHeader toggle={closeAssignDialog}>Assign issue</ModalHeader>
+          <ModalBody>
+            <ErrorBanner error={assignError} />
+            <FormGroup>
+              <Label for="tm-detail-assign-user">Assignee</Label>
+              <Input
+                id="tm-detail-assign-user"
+                type="select"
+                value={assignUserId}
+                onChange={(event) => setAssignUserId(event.target.value)}
+              >
+                <option value="">Unassigned</option>
+                {assignableUsers.map((member) => (
+                  <option key={member.id || member.username || member.name} value={member.id || ''}>
+                    {member.name || member.username || `User ${member.id}`}
+                  </option>
+                ))}
+              </Input>
+              {assignableUsers.length === 0 ? (
+                <div className="tm-muted tm-field-help">No assignable users found for this project.</div>
+              ) : null}
+            </FormGroup>
+          </ModalBody>
+          <ModalFooter>
+            <Button color="secondary" outline type="button" onClick={closeAssignDialog} disabled={assignSaving}>
+              Cancel
+            </Button>
+            <Button color="primary" type="submit" disabled={assignSaving}>
+              {assignSaving ? 'Saving...' : 'Save assignee'}
             </Button>
           </ModalFooter>
         </Form>
