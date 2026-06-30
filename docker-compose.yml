@@ -117,8 +117,8 @@ services:
   frontend:
     image: ghcr.io/cermofi/ticketmaster-frontend:${IMAGE_TAG:-main-latest}
     build:
-      context: .
-      dockerfile: frontend/Dockerfile
+      context: ./frontend
+      dockerfile: Dockerfile
       args:
         APP_VERSION: ${IMAGE_TAG:-main-latest}
     depends_on:

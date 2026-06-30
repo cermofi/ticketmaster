@@ -12,7 +12,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - id: filter
+        uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/**'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/**'
+            docs:
+              - 'docs-site/**'
+              - '.github/workflows/**'
+
   backend-tests:
+    needs: [changes]
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -20,16 +44,27 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: backend/pyproject.toml
+      - name: Restore uv cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('backend/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+      - name: Install uv
+        run: python -m pip install --upgrade uv
       - name: Install backend
         working-directory: backend
-        run: pip install -e ".[test]"
-      - name: Run backend tests
+        run: |
+          uv venv .venv --python 3.12
+          uv pip install --python .venv/bin/python -e ".[test]" pytest-xdist
+      - name: Run backend tests in parallel
         working-directory: backend
-        run: pytest
+        run: .venv/bin/python -m pytest -n auto
 
   frontend-tests:
+    needs: [changes]
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -41,39 +76,78 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend deps
         working-directory: frontend
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit
       - name: Run frontend tests
         working-directory: frontend
         run: npm test
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build
 
   docker-build-check:
+    name: docker-build-check (${{ matrix.image_name }}, ${{ matrix.required_context }}, ${{ matrix.dockerfile }})
+    needs: [changes, backend-tests, frontend-tests]
+    if: >-
+      ${{
+        (needs.backend-tests.result == 'success' || needs.backend-tests.result == 'skipped') &&
+        (needs.frontend-tests.result == 'success' || needs.frontend-tests.result == 'skipped')
+      }}
     runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-tests]
     timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
         include:
           - image_name: api
+            required_context: backend
+            cache_scope: ticketmaster-api
             context: backend
             dockerfile: backend/Dockerfile
+            path_key: backend
           - image_name: docs
+            required_context: docs-site
+            cache_scope: ticketmaster-docs
             context: docs-site
             dockerfile: docs-site/Dockerfile
+            path_key: docs
           - image_name: frontend
-            context: .
+            required_context: .
+            cache_scope: ticketmaster-frontend
+            context: frontend
             dockerfile: frontend/Dockerfile
+            path_key: frontend
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+      - id: build_gate
+        name: Resolve image build gate
+        env:
+          BACKEND_CHANGED: ${{ needs.changes.outputs.backend }}
+          FRONTEND_CHANGED: ${{ needs.changes.outputs.frontend }}
+          DOCS_CHANGED: ${{ needs.changes.outputs.docs }}
+        run: |
+          changed="false"
+          case "${{ matrix.path_key }}" in
+            backend)
+              changed="${BACKEND_CHANGED}"
+              ;;
+            frontend)
+              changed="${FRONTEND_CHANGED}"
+              ;;
+            docs)
+              changed="${DOCS_CHANGED}"
+              ;;
+          esac
+          echo "changed=${changed}" >> "$GITHUB_OUTPUT"
+      - name: Skip unchanged image build
+        if: steps.build_gate.outputs.changed != 'true'
+        run: echo "Skipping ${{ matrix.image_name }} image build (no relevant changes)."
+      - if: steps.build_gate.outputs.changed == 'true'
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
       - name: Docker build check (${{ matrix.image_name }})
+        if: steps.build_gate.outputs.changed == 'true'
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=${{ matrix.cache_scope }}
+          cache-to: type=gha,mode=min,scope=${{ matrix.cache_scope }}
