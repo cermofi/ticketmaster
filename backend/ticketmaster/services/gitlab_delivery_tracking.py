@@ -222,6 +222,20 @@ class GitLabReadOnlyClient:
             params={},
         )
 
+    def list_accessible_projects(self, *, search: str | None = None) -> list[dict]:
+        params = {
+            "membership": "true",
+            "archived": "false",
+            "simple": "true",
+            "order_by": "path",
+            "sort": "asc",
+            "min_access_level": "20",
+        }
+        search_text = _string_or_none(search)
+        if search_text:
+            params["search"] = search_text
+        return self._list_paginated_dicts("/projects", params=params)
+
     def _list_paginated_dicts(self, path: str, *, params: dict[str, str] | None = None) -> list[dict]:
         rows: list[dict] = []
         page = 1
@@ -324,6 +338,40 @@ def get_delivery_issue_create_meta(*, actor: User) -> dict:
         ),
         "current_assignee_id": current_assignee_id,
     }
+
+
+def list_move_issue_projects(*, actor: User, search: str | None = None) -> dict:
+    _require_delivery_issue_write_access(actor=actor)
+
+    client = GitLabReadOnlyClient(base_url=settings.gitlab_base_url, token=str(settings.gitlab_token))
+    try:
+        rows = client.list_accessible_projects(search=search)
+    finally:
+        client.close()
+
+    projects: list[dict[str, str]] = []
+    seen_ids: set[str] = set()
+    for row in rows:
+        project_id = _string_or_none(row.get("id"))
+        if not project_id or project_id in seen_ids:
+            continue
+        seen_ids.add(project_id)
+        projects.append(
+            {
+                "id": project_id,
+                "name": _string_or_none(row.get("name")) or "",
+                "path_with_namespace": _string_or_none(row.get("path_with_namespace")) or "",
+                "web_url": _string_or_none(row.get("web_url")) or "",
+            }
+        )
+
+    projects.sort(
+        key=lambda item: (
+            (item.get("path_with_namespace") or item.get("name") or "").casefold(),
+            item.get("id") or "",
+        )
+    )
+    return {"projects": projects}
 
 
 def parse_updated_since(value: str | None) -> datetime | None:
@@ -920,9 +968,15 @@ def get_tracked_issue_detail(db: Session, *, actor: User, tracked_issue_id: str)
     issue_iid = tracked.target_issue_iid or tracked.delivery_issue_iid
     source_issue = "target" if tracked.target_project_id and tracked.target_issue_iid else "delivery"
     client = GitLabReadOnlyClient(base_url=settings.gitlab_base_url, token=str(settings.gitlab_token))
+    assignable_users_payload: list[dict] = []
     try:
         issue_payload = client.get_project_issue(project_id, issue_iid)
         notes_payload = client.get_issue_notes(project_id, issue_iid, sort="asc", order_by="created_at")
+        detail_project_id = _string_or_none(issue_payload.get("project_id")) or project_id
+        try:
+            assignable_users_payload = client.list_project_members(detail_project_id)
+        except GitLabApiError as exc:
+            logger.info("gitlab detail members unavailable: project_id=%s error=%s", detail_project_id, exc)
     except GitLabApiError as exc:
         raise ValidationError(f"GitLab issue detail unavailable: {exc}") from exc
     finally:
@@ -937,6 +991,7 @@ def get_tracked_issue_detail(db: Session, *, actor: User, tracked_issue_id: str)
         "source_issue": source_issue,
         "issue": _normalize_issue_detail(issue_payload),
         "notes": notes,
+        "assignable_users": _normalize_project_members(assignable_users_payload),
     }
 
 
@@ -996,6 +1051,26 @@ def move_tracked_issue(
         body={"to_project_id": normalized_target_project},
         action_label="GitLab issue move failed",
         endpoint_suffix="/move",
+    )
+    return _normalize_issue_detail(payload)
+
+
+def assign_tracked_issue(
+    db: Session,
+    *,
+    actor: User,
+    tracked_issue_id: str,
+    assignee_ids: list[int] | None = None,
+) -> dict:
+    _require_delivery_issue_write_access(actor=actor)
+    _, project_id, issue_iid = _resolve_tracked_issue_reference(db, tracked_issue_id=tracked_issue_id)
+    normalized_assignee_ids = _normalize_assignee_ids(assignee_ids)
+    payload = _request_gitlab_issue_mutation(
+        method="PUT",
+        project_id=project_id,
+        issue_iid=issue_iid,
+        body={"assignee_ids": normalized_assignee_ids},
+        action_label="GitLab issue assign failed",
     )
     return _normalize_issue_detail(payload)
 
@@ -1951,16 +2026,69 @@ def _tracked_issue_invariant_errors(row: GitLabTrackedIssue) -> list[str]:
 
 
 def _dedupe_tracked_issue_rows(rows: list[GitLabTrackedIssue]) -> list[GitLabTrackedIssue]:
-    chosen: dict[tuple[str, ...], GitLabTrackedIssue] = {}
+    if not rows:
+        return []
+    by_delivery_issue_id = _index_tracked_rows_by_delivery_issue_id(rows)
+    by_chain: dict[tuple[str, ...], GitLabTrackedIssue] = {}
     for row in rows:
+        terminal_row = _resolve_delivery_chain_terminal_row(row, by_delivery_issue_id)
+        chain_key = _tracked_issue_chain_key(terminal_row)
+        current_chain_row = by_chain.get(chain_key)
+        if current_chain_row is None or _tracked_issue_dedupe_score(terminal_row) > _tracked_issue_dedupe_score(current_chain_row):
+            by_chain[chain_key] = terminal_row
+    chosen: dict[tuple[str, ...], GitLabTrackedIssue] = {}
+    for row in by_chain.values():
         dedupe_key = _tracked_issue_dedupe_key(row)
         current = chosen.get(dedupe_key)
-        if current is None:
-            chosen[dedupe_key] = row
-            continue
-        if _tracked_issue_dedupe_score(row) > _tracked_issue_dedupe_score(current):
+        if current is None or _tracked_issue_dedupe_score(row) > _tracked_issue_dedupe_score(current):
             chosen[dedupe_key] = row
     return list(chosen.values())
+
+
+def _index_tracked_rows_by_delivery_issue_id(rows: list[GitLabTrackedIssue]) -> dict[str, GitLabTrackedIssue]:
+    indexed: dict[str, GitLabTrackedIssue] = {}
+    for row in rows:
+        issue_id = _string_or_none(getattr(row, "delivery_issue_id", None))
+        if not issue_id:
+            continue
+        current = indexed.get(issue_id)
+        if current is None or _tracked_issue_dedupe_score(row) > _tracked_issue_dedupe_score(current):
+            indexed[issue_id] = row
+    return indexed
+
+
+def _resolve_delivery_chain_terminal_row(
+    row: GitLabTrackedIssue,
+    by_delivery_issue_id: dict[str, GitLabTrackedIssue],
+    *,
+    max_hops: int = 20,
+) -> GitLabTrackedIssue:
+    current = row
+    visited: set[str] = set()
+    for _ in range(max_hops):
+        moved_to_id = _string_or_none(getattr(current, "moved_to_id", None))
+        if not moved_to_id:
+            break
+        if moved_to_id in visited:
+            break
+        visited.add(moved_to_id)
+        next_row = by_delivery_issue_id.get(moved_to_id)
+        if next_row is None:
+            break
+        current = next_row
+    return current
+
+
+def _tracked_issue_chain_key(row: GitLabTrackedIssue) -> tuple[str, ...]:
+    delivery_project_id = _string_or_none(getattr(row, "delivery_project_id", None)) or ""
+    delivery_issue_id = _string_or_none(getattr(row, "delivery_issue_id", None))
+    if delivery_issue_id:
+        return ("delivery_chain_id", delivery_project_id, delivery_issue_id)
+    delivery_issue_iid = _string_or_none(getattr(row, "delivery_issue_iid", None))
+    if delivery_issue_iid:
+        return ("delivery_chain_iid", delivery_project_id, delivery_issue_iid)
+    fallback_id = _string_or_none(getattr(row, "id", None))
+    return ("delivery_chain_row", fallback_id or "")
 
 
 def _tracked_issue_dedupe_key(row: GitLabTrackedIssue) -> tuple[str, ...]:
@@ -2238,6 +2366,36 @@ def _normalize_assignees(raw: object) -> list[dict]:
             }
         )
     return assignees
+
+
+def _normalize_project_members(raw: object) -> list[dict]:
+    deduped: dict[str, dict] = {}
+    for item in _normalize_assignees(raw):
+        member_id = _string_or_none(item.get("id"))
+        if not member_id:
+            continue
+        deduped[member_id] = item
+    return sorted(
+        deduped.values(),
+        key=lambda member: (
+            (_string_or_none(member.get("name")) or _string_or_none(member.get("username")) or "").casefold(),
+            _string_or_none(member.get("id")) or "",
+        ),
+    )
+
+
+def _normalize_assignee_ids(raw: list[int] | None) -> list[int]:
+    if not raw:
+        return []
+    ids: list[int] = []
+    seen: set[int] = set()
+    for item in raw:
+        value = _int_or_none(item)
+        if value is None or value <= 0 or value in seen:
+            continue
+        seen.add(value)
+        ids.append(value)
+    return ids
 
 
 def _require_delivery_issue_write_access(*, actor: User) -> None:

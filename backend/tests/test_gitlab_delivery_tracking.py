@@ -25,12 +25,14 @@ from ticketmaster.services.gitlab_delivery_tracking import (
     _parse_issue_url,
     _resolve_target_issue,
     _sort_tracked_issue_rows,
+    assign_tracked_issue,
     add_tracked_issue_comment,
     close_tracked_issue,
     create_delivery_issue,
     edit_tracked_issue,
     get_delivery_issue_create_meta,
     get_tracked_issue_detail,
+    list_move_issue_projects,
     move_tracked_issue,
     normalize_sort,
     parse_updated_since,
@@ -238,6 +240,42 @@ def test_get_delivery_issue_create_meta_collects_live_fields() -> None:
     assert meta["current_assignee_id"] == 77
 
 
+def test_list_move_issue_projects_uses_accessible_gitlab_projects() -> None:
+    patched = replace(
+        settings,
+        gitlab_base_url="https://gitlab.example.com",
+        gitlab_token="secret-token",
+        gitlab_delivery_project_id="team/delivery",
+    )
+    actor = SimpleNamespace(kind="internal")
+
+    class DummyClient:
+        def __init__(self, **kwargs):  # noqa: ANN003, ANN204
+            pass
+
+        def close(self) -> None:
+            return None
+
+        @staticmethod
+        def list_accessible_projects(*, search: str | None = None) -> list[dict]:
+            assert search is None
+            return [
+                {"id": 200, "name": "Project B", "path_with_namespace": "group-b/project-b", "web_url": "https://gitlab.example.com/group-b/project-b"},
+                {"id": 100, "name": "Project A", "path_with_namespace": "group-a/project-a", "web_url": "https://gitlab.example.com/group-a/project-a"},
+                {"id": 200, "name": "Project B duplicate", "path_with_namespace": "group-b/project-b", "web_url": "https://gitlab.example.com/group-b/project-b"},
+                {"id": None, "name": "Missing ID"},
+            ]
+
+    with (
+        patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched),
+        patch("ticketmaster.services.gitlab_delivery_tracking.GitLabReadOnlyClient", DummyClient),
+    ):
+        result = list_move_issue_projects(actor=actor)
+
+    assert [item["id"] for item in result["projects"]] == ["100", "200"]
+    assert result["projects"][0]["path_with_namespace"] == "group-a/project-a"
+
+
 def test_get_tracked_issue_detail_collects_issue_and_notes() -> None:
     patched = replace(
         settings,
@@ -315,6 +353,14 @@ def test_get_tracked_issue_detail_collects_issue_and_notes() -> None:
                 }
             ]
 
+        @staticmethod
+        def list_project_members(project_id_or_path: str) -> list[dict]:
+            assert project_id_or_path == "777"
+            return [
+                {"id": 77, "name": "Jane Doe", "username": "jane", "web_url": "https://gitlab.example.com/jane"},
+                {"id": 88, "name": "John Doe", "username": "john", "web_url": "https://gitlab.example.com/john"},
+            ]
+
     with (
         patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched),
         patch("ticketmaster.services.gitlab_delivery_tracking.GitLabReadOnlyClient", DummyClient),
@@ -326,6 +372,7 @@ def test_get_tracked_issue_detail_collects_issue_and_notes() -> None:
     assert detail["issue"]["reference"] == "team/target#42"
     assert detail["issue"]["assignees"][0]["name"] == "Jane Doe"
     assert detail["notes"][0]["body"] == "First note"
+    assert detail["assignable_users"][0]["id"] == "77"
     assert detail["tracked_issue"]["delivery_issue_iid"] == "11"
 
 
@@ -497,6 +544,65 @@ def test_move_tracked_issue_calls_gitlab_move_endpoint() -> None:
     assert kwargs["url"].endswith("/projects/777/issues/42/move")
     assert kwargs["json"] == {"to_project_id": "team/new-target"}
     assert issue["project_id"] == "888"
+
+
+def test_assign_tracked_issue_updates_assignee() -> None:
+    patched = replace(
+        settings,
+        gitlab_base_url="https://gitlab.example.com",
+        gitlab_token="secret-token",
+        gitlab_delivery_project_id="503",
+    )
+    actor = SimpleNamespace(kind="internal")
+    tracked = GitLabTrackedIssue(
+        id="tracked-1",
+        delivery_project_id="503",
+        delivery_issue_iid="11",
+        delivery_title="Delivery issue title",
+        delivery_url="https://gitlab.example.com/team/delivery/-/issues/11",
+        delivery_state="opened",
+        target_project_id="777",
+        target_issue_iid="42",
+        sync_status="ok",
+    )
+
+    class DummySession:
+        @staticmethod
+        def get(model, tracked_issue_id: str):  # noqa: ANN205, ANN001
+            assert model is GitLabTrackedIssue
+            if tracked_issue_id == tracked.id:
+                return tracked
+            return None
+
+    response = DummyGitLabResponse(
+        status_code=200,
+        payload={
+            "id": 4002,
+            "iid": 42,
+            "project_id": 777,
+            "title": "Assigned issue title",
+            "description": "Body",
+            "state": "opened",
+            "labels": ["delivery"],
+            "assignees": [{"id": 15, "username": "marta", "name": "Marta"}],
+        },
+    )
+    with (
+        patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched),
+        patch("ticketmaster.services.gitlab_delivery_tracking.httpx.request", return_value=response) as request_mock,
+    ):
+        issue = assign_tracked_issue(
+            DummySession(),
+            actor=actor,
+            tracked_issue_id="tracked-1",
+            assignee_ids=[15, 15, 0],
+        )
+
+    _, kwargs = request_mock.call_args
+    assert kwargs["method"] == "PUT"
+    assert kwargs["url"].endswith("/projects/777/issues/42")
+    assert kwargs["json"] == {"assignee_ids": [15]}
+    assert issue["assignees"][0]["id"] == "15"
 
 
 def test_add_tracked_issue_comment_posts_note() -> None:
@@ -855,6 +961,49 @@ def test_dedupe_tracked_issue_rows_prefers_returned_delivery_terminal_row() -> N
     assert len(deduped) == 1
     assert deduped[0].id == "row-final"
     assert deduped[0].delivery_issue_iid == "18"
+
+
+def test_dedupe_tracked_issue_rows_follows_delivery_move_chain_terminal() -> None:
+    predecessor = SimpleNamespace(
+        id="row-predecessor",
+        delivery_project_id="503",
+        delivery_issue_id="111",
+        delivery_issue_iid="11",
+        moved_to_id="222",
+        target_issue_id="7001",
+        target_project_id="700",
+        target_issue_iid="10",
+        sync_status="ok",
+        target_updated_at=datetime(2026, 6, 30, 10, 10, tzinfo=timezone.utc),
+        delivery_updated_at=datetime(2026, 6, 30, 10, 10, tzinfo=timezone.utc),
+        last_synced_at=datetime(2026, 6, 30, 10, 11, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 6, 30, 10, 11, tzinfo=timezone.utc),
+        created_at=datetime(2026, 6, 30, 10, 0, tzinfo=timezone.utc),
+        delivery_state="closed",
+    )
+    terminal = SimpleNamespace(
+        id="row-terminal",
+        delivery_project_id="503",
+        delivery_issue_id="222",
+        delivery_issue_iid="22",
+        moved_to_id=None,
+        target_issue_id="9001",
+        target_project_id="900",
+        target_issue_iid="50",
+        sync_status="ok",
+        target_updated_at=datetime(2026, 6, 30, 9, 0, tzinfo=timezone.utc),
+        delivery_updated_at=datetime(2026, 6, 30, 9, 0, tzinfo=timezone.utc),
+        last_synced_at=datetime(2026, 6, 30, 9, 1, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 6, 30, 9, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 6, 30, 9, 0, tzinfo=timezone.utc),
+        delivery_state="opened",
+    )
+
+    deduped = _dedupe_tracked_issue_rows([predecessor, terminal])
+
+    assert len(deduped) == 1
+    assert deduped[0].id == "row-terminal"
+    assert deduped[0].delivery_issue_iid == "22"
 
 
 def test_row_matches_label_filter_prefers_target_labels_with_delivery_fallback() -> None:

@@ -223,6 +223,12 @@ class GitLabDeliveryIssueMoveBody(BaseModel):
     to_project_id: str = Field(min_length=1, max_length=255)
 
 
+class GitLabDeliveryIssueAssignBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    assignee_ids: list[int] = Field(default_factory=list, max_length=10)
+
+
 class GitLabDeliveryIssueCommentBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1223,6 +1229,15 @@ def gitlab_delivery_tracking_create_meta(user: CurrentUser) -> dict:
     return gitlab_delivery_tracking.get_delivery_issue_create_meta(actor=user)
 
 
+@router.get("/gitlab/delivery-tracking/move-projects")
+def gitlab_delivery_tracking_move_projects(
+    user: CurrentUser,
+    search: str | None = Query(default=None),
+) -> dict:
+    admin.require_admin_or_dm(user)
+    return gitlab_delivery_tracking.list_move_issue_projects(actor=user, search=search)
+
+
 @router.post("/gitlab/delivery-tracking/create")
 def gitlab_delivery_tracking_create_issue(
     db: DbSession,
@@ -1312,6 +1327,25 @@ def gitlab_delivery_tracking_move_issue(
         to_project_id=body.to_project_id,
     )
     run = gitlab_delivery_tracking.sync_delivery_issues(db, triggered_by=f"move:{user.id}")
+    db.commit()
+    return {"issue": issue, "sync_run": gitlab_delivery_tracking.serialize_sync_run(run)}
+
+
+@router.patch("/gitlab/delivery-tracking/{tracked_issue_id}/assign")
+def gitlab_delivery_tracking_assign_issue(
+    db: DbSession,
+    user: CurrentUser,
+    tracked_issue_id: str,
+    body: GitLabDeliveryIssueAssignBody,
+) -> dict:
+    admin.require_admin_or_dm(user)
+    issue = gitlab_delivery_tracking.assign_tracked_issue(
+        db,
+        actor=user,
+        tracked_issue_id=tracked_issue_id,
+        assignee_ids=body.assignee_ids,
+    )
+    run = gitlab_delivery_tracking.sync_delivery_issues(db, triggered_by=f"assign:{user.id}")
     db.commit()
     return {"issue": issue, "sync_run": gitlab_delivery_tracking.serialize_sync_run(run)}
 
