@@ -920,9 +920,15 @@ def get_tracked_issue_detail(db: Session, *, actor: User, tracked_issue_id: str)
     issue_iid = tracked.target_issue_iid or tracked.delivery_issue_iid
     source_issue = "target" if tracked.target_project_id and tracked.target_issue_iid else "delivery"
     client = GitLabReadOnlyClient(base_url=settings.gitlab_base_url, token=str(settings.gitlab_token))
+    assignable_users_payload: list[dict] = []
     try:
         issue_payload = client.get_project_issue(project_id, issue_iid)
         notes_payload = client.get_issue_notes(project_id, issue_iid, sort="asc", order_by="created_at")
+        detail_project_id = _string_or_none(issue_payload.get("project_id")) or project_id
+        try:
+            assignable_users_payload = client.list_project_members(detail_project_id)
+        except GitLabApiError as exc:
+            logger.info("gitlab detail members unavailable: project_id=%s error=%s", detail_project_id, exc)
     except GitLabApiError as exc:
         raise ValidationError(f"GitLab issue detail unavailable: {exc}") from exc
     finally:
@@ -937,6 +943,7 @@ def get_tracked_issue_detail(db: Session, *, actor: User, tracked_issue_id: str)
         "source_issue": source_issue,
         "issue": _normalize_issue_detail(issue_payload),
         "notes": notes,
+        "assignable_users": _normalize_project_members(assignable_users_payload),
     }
 
 
@@ -996,6 +1003,26 @@ def move_tracked_issue(
         body={"to_project_id": normalized_target_project},
         action_label="GitLab issue move failed",
         endpoint_suffix="/move",
+    )
+    return _normalize_issue_detail(payload)
+
+
+def assign_tracked_issue(
+    db: Session,
+    *,
+    actor: User,
+    tracked_issue_id: str,
+    assignee_ids: list[int] | None = None,
+) -> dict:
+    _require_delivery_issue_write_access(actor=actor)
+    _, project_id, issue_iid = _resolve_tracked_issue_reference(db, tracked_issue_id=tracked_issue_id)
+    normalized_assignee_ids = _normalize_assignee_ids(assignee_ids)
+    payload = _request_gitlab_issue_mutation(
+        method="PUT",
+        project_id=project_id,
+        issue_iid=issue_iid,
+        body={"assignee_ids": normalized_assignee_ids},
+        action_label="GitLab issue assign failed",
     )
     return _normalize_issue_detail(payload)
 
@@ -2103,6 +2130,36 @@ def _normalize_assignees(raw: object) -> list[dict]:
             }
         )
     return assignees
+
+
+def _normalize_project_members(raw: object) -> list[dict]:
+    deduped: dict[str, dict] = {}
+    for item in _normalize_assignees(raw):
+        member_id = _string_or_none(item.get("id"))
+        if not member_id:
+            continue
+        deduped[member_id] = item
+    return sorted(
+        deduped.values(),
+        key=lambda member: (
+            (_string_or_none(member.get("name")) or _string_or_none(member.get("username")) or "").casefold(),
+            _string_or_none(member.get("id")) or "",
+        ),
+    )
+
+
+def _normalize_assignee_ids(raw: list[int] | None) -> list[int]:
+    if not raw:
+        return []
+    ids: list[int] = []
+    seen: set[int] = set()
+    for item in raw:
+        value = _int_or_none(item)
+        if value is None or value <= 0 or value in seen:
+            continue
+        seen.add(value)
+        ids.append(value)
+    return ids
 
 
 def _require_delivery_issue_write_access(*, actor: User) -> None:

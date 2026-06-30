@@ -91,6 +91,10 @@ function TrackingDashboard({ user }) {
   const [detailMoveProjectId, setDetailMoveProjectId] = useState('');
   const [detailMoveError, setDetailMoveError] = useState('');
   const [detailMoveSaving, setDetailMoveSaving] = useState(false);
+  const [detailAssignModalOpen, setDetailAssignModalOpen] = useState(false);
+  const [detailAssignUserId, setDetailAssignUserId] = useState('');
+  const [detailAssignError, setDetailAssignError] = useState('');
+  const [detailAssignSaving, setDetailAssignSaving] = useState(false);
   const detailRequestRef = useRef(0);
   const [alertsModalOpen, setAlertsModalOpen] = useState(false);
   const [alertsRows, setAlertsRows] = useState([]);
@@ -112,6 +116,7 @@ function TrackingDashboard({ user }) {
   const [createSaving, setCreateSaving] = useState(false);
   const [createError, setCreateError] = useState('');
   const createDescriptionRef = useRef(null);
+  const detailAssignableUsers = asArray(detailData?.assignable_users);
 
   const setFilters = useCallback((next) => {
     const merged = typeof next === 'function' ? next(filtersRef.current) : next;
@@ -295,6 +300,10 @@ function TrackingDashboard({ user }) {
     setDetailMoveModalOpen(false);
     setDetailMoveError('');
     setDetailMoveSaving(false);
+    setDetailAssignModalOpen(false);
+    setDetailAssignUserId('');
+    setDetailAssignError('');
+    setDetailAssignSaving(false);
   };
 
   const refreshDetailDialog = () => {
@@ -445,6 +454,41 @@ function TrackingDashboard({ user }) {
       setDetailMoveError(apiError(err));
     } finally {
       setDetailMoveSaving(false);
+    }
+  };
+
+  const openDetailAssignDialog = () => {
+    if (!canManage || !detailData?.issue) return;
+    const currentAssigneeId = asArray(detailData.issue.assignees)[0]?.id;
+    setDetailAssignUserId(currentAssigneeId ? String(currentAssigneeId) : '');
+    setDetailAssignError('');
+    setDetailAssignModalOpen(true);
+  };
+
+  const closeDetailAssignDialog = () => {
+    if (detailAssignSaving) return;
+    setDetailAssignModalOpen(false);
+    setDetailAssignError('');
+  };
+
+  const saveDetailIssueAssign = async () => {
+    if (!canManage || !detailRow?.id) return;
+    const assigneeId = Number.parseInt(detailAssignUserId, 10);
+    const assigneeIds = Number.isInteger(assigneeId) ? [assigneeId] : [];
+    setDetailActionLoading('assign');
+    setDetailAssignSaving(true);
+    setDetailAssignError('');
+    setDetailError('');
+    try {
+      await api.patch(`/gitlab/delivery-tracking/${detailRow.id}/assign`, { assignee_ids: assigneeIds });
+      setDetailAssignModalOpen(false);
+      await load();
+      await loadDetailDialog(detailRow);
+    } catch (err) {
+      setDetailAssignError(apiError(err));
+    } finally {
+      setDetailActionLoading('');
+      setDetailAssignSaving(false);
     }
   };
 
@@ -694,6 +738,7 @@ function TrackingDashboard({ user }) {
         onCloseIssue={closeDetailIssue}
         onEditIssue={openDetailEditDialog}
         onMoveIssue={openDetailMoveDialog}
+        onAssignIssue={openDetailAssignDialog}
         onManualMapping={(row) => {
           if (!row) return;
           closeDetailDialog();
@@ -888,6 +933,45 @@ function TrackingDashboard({ user }) {
             </Button>
             <Button color="primary" type="submit" disabled={!detailMoveProjectId.trim() || detailMoveSaving}>
               {detailMoveSaving ? 'Moving...' : 'Move issue'}
+            </Button>
+          </ModalFooter>
+        </Form>
+      </Modal>
+      <Modal isOpen={detailAssignModalOpen} toggle={closeDetailAssignDialog}>
+        <Form onSubmit={(event) => {
+          event.preventDefault();
+          saveDetailIssueAssign();
+        }}
+        >
+          <ModalHeader toggle={closeDetailAssignDialog}>Assign issue</ModalHeader>
+          <ModalBody>
+            <ErrorBanner error={detailAssignError} />
+            <FormGroup>
+              <Label for="tm-detail-assign-user">Assignee</Label>
+              <Input
+                id="tm-detail-assign-user"
+                type="select"
+                value={detailAssignUserId}
+                onChange={(event) => setDetailAssignUserId(event.target.value)}
+              >
+                <option value="">Unassigned</option>
+                {detailAssignableUsers.map((member) => (
+                  <option key={member.id || member.username || member.name} value={member.id || ''}>
+                    {member.name || member.username || `User ${member.id}`}
+                  </option>
+                ))}
+              </Input>
+              {detailAssignableUsers.length === 0 ? (
+                <div className="tm-muted tm-field-help">No assignable users found for this project.</div>
+              ) : null}
+            </FormGroup>
+          </ModalBody>
+          <ModalFooter>
+            <Button color="secondary" outline type="button" onClick={closeDetailAssignDialog} disabled={detailAssignSaving}>
+              Cancel
+            </Button>
+            <Button color="primary" type="submit" disabled={detailAssignSaving}>
+              {detailAssignSaving ? 'Saving...' : 'Save assignee'}
             </Button>
           </ModalFooter>
         </Form>
@@ -1439,6 +1523,7 @@ function TrackingDetailsModal({
   onCloseIssue,
   onEditIssue,
   onMoveIssue,
+  onAssignIssue,
   onManualMapping
 }) {
   const tracked = detailData?.tracked_issue || row;
@@ -1542,6 +1627,15 @@ function TrackingDetailsModal({
                       >
                         <i className="bi bi-pencil-square" aria-hidden="true" />
                         <span>{actionLoading === 'edit' ? 'Opening...' : 'Edit issue'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="tm-workflow-action-btn"
+                        onClick={onAssignIssue}
+                        disabled={Boolean(actionLoading) || loading || !issue}
+                      >
+                        <i className="bi bi-person-plus" aria-hidden="true" />
+                        <span>{actionLoading === 'assign' ? 'Assigning...' : 'Assign issue'}</span>
                       </button>
                       <button
                         type="button"
