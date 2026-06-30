@@ -18,8 +18,6 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
       docs: ${{ steps.filter.outputs.docs }}
-      docker_enabled: ${{ steps.matrix.outputs.docker_enabled }}
-      docker_matrix: ${{ steps.matrix.outputs.docker_matrix }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - id: filter
@@ -35,48 +33,6 @@ jobs:
             docs:
               - 'docs-site/**'
               - '.github/workflows/**'
-      - id: matrix
-        env:
-          BACKEND_CHANGED: ${{ steps.filter.outputs.backend }}
-          FRONTEND_CHANGED: ${{ steps.filter.outputs.frontend }}
-          DOCS_CHANGED: ${{ steps.filter.outputs.docs }}
-        run: |
-          python - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          import os
-
-          include = []
-          if os.getenv("BACKEND_CHANGED") == "true":
-              include.append(
-                  {
-                      "image_name": "api",
-                      "cache_scope": "ticketmaster-api",
-                      "context": "backend",
-                      "dockerfile": "backend/Dockerfile",
-                  }
-              )
-          if os.getenv("DOCS_CHANGED") == "true":
-              include.append(
-                  {
-                      "image_name": "docs",
-                      "cache_scope": "ticketmaster-docs",
-                      "context": "docs-site",
-                      "dockerfile": "docs-site/Dockerfile",
-                  }
-              )
-          if os.getenv("FRONTEND_CHANGED") == "true":
-              include.append(
-                  {
-                      "image_name": "frontend",
-                      "cache_scope": "ticketmaster-frontend",
-                      "context": "frontend",
-                      "dockerfile": "frontend/Dockerfile",
-                  }
-              )
-
-          print(f"docker_enabled={'true' if include else 'false'}")
-          print(f"docker_matrix={json.dumps({'include': include})}")
-          PY
 
   backend-tests:
     needs: [changes]
@@ -126,10 +82,10 @@ jobs:
         run: npm test
 
   docker-build-check:
+    name: docker-build-check (${{ matrix.image_name }}, ${{ matrix.required_context }}, ${{ matrix.dockerfile }})
     needs: [changes, backend-tests, frontend-tests]
     if: >-
       ${{
-        needs.changes.outputs.docker_enabled == 'true' &&
         (needs.backend-tests.result == 'success' || needs.backend-tests.result == 'skipped') &&
         (needs.frontend-tests.result == 'success' || needs.frontend-tests.result == 'skipped')
       }}
@@ -137,11 +93,55 @@ jobs:
     timeout-minutes: 35
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.changes.outputs.docker_matrix) }}
+      matrix:
+        include:
+          - image_name: api
+            required_context: backend
+            cache_scope: ticketmaster-api
+            context: backend
+            dockerfile: backend/Dockerfile
+            path_key: backend
+          - image_name: docs
+            required_context: docs-site
+            cache_scope: ticketmaster-docs
+            context: docs-site
+            dockerfile: docs-site/Dockerfile
+            path_key: docs
+          - image_name: frontend
+            required_context: .
+            cache_scope: ticketmaster-frontend
+            context: frontend
+            dockerfile: frontend/Dockerfile
+            path_key: frontend
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+      - id: build_gate
+        name: Resolve image build gate
+        env:
+          BACKEND_CHANGED: ${{ needs.changes.outputs.backend }}
+          FRONTEND_CHANGED: ${{ needs.changes.outputs.frontend }}
+          DOCS_CHANGED: ${{ needs.changes.outputs.docs }}
+        run: |
+          changed="false"
+          case "${{ matrix.path_key }}" in
+            backend)
+              changed="${BACKEND_CHANGED}"
+              ;;
+            frontend)
+              changed="${FRONTEND_CHANGED}"
+              ;;
+            docs)
+              changed="${DOCS_CHANGED}"
+              ;;
+          esac
+          echo "changed=${changed}" >> "$GITHUB_OUTPUT"
+      - name: Skip unchanged image build
+        if: steps.build_gate.outputs.changed != 'true'
+        run: echo "Skipping ${{ matrix.image_name }} image build (no relevant changes)."
+      - if: steps.build_gate.outputs.changed == 'true'
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
       - name: Docker build check (${{ matrix.image_name }})
+        if: steps.build_gate.outputs.changed == 'true'
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: ${{ matrix.context }}
