@@ -1027,6 +1027,33 @@ def assign_tracked_issue(
     return _normalize_issue_detail(payload)
 
 
+def add_tracked_issue_comment(
+    db: Session,
+    *,
+    actor: User,
+    tracked_issue_id: str,
+    body: str,
+    internal: bool = False,
+) -> dict:
+    _require_delivery_issue_write_access(actor=actor)
+    _, project_id, issue_iid = _resolve_tracked_issue_reference(db, tracked_issue_id=tracked_issue_id)
+    normalized_body = (body or "").strip()
+    if not normalized_body:
+        raise ValidationError("Comment body is required")
+    payload_body = {"body": normalized_body}
+    if internal:
+        payload_body["internal"] = True
+    payload = _request_gitlab_issue_mutation(
+        method="POST",
+        project_id=project_id,
+        issue_iid=issue_iid,
+        body=payload_body,
+        action_label="GitLab issue comment failed",
+        endpoint_suffix="/notes",
+    )
+    return _normalize_issue_note(payload)
+
+
 def serialize_tracked_issue(row: GitLabTrackedIssue) -> dict:
     assignees = row.target_assignees or []
     assignee_name = assignees[0]["name"] if assignees and isinstance(assignees[0], dict) else None

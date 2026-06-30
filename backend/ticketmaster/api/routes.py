@@ -229,6 +229,13 @@ class GitLabDeliveryIssueAssignBody(BaseModel):
     assignee_ids: list[int] = Field(default_factory=list, max_length=10)
 
 
+class GitLabDeliveryIssueCommentBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    body: str = Field(min_length=1, max_length=20000)
+    internal: bool = False
+
+
 @router.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "ticketmaster-api"}
@@ -1332,6 +1339,26 @@ def gitlab_delivery_tracking_assign_issue(
     run = gitlab_delivery_tracking.sync_delivery_issues(db, triggered_by=f"assign:{user.id}")
     db.commit()
     return {"issue": issue, "sync_run": gitlab_delivery_tracking.serialize_sync_run(run)}
+
+
+@router.post("/gitlab/delivery-tracking/{tracked_issue_id}/comments")
+def gitlab_delivery_tracking_add_comment(
+    db: DbSession,
+    user: CurrentUser,
+    tracked_issue_id: str,
+    body: GitLabDeliveryIssueCommentBody,
+) -> dict:
+    admin.require_admin_or_dm(user)
+    note = gitlab_delivery_tracking.add_tracked_issue_comment(
+        db,
+        actor=user,
+        tracked_issue_id=tracked_issue_id,
+        body=body.body,
+        internal=body.internal,
+    )
+    run = gitlab_delivery_tracking.sync_delivery_issues(db, triggered_by=f"comment:{user.id}")
+    db.commit()
+    return {"note": note, "sync_run": gitlab_delivery_tracking.serialize_sync_run(run)}
 
 
 @router.post("/gitlab/delivery-tracking/{tracked_issue_id}/manual-mapping")

@@ -24,6 +24,7 @@ from ticketmaster.services.gitlab_delivery_tracking import (
     _resolve_target_issue,
     _sort_tracked_issue_rows,
     assign_tracked_issue,
+    add_tracked_issue_comment,
     close_tracked_issue,
     create_delivery_issue,
     edit_tracked_issue,
@@ -563,6 +564,66 @@ def test_assign_tracked_issue_updates_assignee() -> None:
     assert kwargs["url"].endswith("/projects/777/issues/42")
     assert kwargs["json"] == {"assignee_ids": [15]}
     assert issue["assignees"][0]["id"] == "15"
+
+
+def test_add_tracked_issue_comment_posts_note() -> None:
+    patched = replace(
+        settings,
+        gitlab_base_url="https://gitlab.example.com",
+        gitlab_token="secret-token",
+        gitlab_delivery_project_id="503",
+    )
+    actor = SimpleNamespace(kind="internal")
+    tracked = GitLabTrackedIssue(
+        id="tracked-1",
+        delivery_project_id="503",
+        delivery_issue_iid="11",
+        delivery_title="Delivery issue title",
+        delivery_url="https://gitlab.example.com/team/delivery/-/issues/11",
+        delivery_state="opened",
+        target_project_id="777",
+        target_issue_iid="42",
+        sync_status="ok",
+    )
+
+    class DummySession:
+        @staticmethod
+        def get(model, tracked_issue_id: str):  # noqa: ANN205, ANN001
+            assert model is GitLabTrackedIssue
+            if tracked_issue_id == tracked.id:
+                return tracked
+            return None
+
+    response = DummyGitLabResponse(
+        status_code=201,
+        payload={
+            "id": 9123,
+            "body": "Ship it",
+            "system": False,
+            "internal": True,
+            "created_at": "2026-06-25T12:00:00Z",
+            "updated_at": "2026-06-25T12:00:00Z",
+            "author": {"id": 5, "name": "Jane Doe", "username": "jane"},
+        },
+    )
+    with (
+        patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched),
+        patch("ticketmaster.services.gitlab_delivery_tracking.httpx.request", return_value=response) as request_mock,
+    ):
+        note = add_tracked_issue_comment(
+            DummySession(),
+            actor=actor,
+            tracked_issue_id="tracked-1",
+            body="  Ship it  ",
+            internal=True,
+        )
+
+    _, kwargs = request_mock.call_args
+    assert kwargs["method"] == "POST"
+    assert kwargs["url"].endswith("/projects/777/issues/42/notes")
+    assert kwargs["json"] == {"body": "Ship it", "internal": True}
+    assert note["body"] == "Ship it"
+    assert note["internal"] is True
 
 
 def test_parse_issue_url_accepts_absolute_gitlab_url() -> None:
