@@ -24,6 +24,7 @@ from ticketmaster.services.gitlab_delivery_tracking import (
     _parse_issue_url,
     _resolve_target_issue,
     _sort_tracked_issue_rows,
+    assign_tracked_issue,
     add_tracked_issue_comment,
     close_tracked_issue,
     create_delivery_issue,
@@ -314,6 +315,14 @@ def test_get_tracked_issue_detail_collects_issue_and_notes() -> None:
                 }
             ]
 
+        @staticmethod
+        def list_project_members(project_id_or_path: str) -> list[dict]:
+            assert project_id_or_path == "777"
+            return [
+                {"id": 77, "name": "Jane Doe", "username": "jane", "web_url": "https://gitlab.example.com/jane"},
+                {"id": 88, "name": "John Doe", "username": "john", "web_url": "https://gitlab.example.com/john"},
+            ]
+
     with (
         patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched),
         patch("ticketmaster.services.gitlab_delivery_tracking.GitLabReadOnlyClient", DummyClient),
@@ -325,6 +334,7 @@ def test_get_tracked_issue_detail_collects_issue_and_notes() -> None:
     assert detail["issue"]["reference"] == "team/target#42"
     assert detail["issue"]["assignees"][0]["name"] == "Jane Doe"
     assert detail["notes"][0]["body"] == "First note"
+    assert detail["assignable_users"][0]["id"] == "77"
     assert detail["tracked_issue"]["delivery_issue_iid"] == "11"
 
 
@@ -496,6 +506,65 @@ def test_move_tracked_issue_calls_gitlab_move_endpoint() -> None:
     assert kwargs["url"].endswith("/projects/777/issues/42/move")
     assert kwargs["json"] == {"to_project_id": "team/new-target"}
     assert issue["project_id"] == "888"
+
+
+def test_assign_tracked_issue_updates_assignee() -> None:
+    patched = replace(
+        settings,
+        gitlab_base_url="https://gitlab.example.com",
+        gitlab_token="secret-token",
+        gitlab_delivery_project_id="503",
+    )
+    actor = SimpleNamespace(kind="internal")
+    tracked = GitLabTrackedIssue(
+        id="tracked-1",
+        delivery_project_id="503",
+        delivery_issue_iid="11",
+        delivery_title="Delivery issue title",
+        delivery_url="https://gitlab.example.com/team/delivery/-/issues/11",
+        delivery_state="opened",
+        target_project_id="777",
+        target_issue_iid="42",
+        sync_status="ok",
+    )
+
+    class DummySession:
+        @staticmethod
+        def get(model, tracked_issue_id: str):  # noqa: ANN205, ANN001
+            assert model is GitLabTrackedIssue
+            if tracked_issue_id == tracked.id:
+                return tracked
+            return None
+
+    response = DummyGitLabResponse(
+        status_code=200,
+        payload={
+            "id": 4002,
+            "iid": 42,
+            "project_id": 777,
+            "title": "Assigned issue title",
+            "description": "Body",
+            "state": "opened",
+            "labels": ["delivery"],
+            "assignees": [{"id": 15, "username": "marta", "name": "Marta"}],
+        },
+    )
+    with (
+        patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched),
+        patch("ticketmaster.services.gitlab_delivery_tracking.httpx.request", return_value=response) as request_mock,
+    ):
+        issue = assign_tracked_issue(
+            DummySession(),
+            actor=actor,
+            tracked_issue_id="tracked-1",
+            assignee_ids=[15, 15, 0],
+        )
+
+    _, kwargs = request_mock.call_args
+    assert kwargs["method"] == "PUT"
+    assert kwargs["url"].endswith("/projects/777/issues/42")
+    assert kwargs["json"] == {"assignee_ids": [15]}
+    assert issue["assignees"][0]["id"] == "15"
 
 
 def test_add_tracked_issue_comment_posts_note() -> None:
