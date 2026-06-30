@@ -93,6 +93,7 @@ function TrackingDashboard({ user }) {
   const [createAssigneeId, setCreateAssigneeId] = useState('');
   const [createDueDate, setCreateDueDate] = useState('');
   const [createSelectedLabels, setCreateSelectedLabels] = useState([]);
+  const [createLabelSearch, setCreateLabelSearch] = useState('');
   const [createSaving, setCreateSaving] = useState(false);
   const [createError, setCreateError] = useState('');
   const createDescriptionRef = useRef(null);
@@ -141,6 +142,17 @@ function TrackingDashboard({ user }) {
   }, [canView, loadAlerts]);
 
   const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
+  const createAvailableLabels = useMemo(() => {
+    const labels = asArray(createMeta?.labels)
+      .map((label) => String(label?.title || '').trim())
+      .filter(Boolean);
+    return Array.from(new Set(labels)).sort((left, right) => left.localeCompare(right));
+  }, [createMeta]);
+  const createFilteredLabels = useMemo(() => {
+    const query = createLabelSearch.trim().toLowerCase();
+    if (!query) return createAvailableLabels;
+    return createAvailableLabels.filter((label) => label.toLowerCase().includes(query));
+  }, [createAvailableLabels, createLabelSearch]);
 
   useEffect(() => {
     load(filters);
@@ -302,6 +314,7 @@ function TrackingDashboard({ user }) {
     setCreateAssigneeId('');
     setCreateDueDate('');
     setCreateSelectedLabels([]);
+    setCreateLabelSearch('');
     setCreateModalOpen(true);
     loadCreateMeta();
   };
@@ -318,11 +331,17 @@ function TrackingDashboard({ user }) {
     setCreateAssigneeId(String(assigneeId));
   };
 
-  const onCreateLabelsChange = (event) => {
-    const selected = Array.from(event.target.selectedOptions || [])
-      .map((option) => option.value)
-      .filter(Boolean);
-    setCreateSelectedLabels(selected);
+  const toggleCreateLabel = (labelTitle) => {
+    setCreateSelectedLabels((previous) => {
+      if (previous.includes(labelTitle)) {
+        return previous.filter((item) => item !== labelTitle);
+      }
+      return [...previous, labelTitle];
+    });
+  };
+
+  const removeCreateLabel = (labelTitle) => {
+    setCreateSelectedLabels((previous) => previous.filter((item) => item !== labelTitle));
   };
 
   const setCreateDescriptionWithSelection = (nextValue, selectionStart, selectionEnd) => {
@@ -735,16 +754,46 @@ function TrackingDashboard({ user }) {
                       <Label for="tm-create-labels">Labels</Label>
                       <Input
                         id="tm-create-labels"
-                        type="select"
-                        multiple
-                        value={createSelectedLabels}
-                        onChange={onCreateLabelsChange}
-                      >
-                        {asArray(createMeta?.labels).map((label) => (
-                          <option key={label.id || label.title} value={label.title}>{label.title}</option>
-                        ))}
-                      </Input>
-                      <div className="tm-muted tm-field-help">Use Ctrl/Cmd to select multiple labels.</div>
+                        type="search"
+                        value={createLabelSearch}
+                        onChange={(event) => setCreateLabelSearch(event.target.value)}
+                        placeholder="Search labels..."
+                      />
+                      <div className="tm-create-label-picker mt-2">
+                        {createFilteredLabels.length === 0 ? (
+                          <div className="tm-muted">No labels found.</div>
+                        ) : createFilteredLabels.map((labelTitle, index) => {
+                          const optionId = `tm-create-label-option-${index}`;
+                          return (
+                            <FormGroup check className="mb-1" key={labelTitle}>
+                              <Input
+                                id={optionId}
+                                type="checkbox"
+                                checked={createSelectedLabels.includes(labelTitle)}
+                                onChange={() => toggleCreateLabel(labelTitle)}
+                              />
+                              <Label for={optionId} check>{labelTitle}</Label>
+                            </FormGroup>
+                          );
+                        })}
+                      </div>
+                      <div className="tm-muted tm-field-help">Pick multiple labels and quickly search in the list.</div>
+                      {createSelectedLabels.length > 0 ? (
+                        <div className="tm-create-selected-labels">
+                          {createSelectedLabels.map((labelTitle) => (
+                            <button
+                              type="button"
+                              className="tm-create-selected-label"
+                              key={labelTitle}
+                              onClick={() => removeCreateLabel(labelTitle)}
+                              title={`Remove ${labelTitle}`}
+                            >
+                              <span>{labelTitle}</span>
+                              <i className="bi bi-x-lg" aria-hidden="true" />
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
                     </FormGroup>
                   </div>
                 </div>

@@ -14,6 +14,7 @@ from ticketmaster.services.gitlab_delivery_tracking import (
     GitLabApiError,
     TargetResolution,
     _build_delivery_alert_payload,
+    _dedupe_tracked_issue_rows,
     _emit_delivery_alert_if_needed,
     _expected_sync_status,
     _tracked_issue_invariant_errors,
@@ -714,6 +715,87 @@ def test_sort_rows_by_team_id_uses_target_issue_iid() -> None:
     ]
     sorted_rows = _sort_tracked_issue_rows(rows, sort_by="target_issue_url", sort_direction="asc")
     assert [row.delivery_issue_iid for row in sorted_rows] == ["2", "1"]
+
+
+def test_dedupe_tracked_issue_rows_prefers_latest_same_target_issue() -> None:
+    older = SimpleNamespace(
+        id="old-row",
+        target_issue_id="9001",
+        target_project_id="777",
+        target_issue_iid="42",
+        moved_to_id="9001",
+        delivery_project_id="503",
+        delivery_issue_iid="11",
+        sync_status="ok",
+        target_updated_at=datetime(2026, 6, 30, 8, 0, tzinfo=timezone.utc),
+        delivery_updated_at=datetime(2026, 6, 30, 8, 0, tzinfo=timezone.utc),
+        last_synced_at=datetime(2026, 6, 30, 8, 1, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 6, 30, 8, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 6, 30, 8, 0, tzinfo=timezone.utc),
+        delivery_state="closed",
+    )
+    newer = SimpleNamespace(
+        id="new-row",
+        target_issue_id="9001",
+        target_project_id="888",
+        target_issue_iid="77",
+        moved_to_id="9001",
+        delivery_project_id="503",
+        delivery_issue_iid="39",
+        sync_status="ok",
+        target_updated_at=datetime(2026, 6, 30, 9, 10, tzinfo=timezone.utc),
+        delivery_updated_at=datetime(2026, 6, 30, 9, 10, tzinfo=timezone.utc),
+        last_synced_at=datetime(2026, 6, 30, 9, 11, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 6, 30, 9, 11, tzinfo=timezone.utc),
+        created_at=datetime(2026, 6, 30, 9, 10, tzinfo=timezone.utc),
+        delivery_state="opened",
+    )
+
+    deduped = _dedupe_tracked_issue_rows([older, newer])
+
+    assert len(deduped) == 1
+    assert deduped[0].id == "new-row"
+    assert deduped[0].delivery_issue_iid == "39"
+
+
+def test_dedupe_tracked_issue_rows_keeps_distinct_targets() -> None:
+    left = SimpleNamespace(
+        id="left",
+        target_issue_id="1001",
+        target_project_id="777",
+        target_issue_iid="11",
+        moved_to_id="1001",
+        delivery_project_id="503",
+        delivery_issue_iid="11",
+        sync_status="ok",
+        target_updated_at=datetime(2026, 6, 30, 8, 0, tzinfo=timezone.utc),
+        delivery_updated_at=datetime(2026, 6, 30, 8, 0, tzinfo=timezone.utc),
+        last_synced_at=datetime(2026, 6, 30, 8, 1, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 6, 30, 8, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 6, 30, 8, 0, tzinfo=timezone.utc),
+        delivery_state="opened",
+    )
+    right = SimpleNamespace(
+        id="right",
+        target_issue_id="2002",
+        target_project_id="888",
+        target_issue_iid="22",
+        moved_to_id="2002",
+        delivery_project_id="503",
+        delivery_issue_iid="22",
+        sync_status="ok",
+        target_updated_at=datetime(2026, 6, 30, 9, 0, tzinfo=timezone.utc),
+        delivery_updated_at=datetime(2026, 6, 30, 9, 0, tzinfo=timezone.utc),
+        last_synced_at=datetime(2026, 6, 30, 9, 1, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 6, 30, 9, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 6, 30, 9, 0, tzinfo=timezone.utc),
+        delivery_state="opened",
+    )
+
+    deduped = _dedupe_tracked_issue_rows([left, right])
+
+    assert len(deduped) == 2
+    assert {row.id for row in deduped} == {"left", "right"}
 
 
 def test_row_matches_label_filter_prefers_target_labels_with_delivery_fallback() -> None:
