@@ -222,6 +222,20 @@ class GitLabReadOnlyClient:
             params={},
         )
 
+    def list_accessible_projects(self, *, search: str | None = None) -> list[dict]:
+        params = {
+            "membership": "true",
+            "archived": "false",
+            "simple": "true",
+            "order_by": "path",
+            "sort": "asc",
+            "min_access_level": "20",
+        }
+        search_text = _string_or_none(search)
+        if search_text:
+            params["search"] = search_text
+        return self._list_paginated_dicts("/projects", params=params)
+
     def _list_paginated_dicts(self, path: str, *, params: dict[str, str] | None = None) -> list[dict]:
         rows: list[dict] = []
         page = 1
@@ -324,6 +338,40 @@ def get_delivery_issue_create_meta(*, actor: User) -> dict:
         ),
         "current_assignee_id": current_assignee_id,
     }
+
+
+def list_move_issue_projects(*, actor: User, search: str | None = None) -> dict:
+    _require_delivery_issue_write_access(actor=actor)
+
+    client = GitLabReadOnlyClient(base_url=settings.gitlab_base_url, token=str(settings.gitlab_token))
+    try:
+        rows = client.list_accessible_projects(search=search)
+    finally:
+        client.close()
+
+    projects: list[dict[str, str]] = []
+    seen_ids: set[str] = set()
+    for row in rows:
+        project_id = _string_or_none(row.get("id"))
+        if not project_id or project_id in seen_ids:
+            continue
+        seen_ids.add(project_id)
+        projects.append(
+            {
+                "id": project_id,
+                "name": _string_or_none(row.get("name")) or "",
+                "path_with_namespace": _string_or_none(row.get("path_with_namespace")) or "",
+                "web_url": _string_or_none(row.get("web_url")) or "",
+            }
+        )
+
+    projects.sort(
+        key=lambda item: (
+            (item.get("path_with_namespace") or item.get("name") or "").casefold(),
+            item.get("id") or "",
+        )
+    )
+    return {"projects": projects}
 
 
 def parse_updated_since(value: str | None) -> datetime | None:

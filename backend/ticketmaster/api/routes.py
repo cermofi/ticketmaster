@@ -1229,6 +1229,15 @@ def gitlab_delivery_tracking_create_meta(user: CurrentUser) -> dict:
     return gitlab_delivery_tracking.get_delivery_issue_create_meta(actor=user)
 
 
+@router.get("/gitlab/delivery-tracking/move-projects")
+def gitlab_delivery_tracking_move_projects(
+    user: CurrentUser,
+    search: str | None = Query(default=None),
+) -> dict:
+    admin.require_admin_or_dm(user)
+    return gitlab_delivery_tracking.list_move_issue_projects(actor=user, search=search)
+
+
 @router.post("/gitlab/delivery-tracking/create")
 def gitlab_delivery_tracking_create_issue(
     db: DbSession,
