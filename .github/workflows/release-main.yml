@@ -76,8 +76,8 @@ jobs:
           build-args: |
             APP_VERSION=${{ steps.tag.outputs.value }}
           push: true
-          provenance: false
-          sbom: false
+          provenance: mode=max
+          sbom: true
           tags: |
             ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image_name }}:${{ steps.tag.outputs.value }}
             ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image_name }}:main-latest
@@ -113,9 +113,11 @@ jobs:
         run: |
           set -euo pipefail
           base_tmp="${RUNNER_TEMP:-/tmp}"
-          echo "DEPLOY_LOG_DIR=${base_tmp}/release-main-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
-          echo "DEPLOY_ENV_FILE=${base_tmp}/release-main-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/deploy.env.images" >> "$GITHUB_ENV"
-          echo "RELEASE_SMOKE_BASE_URL=${{ inputs.smoke_base_url || 'https://ticketmaster.cermofi.cz' }}" >> "$GITHUB_ENV"
+          {
+            echo "DEPLOY_LOG_DIR=${base_tmp}/release-main-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            echo "DEPLOY_ENV_FILE=${base_tmp}/release-main-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/deploy.env.images"
+            echo "RELEASE_SMOKE_BASE_URL=${{ inputs.smoke_base_url || 'https://ticketmaster.cermofi.cz' }}"
+          } >> "$GITHUB_ENV"
 
       - name: Prepare deploy log directory
         run: |
@@ -198,6 +200,42 @@ jobs:
             echo "head=${synced_head}" >> "$GITHUB_OUTPUT"
           } 2>&1 | tee "${DEPLOY_LOG_DIR}/03-sync-checkout.log"
 
+      - id: previous_tag
+        name: Capture previously deployed image tag
+        run: |
+          set -euo pipefail
+          {
+            cd /opt/ticketmaster
+            previous_tag=""
+            for service in api docs frontend; do
+              container_id="$(docker compose -f docker-compose.yml ps -q "${service}" || true)"
+              container_id="${container_id%%$'\n'*}"
+              if [ -z "${container_id}" ]; then
+                continue
+              fi
+              image_ref="$(docker inspect --format '{{.Config.Image}}' "${container_id}")"
+              case "${image_ref}" in
+                *@*) current_tag="" ;;
+                *:*) current_tag="${image_ref##*:}" ;;
+                *) current_tag="" ;;
+              esac
+              if [ -z "${current_tag}" ]; then
+                continue
+              fi
+              if [ -z "${previous_tag}" ]; then
+                previous_tag="${current_tag}"
+              elif [ "${previous_tag}" != "${current_tag}" ]; then
+                previous_tag=""
+                break
+              fi
+            done
+            if [ -z "${previous_tag}" ]; then
+              previous_tag="main-latest"
+            fi
+            echo "previous_tag=${previous_tag}"
+            echo "value=${previous_tag}" >> "$GITHUB_OUTPUT"
+          } 2>&1 | tee "${DEPLOY_LOG_DIR}/04-previous-tag.log"
+
       - name: Login to GHCR
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
@@ -215,7 +253,7 @@ jobs:
             docker manifest inspect "ghcr.io/${OWNER}/ticketmaster-docs:${TAG}" >/dev/null
             docker manifest inspect "ghcr.io/${OWNER}/ticketmaster-frontend:${TAG}" >/dev/null
             echo "validated_tag=${TAG}"
-          } 2>&1 | tee "${DEPLOY_LOG_DIR}/04-image-validation.log"
+          } 2>&1 | tee "${DEPLOY_LOG_DIR}/05-image-validation.log"
 
       - name: Write deploy image tag env
         run: |
@@ -223,9 +261,10 @@ jobs:
           {
             echo "IMAGE_TAG=${{ steps.tag.outputs.value }}" > "${DEPLOY_ENV_FILE}"
             cat "${DEPLOY_ENV_FILE}"
-          } 2>&1 | tee "${DEPLOY_LOG_DIR}/05-write-image-tag.log"
+          } 2>&1 | tee "${DEPLOY_LOG_DIR}/06-write-image-tag.log"
 
-      - name: Pull images, run migration, restart services
+      - id: deploy_apply
+        name: Pull images, run migration, restart services
         run: |
           set -euo pipefail
           {
@@ -236,15 +275,35 @@ jobs:
             "${COMPOSE[@]}" run --rm -T api ticketmaster-cli db migrate
             "${COMPOSE[@]}" up -d --no-build api docs frontend
             "${COMPOSE[@]}" ps
-          } 2>&1 | tee "${DEPLOY_LOG_DIR}/06-deploy.log"
+          } 2>&1 | tee "${DEPLOY_LOG_DIR}/07-deploy.log"
 
-      - name: Post-deploy smoke gate
+      - id: smoke_gate
+        name: Post-deploy smoke gate
         run: |
           set -euo pipefail
           {
             cd /opt/ticketmaster
             SMOKE_CHECK_BASE_URL="${RELEASE_SMOKE_BASE_URL}" bash scripts/post-deploy-smoke.sh
-          } 2>&1 | tee "${DEPLOY_LOG_DIR}/07-smoke.log"
+          } 2>&1 | tee "${DEPLOY_LOG_DIR}/08-smoke.log"
+
+      - id: rollback
+        name: Roll back to previous image tag
+        if: failure() && steps.deploy_apply.outcome == 'success' && steps.previous_tag.outputs.value != ''
+        run: |
+          set -euo pipefail
+          {
+            cd /opt/ticketmaster
+            rollback_tag="${{ steps.previous_tag.outputs.value }}"
+            rollback_env="${DEPLOY_LOG_DIR}/rollback.env.images"
+            echo "IMAGE_TAG=${rollback_tag}" > "${rollback_env}"
+
+            COMPOSE=(docker compose --env-file .env --env-file "${rollback_env}" -f docker-compose.yml)
+            "${COMPOSE[@]}" pull api docs frontend
+            "${COMPOSE[@]}" up -d --no-build api docs frontend
+            "${COMPOSE[@]}" ps
+
+            SMOKE_CHECK_BASE_URL="${RELEASE_SMOKE_BASE_URL}" bash scripts/post-deploy-smoke.sh
+          } 2>&1 | tee "${DEPLOY_LOG_DIR}/09-rollback.log"
 
       - name: Upload deploy logs artifact
         if: always()
@@ -265,8 +324,10 @@ jobs:
             echo "- Commit: \`${GITHUB_SHA}\`"
             echo "- Synced checkout HEAD: \`${{ steps.checkout_state.outputs.head || 'n/a' }}\`"
             echo "- Image tag: \`${{ steps.tag.outputs.value }}\`"
+            echo "- Previous image tag: \`${{ steps.previous_tag.outputs.value || 'n/a' }}\`"
             echo "- Smoke base URL: \`${RELEASE_SMOKE_BASE_URL}\`"
             echo "- Publish job result: \`${{ needs.publish-images.result }}\`"
             echo "- Deploy job result: \`${{ job.status }}\`"
+            echo "- Rollback outcome: \`${{ steps.rollback.outcome || 'not-run' }}\`"
             echo "- Deploy logs artifact: \`release-main-logs-${{ github.run_id }}-${{ github.run_attempt }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
