@@ -1949,16 +1949,69 @@ def _tracked_issue_invariant_errors(row: GitLabTrackedIssue) -> list[str]:
 
 
 def _dedupe_tracked_issue_rows(rows: list[GitLabTrackedIssue]) -> list[GitLabTrackedIssue]:
-    chosen: dict[tuple[str, ...], GitLabTrackedIssue] = {}
+    if not rows:
+        return []
+    by_delivery_issue_id = _index_tracked_rows_by_delivery_issue_id(rows)
+    by_chain: dict[tuple[str, ...], GitLabTrackedIssue] = {}
     for row in rows:
+        terminal_row = _resolve_delivery_chain_terminal_row(row, by_delivery_issue_id)
+        chain_key = _tracked_issue_chain_key(terminal_row)
+        current_chain_row = by_chain.get(chain_key)
+        if current_chain_row is None or _tracked_issue_dedupe_score(terminal_row) > _tracked_issue_dedupe_score(current_chain_row):
+            by_chain[chain_key] = terminal_row
+    chosen: dict[tuple[str, ...], GitLabTrackedIssue] = {}
+    for row in by_chain.values():
         dedupe_key = _tracked_issue_dedupe_key(row)
         current = chosen.get(dedupe_key)
-        if current is None:
-            chosen[dedupe_key] = row
-            continue
-        if _tracked_issue_dedupe_score(row) > _tracked_issue_dedupe_score(current):
+        if current is None or _tracked_issue_dedupe_score(row) > _tracked_issue_dedupe_score(current):
             chosen[dedupe_key] = row
     return list(chosen.values())
+
+
+def _index_tracked_rows_by_delivery_issue_id(rows: list[GitLabTrackedIssue]) -> dict[str, GitLabTrackedIssue]:
+    indexed: dict[str, GitLabTrackedIssue] = {}
+    for row in rows:
+        issue_id = _string_or_none(getattr(row, "delivery_issue_id", None))
+        if not issue_id:
+            continue
+        current = indexed.get(issue_id)
+        if current is None or _tracked_issue_dedupe_score(row) > _tracked_issue_dedupe_score(current):
+            indexed[issue_id] = row
+    return indexed
+
+
+def _resolve_delivery_chain_terminal_row(
+    row: GitLabTrackedIssue,
+    by_delivery_issue_id: dict[str, GitLabTrackedIssue],
+    *,
+    max_hops: int = 20,
+) -> GitLabTrackedIssue:
+    current = row
+    visited: set[str] = set()
+    for _ in range(max_hops):
+        moved_to_id = _string_or_none(getattr(current, "moved_to_id", None))
+        if not moved_to_id:
+            break
+        if moved_to_id in visited:
+            break
+        visited.add(moved_to_id)
+        next_row = by_delivery_issue_id.get(moved_to_id)
+        if next_row is None:
+            break
+        current = next_row
+    return current
+
+
+def _tracked_issue_chain_key(row: GitLabTrackedIssue) -> tuple[str, ...]:
+    delivery_project_id = _string_or_none(getattr(row, "delivery_project_id", None)) or ""
+    delivery_issue_id = _string_or_none(getattr(row, "delivery_issue_id", None))
+    if delivery_issue_id:
+        return ("delivery_chain_id", delivery_project_id, delivery_issue_id)
+    delivery_issue_iid = _string_or_none(getattr(row, "delivery_issue_iid", None))
+    if delivery_issue_iid:
+        return ("delivery_chain_iid", delivery_project_id, delivery_issue_iid)
+    fallback_id = _string_or_none(getattr(row, "id", None))
+    return ("delivery_chain_row", fallback_id or "")
 
 
 def _tracked_issue_dedupe_key(row: GitLabTrackedIssue) -> tuple[str, ...]:
