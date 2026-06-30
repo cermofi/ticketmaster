@@ -2326,6 +2326,40 @@ body[data-tm-density="compact"] .tm-login-form {
   font-size: .85rem;
 }
 
+.tm-create-label-picker {
+  max-height: 13rem;
+  overflow: auto;
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-radius-sm);
+  background: var(--tm-panel-soft);
+  padding: .55rem .65rem;
+}
+
+.tm-create-selected-labels {
+  margin-top: .5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+}
+
+.tm-create-selected-label {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  border: 1px solid var(--tm-line);
+  border-radius: 999px;
+  padding: .2rem .5rem;
+  background: rgba(59, 130, 246, .12);
+  color: var(--tm-ink);
+  font-size: .82rem;
+}
+
+.tm-create-selected-label:hover,
+.tm-create-selected-label:focus-visible {
+  border-color: var(--tm-line-strong);
+  background: rgba(59, 130, 246, .18);
+}
+
 .tm-markdown-preview {
   margin-top: .65rem;
   border: 1px solid rgba(255, 255, 255, .08);
