@@ -57,6 +57,7 @@ function IssueDetailPage({ user, trackedIssueId }) {
   const [moveProjectId, setMoveProjectId] = useState('');
   const [moveError, setMoveError] = useState('');
   const [moveSaving, setMoveSaving] = useState(false);
+  const [moveProjectOptions, setMoveProjectOptions] = useState([]);
   const [mappingModalOpen, setMappingModalOpen] = useState(false);
   const [mappingTargetUrl, setMappingTargetUrl] = useState('');
   const [mappingError, setMappingError] = useState('');
@@ -83,9 +84,33 @@ function IssueDetailPage({ user, trackedIssueId }) {
     }
   }, [canView, trackedIssueId]);
 
+  const loadMoveProjectOptions = useCallback(async () => {
+    if (!canManage) return;
+    try {
+      const response = await api.get('/gitlab/delivery-tracking/meta');
+      const dedup = new Map();
+      asArray(response.data?.target_teams).forEach((team) => {
+        const projectId = String(team?.project_id || '').trim();
+        if (!projectId || dedup.has(projectId)) return;
+        dedup.set(projectId, {
+          value: projectId,
+          label: team?.name ? `${team.name} (${projectId})` : projectId
+        });
+      });
+      const options = Array.from(dedup.values()).sort((left, right) => left.label.localeCompare(right.label));
+      setMoveProjectOptions(options);
+    } catch {
+      setMoveProjectOptions([]);
+    }
+  }, [canManage]);
+
   useEffect(() => {
     loadDetail();
   }, [loadDetail]);
+
+  useEffect(() => {
+    loadMoveProjectOptions();
+  }, [loadMoveProjectOptions]);
 
   useRefetchOnFocus(loadDetail, canView && Boolean(trackedIssueId));
   useSessionDomainRefresh(DATA_DOMAINS.gitlabDeliveryTracking, loadDetail, canView && Boolean(trackedIssueId));
@@ -220,7 +245,7 @@ function IssueDetailPage({ user, trackedIssueId }) {
 
   const openMoveDialog = () => {
     if (!canManage || !issue) return;
-    setMoveProjectId('');
+    setMoveProjectId(moveProjectOptions[0]?.value || '');
     setMoveError('');
     setMoveModalOpen(true);
   };
@@ -877,21 +902,27 @@ function IssueDetailPage({ user, trackedIssueId }) {
           <ModalHeader toggle={closeMoveDialog}>Move issue</ModalHeader>
           <ModalBody>
             <ErrorBanner error={moveError} />
-            <p className="tm-muted">
-              Move this issue to another project by entering target project path or ID
-              {' '}
-              <code>group/project</code>
-              .
-            </p>
+            <p className="tm-muted">Move this issue to one of the configured target projects.</p>
             <FormGroup>
               <Label for="tm-detail-move-project">Target project</Label>
               <Input
                 id="tm-detail-move-project"
+                type="select"
                 value={moveProjectId}
                 onChange={(event) => setMoveProjectId(event.target.value)}
-                placeholder="group/project or 123"
                 required
-              />
+              >
+                {moveProjectOptions.length === 0 ? (
+                  <option value="">No configured projects</option>
+                ) : (
+                  <>
+                    <option value="">Select project</option>
+                    {moveProjectOptions.map((project) => (
+                      <option key={project.value} value={project.value}>{project.label}</option>
+                    ))}
+                  </>
+                )}
+              </Input>
             </FormGroup>
           </ModalBody>
           <ModalFooter>
