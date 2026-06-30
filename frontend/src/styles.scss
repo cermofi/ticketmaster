@@ -3204,6 +3204,19 @@ body[data-tm-contrast="high"] {
   transform: translateY(1px);
 }
 
+.tm-workflow-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: .58;
+  transform: none;
+}
+
+.tm-workflow-action-btn:disabled:hover,
+.tm-workflow-action-btn:disabled:focus-visible {
+  border-color: rgba(255, 255, 255, .1);
+  background: rgba(255, 255, 255, .03);
+  color: var(--tm-ink);
+}
+
 .tm-workflow-action-btn-primary {
   border-color: rgba(96, 165, 250, .45);
   background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);

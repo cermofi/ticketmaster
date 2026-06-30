@@ -210,6 +210,19 @@ class GitLabDeliveryIssueCreateBody(BaseModel):
     issue_type: str | None = Field(default=None, max_length=40)
 
 
+class GitLabDeliveryIssueEditBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=255)
+    description: str = Field(default="", max_length=20000)
+
+
+class GitLabDeliveryIssueMoveBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    to_project_id: str = Field(min_length=1, max_length=255)
+
+
 @router.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "ticketmaster-api"}
@@ -1238,6 +1251,62 @@ def gitlab_delivery_tracking_issue_detail(
         actor=user,
         tracked_issue_id=tracked_issue_id,
     )
+
+
+@router.post("/gitlab/delivery-tracking/{tracked_issue_id}/close")
+def gitlab_delivery_tracking_close_issue(
+    db: DbSession,
+    user: CurrentUser,
+    tracked_issue_id: str,
+) -> dict:
+    admin.require_admin_or_dm(user)
+    issue = gitlab_delivery_tracking.close_tracked_issue(
+        db,
+        actor=user,
+        tracked_issue_id=tracked_issue_id,
+    )
+    run = gitlab_delivery_tracking.sync_delivery_issues(db, triggered_by=f"close:{user.id}")
+    db.commit()
+    return {"issue": issue, "sync_run": gitlab_delivery_tracking.serialize_sync_run(run)}
+
+
+@router.patch("/gitlab/delivery-tracking/{tracked_issue_id}/edit")
+def gitlab_delivery_tracking_edit_issue(
+    db: DbSession,
+    user: CurrentUser,
+    tracked_issue_id: str,
+    body: GitLabDeliveryIssueEditBody,
+) -> dict:
+    admin.require_admin_or_dm(user)
+    issue = gitlab_delivery_tracking.edit_tracked_issue(
+        db,
+        actor=user,
+        tracked_issue_id=tracked_issue_id,
+        title=body.title,
+        description=body.description,
+    )
+    run = gitlab_delivery_tracking.sync_delivery_issues(db, triggered_by=f"edit:{user.id}")
+    db.commit()
+    return {"issue": issue, "sync_run": gitlab_delivery_tracking.serialize_sync_run(run)}
+
+
+@router.post("/gitlab/delivery-tracking/{tracked_issue_id}/move")
+def gitlab_delivery_tracking_move_issue(
+    db: DbSession,
+    user: CurrentUser,
+    tracked_issue_id: str,
+    body: GitLabDeliveryIssueMoveBody,
+) -> dict:
+    admin.require_admin_or_dm(user)
+    issue = gitlab_delivery_tracking.move_tracked_issue(
+        db,
+        actor=user,
+        tracked_issue_id=tracked_issue_id,
+        to_project_id=body.to_project_id,
+    )
+    run = gitlab_delivery_tracking.sync_delivery_issues(db, triggered_by=f"move:{user.id}")
+    db.commit()
+    return {"issue": issue, "sync_run": gitlab_delivery_tracking.serialize_sync_run(run)}
 
 
 @router.post("/gitlab/delivery-tracking/{tracked_issue_id}/manual-mapping")

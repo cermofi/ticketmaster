@@ -79,6 +79,18 @@ function TrackingDashboard({ user }) {
   const [detailData, setDetailData] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
+  const [detailActionLoading, setDetailActionLoading] = useState('');
+  const [detailEditModalOpen, setDetailEditModalOpen] = useState(false);
+  const [detailEditTitle, setDetailEditTitle] = useState('');
+  const [detailEditDescription, setDetailEditDescription] = useState('');
+  const [detailEditPreview, setDetailEditPreview] = useState(false);
+  const [detailEditError, setDetailEditError] = useState('');
+  const [detailEditSaving, setDetailEditSaving] = useState(false);
+  const detailEditDescriptionRef = useRef(null);
+  const [detailMoveModalOpen, setDetailMoveModalOpen] = useState(false);
+  const [detailMoveProjectId, setDetailMoveProjectId] = useState('');
+  const [detailMoveError, setDetailMoveError] = useState('');
+  const [detailMoveSaving, setDetailMoveSaving] = useState(false);
   const detailRequestRef = useRef(0);
   const [alertsModalOpen, setAlertsModalOpen] = useState(false);
   const [alertsRows, setAlertsRows] = useState([]);
@@ -276,11 +288,164 @@ function TrackingDashboard({ user }) {
     setDetailData(null);
     setDetailError('');
     setDetailLoading(false);
+    setDetailActionLoading('');
+    setDetailEditModalOpen(false);
+    setDetailEditError('');
+    setDetailEditSaving(false);
+    setDetailMoveModalOpen(false);
+    setDetailMoveError('');
+    setDetailMoveSaving(false);
   };
 
   const refreshDetailDialog = () => {
     if (!detailRow) return;
     loadDetailDialog(detailRow);
+  };
+
+  const closeDetailIssue = async () => {
+    if (!canManage || !detailRow?.id || detailActionLoading) return;
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm('Close this GitLab issue?');
+      if (!confirmed) return;
+    }
+    setDetailActionLoading('close');
+    setDetailError('');
+    try {
+      await api.post(`/gitlab/delivery-tracking/${detailRow.id}/close`);
+      await load();
+      await loadDetailDialog(detailRow);
+    } catch (err) {
+      setDetailError(apiError(err));
+    } finally {
+      setDetailActionLoading('');
+    }
+  };
+
+  const openDetailEditDialog = () => {
+    if (!canManage) return;
+    const issue = detailData?.issue;
+    if (!issue) return;
+    setDetailEditTitle(issue.title || '');
+    setDetailEditDescription(issue.description || '');
+    setDetailEditPreview(false);
+    setDetailEditError('');
+    setDetailEditModalOpen(true);
+  };
+
+  const closeDetailEditDialog = () => {
+    if (detailEditSaving) return;
+    setDetailEditModalOpen(false);
+    setDetailEditError('');
+  };
+
+  const setDetailEditDescriptionWithSelection = (nextValue, selectionStart, selectionEnd) => {
+    setDetailEditDescription(nextValue);
+    requestAnimationFrame(() => {
+      const input = detailEditDescriptionRef.current;
+      if (!input) return;
+      input.focus();
+      if (typeof selectionStart === 'number' && typeof selectionEnd === 'number') {
+        input.setSelectionRange(selectionStart, selectionEnd);
+      }
+    });
+  };
+
+  const insertDetailEditWrapped = (prefix, suffix = '', placeholder = '') => {
+    const input = detailEditDescriptionRef.current;
+    const currentValue = detailEditDescription || '';
+    const selectionStart = input?.selectionStart ?? currentValue.length;
+    const selectionEnd = input?.selectionEnd ?? currentValue.length;
+    const selectedText = currentValue.slice(selectionStart, selectionEnd);
+    const body = selectedText || placeholder;
+    const nextValue = `${currentValue.slice(0, selectionStart)}${prefix}${body}${suffix}${currentValue.slice(selectionEnd)}`;
+    const cursorStart = selectionStart + prefix.length;
+    const cursorEnd = cursorStart + body.length;
+    setDetailEditDescriptionWithSelection(nextValue, cursorStart, cursorEnd);
+  };
+
+  const insertDetailEditAtCursor = (text) => {
+    const input = detailEditDescriptionRef.current;
+    const currentValue = detailEditDescription || '';
+    const selectionStart = input?.selectionStart ?? currentValue.length;
+    const selectionEnd = input?.selectionEnd ?? currentValue.length;
+    const nextValue = `${currentValue.slice(0, selectionStart)}${text}${currentValue.slice(selectionEnd)}`;
+    const cursor = selectionStart + text.length;
+    setDetailEditDescriptionWithSelection(nextValue, cursor, cursor);
+  };
+
+  const prefixDetailEditSelectedLines = (prefix) => {
+    const input = detailEditDescriptionRef.current;
+    const currentValue = detailEditDescription || '';
+    const selectionStart = input?.selectionStart ?? currentValue.length;
+    const selectionEnd = input?.selectionEnd ?? currentValue.length;
+    if (selectionStart === selectionEnd) {
+      insertDetailEditAtCursor(prefix);
+      return;
+    }
+    const selected = currentValue.slice(selectionStart, selectionEnd);
+    const prefixed = selected.split('\n').map((line) => (line ? `${prefix}${line}` : prefix.trimEnd())).join('\n');
+    const nextValue = `${currentValue.slice(0, selectionStart)}${prefixed}${currentValue.slice(selectionEnd)}`;
+    setDetailEditDescriptionWithSelection(nextValue, selectionStart, selectionStart + prefixed.length);
+  };
+
+  const saveDetailIssueEdit = async () => {
+    if (!canManage || !detailRow?.id) return;
+    const title = detailEditTitle.trim();
+    if (!title) {
+      setDetailEditError('Title is required.');
+      return;
+    }
+    setDetailEditSaving(true);
+    setDetailEditError('');
+    setDetailError('');
+    try {
+      await api.patch(`/gitlab/delivery-tracking/${detailRow.id}/edit`, {
+        title,
+        description: detailEditDescription
+      });
+      setDetailEditModalOpen(false);
+      await load();
+      await loadDetailDialog(detailRow);
+    } catch (err) {
+      setDetailEditError(apiError(err));
+    } finally {
+      setDetailEditSaving(false);
+    }
+  };
+
+  const openDetailMoveDialog = () => {
+    if (!canManage || !detailData?.issue) return;
+    setDetailMoveProjectId('');
+    setDetailMoveError('');
+    setDetailMoveModalOpen(true);
+  };
+
+  const closeDetailMoveDialog = () => {
+    if (detailMoveSaving) return;
+    setDetailMoveModalOpen(false);
+    setDetailMoveError('');
+  };
+
+  const saveDetailIssueMove = async () => {
+    if (!canManage || !detailRow?.id) return;
+    const toProjectId = detailMoveProjectId.trim();
+    if (!toProjectId) {
+      setDetailMoveError('Target project is required.');
+      return;
+    }
+    setDetailMoveSaving(true);
+    setDetailMoveError('');
+    setDetailError('');
+    try {
+      await api.post(`/gitlab/delivery-tracking/${detailRow.id}/move`, { to_project_id: toProjectId });
+      setDetailMoveModalOpen(false);
+      await load();
+      await loadDetailDialog(detailRow);
+    } catch (err) {
+      setDetailMoveError(apiError(err));
+    } finally {
+      setDetailMoveSaving(false);
+    }
   };
 
   const closeMappingDialog = () => {
@@ -525,12 +690,208 @@ function TrackingDashboard({ user }) {
         canManage={canManage}
         onClose={closeDetailDialog}
         onRefresh={refreshDetailDialog}
+        actionLoading={detailActionLoading}
+        onCloseIssue={closeDetailIssue}
+        onEditIssue={openDetailEditDialog}
+        onMoveIssue={openDetailMoveDialog}
         onManualMapping={(row) => {
           if (!row) return;
           closeDetailDialog();
           openMappingDialog(row);
         }}
       />
+      <Modal isOpen={detailEditModalOpen} toggle={closeDetailEditDialog} size="lg">
+        <Form onSubmit={(event) => {
+          event.preventDefault();
+          saveDetailIssueEdit();
+        }}
+        >
+          <ModalHeader toggle={closeDetailEditDialog}>Edit issue</ModalHeader>
+          <ModalBody>
+            <ErrorBanner error={detailEditError} />
+            <FormGroup>
+              <Label for="tm-detail-edit-title">Title</Label>
+              <Input
+                id="tm-detail-edit-title"
+                value={detailEditTitle}
+                onChange={(event) => setDetailEditTitle(event.target.value)}
+                maxLength={255}
+                required
+              />
+            </FormGroup>
+            <FormGroup>
+              <Label for="tm-detail-edit-description">Description</Label>
+              <div className="tm-md-editor">
+                <div className="tm-md-editor-toolbar" role="toolbar" aria-label="Edit issue markdown toolbar">
+                  <Button
+                    type="button"
+                    color="secondary"
+                    outline
+                    size="sm"
+                    className="tm-md-toolbar-btn"
+                    onClick={() => insertDetailEditWrapped('**', '**', 'bold text')}
+                  >
+                    <i className="bi bi-type-bold" aria-hidden="true" />
+                  </Button>
+                  <Button
+                    type="button"
+                    color="secondary"
+                    outline
+                    size="sm"
+                    className="tm-md-toolbar-btn"
+                    onClick={() => insertDetailEditWrapped('_', '_', 'italic text')}
+                  >
+                    <i className="bi bi-type-italic" aria-hidden="true" />
+                  </Button>
+                  <Button
+                    type="button"
+                    color="secondary"
+                    outline
+                    size="sm"
+                    className="tm-md-toolbar-btn"
+                    onClick={() => insertDetailEditAtCursor('## ')}
+                  >
+                    <i className="bi bi-type-h2" aria-hidden="true" />
+                  </Button>
+                  <Button
+                    type="button"
+                    color="secondary"
+                    outline
+                    size="sm"
+                    className="tm-md-toolbar-btn"
+                    onClick={() => prefixDetailEditSelectedLines('> ')}
+                  >
+                    <i className="bi bi-chat-square-quote" aria-hidden="true" />
+                  </Button>
+                  <Button
+                    type="button"
+                    color="secondary"
+                    outline
+                    size="sm"
+                    className="tm-md-toolbar-btn"
+                    onClick={() => prefixDetailEditSelectedLines('- ')}
+                  >
+                    <i className="bi bi-list-ul" aria-hidden="true" />
+                  </Button>
+                  <Button
+                    type="button"
+                    color="secondary"
+                    outline
+                    size="sm"
+                    className="tm-md-toolbar-btn"
+                    onClick={() => prefixDetailEditSelectedLines('1. ')}
+                  >
+                    <i className="bi bi-list-ol" aria-hidden="true" />
+                  </Button>
+                  <Button
+                    type="button"
+                    color="secondary"
+                    outline
+                    size="sm"
+                    className="tm-md-toolbar-btn"
+                    onClick={() => insertDetailEditWrapped('[', '](https://)', 'link text')}
+                  >
+                    <i className="bi bi-link-45deg" aria-hidden="true" />
+                  </Button>
+                  <Button
+                    type="button"
+                    color="secondary"
+                    outline
+                    size="sm"
+                    className="tm-md-toolbar-btn"
+                    onClick={() => insertDetailEditWrapped('```\n', '\n```', 'code')}
+                  >
+                    <i className="bi bi-code-slash" aria-hidden="true" />
+                  </Button>
+                  <span className="tm-md-editor-separator" />
+                  <Button
+                    type="button"
+                    color={detailEditPreview ? 'secondary' : 'primary'}
+                    outline
+                    size="sm"
+                    className="tm-md-toolbar-btn"
+                    onClick={() => setDetailEditPreview(false)}
+                  >
+                    Write
+                  </Button>
+                  <Button
+                    type="button"
+                    color={detailEditPreview ? 'primary' : 'secondary'}
+                    outline
+                    size="sm"
+                    className="tm-md-toolbar-btn"
+                    onClick={() => setDetailEditPreview(true)}
+                  >
+                    Preview
+                  </Button>
+                </div>
+                {detailEditPreview ? (
+                  <div className="tm-create-md-preview">
+                    <MarkdownText
+                      content={detailEditDescription}
+                      className="tm-markdown tm-markdown-preview-body"
+                      emptyMessage="Nothing to preview yet."
+                    />
+                  </div>
+                ) : (
+                  <Input
+                    id="tm-detail-edit-description"
+                    innerRef={detailEditDescriptionRef}
+                    type="textarea"
+                    rows={10}
+                    value={detailEditDescription}
+                    onChange={(event) => setDetailEditDescription(event.target.value)}
+                  />
+                )}
+              </div>
+            </FormGroup>
+          </ModalBody>
+          <ModalFooter>
+            <Button color="secondary" outline type="button" onClick={closeDetailEditDialog} disabled={detailEditSaving}>
+              Cancel
+            </Button>
+            <Button color="primary" type="submit" disabled={!detailEditTitle.trim() || detailEditSaving}>
+              {detailEditSaving ? 'Saving...' : 'Save changes'}
+            </Button>
+          </ModalFooter>
+        </Form>
+      </Modal>
+      <Modal isOpen={detailMoveModalOpen} toggle={closeDetailMoveDialog}>
+        <Form onSubmit={(event) => {
+          event.preventDefault();
+          saveDetailIssueMove();
+        }}
+        >
+          <ModalHeader toggle={closeDetailMoveDialog}>Move issue</ModalHeader>
+          <ModalBody>
+            <ErrorBanner error={detailMoveError} />
+            <p className="tm-muted">
+              Move this issue to another project by entering target project path or ID
+              {' '}
+              <code>group/project</code>
+              .
+            </p>
+            <FormGroup>
+              <Label for="tm-detail-move-project">Target project</Label>
+              <Input
+                id="tm-detail-move-project"
+                value={detailMoveProjectId}
+                onChange={(event) => setDetailMoveProjectId(event.target.value)}
+                placeholder="group/project or 123"
+                required
+              />
+            </FormGroup>
+          </ModalBody>
+          <ModalFooter>
+            <Button color="secondary" outline type="button" onClick={closeDetailMoveDialog} disabled={detailMoveSaving}>
+              Cancel
+            </Button>
+            <Button color="primary" type="submit" disabled={!detailMoveProjectId.trim() || detailMoveSaving}>
+              {detailMoveSaving ? 'Moving...' : 'Move issue'}
+            </Button>
+          </ModalFooter>
+        </Form>
+      </Modal>
       <DeliveryAlertsModal
         isOpen={alertsModalOpen}
         alerts={alertsRows}
@@ -1071,9 +1432,13 @@ function TrackingDetailsModal({
   detailData,
   loading,
   error,
+  actionLoading,
   canManage,
   onClose,
   onRefresh,
+  onCloseIssue,
+  onEditIssue,
+  onMoveIssue,
   onManualMapping
 }) {
   const tracked = detailData?.tracked_issue || row;
@@ -1150,6 +1515,46 @@ function TrackingDetailsModal({
                 </section>
               </div>
               <aside className="tm-delivery-detail-side">
+                {canManage && tracked ? (
+                  <section className="tm-delivery-detail-block tm-workflow-card">
+                    <div className="tm-delivery-detail-block-head">Workflow</div>
+                    <div className="tm-workflow-actions">
+                      <button
+                        type="button"
+                        className="tm-workflow-action-btn tm-workflow-action-btn-primary"
+                        onClick={onCloseIssue}
+                        disabled={Boolean(actionLoading) || loading || currentState === 'closed'}
+                      >
+                        <i className="bi bi-check2-circle" aria-hidden="true" />
+                        <span>
+                          {actionLoading === 'close'
+                            ? 'Closing...'
+                            : currentState === 'closed'
+                              ? 'Issue closed'
+                              : 'Close issue'}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="tm-workflow-action-btn"
+                        onClick={onEditIssue}
+                        disabled={Boolean(actionLoading) || loading || !issue}
+                      >
+                        <i className="bi bi-pencil-square" aria-hidden="true" />
+                        <span>{actionLoading === 'edit' ? 'Opening...' : 'Edit issue'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="tm-workflow-action-btn"
+                        onClick={onMoveIssue}
+                        disabled={Boolean(actionLoading) || loading || !issue}
+                      >
+                        <i className="bi bi-arrow-left-right" aria-hidden="true" />
+                        <span>{actionLoading === 'move' ? 'Moving...' : 'Move issue'}</span>
+                      </button>
+                    </div>
+                  </section>
+                ) : null}
                 <section className="tm-delivery-detail-block">
                   <div className="tm-delivery-detail-block-head">Metadata</div>
                   <div className="tm-delivery-meta-list">
@@ -1211,7 +1616,7 @@ function TrackingDetailsModal({
             Map manually
           </Button>
         ) : null}
-        <Button color="secondary" outline onClick={onRefresh} disabled={loading || !tracked}>
+        <Button color="secondary" outline onClick={onRefresh} disabled={loading || !tracked || Boolean(actionLoading)}>
           {loading ? 'Refreshing...' : 'Refresh'}
         </Button>
         <Button outline color="secondary" onClick={onClose}>
