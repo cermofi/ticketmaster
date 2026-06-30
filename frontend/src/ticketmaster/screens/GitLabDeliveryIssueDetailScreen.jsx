@@ -87,14 +87,16 @@ function IssueDetailPage({ user, trackedIssueId }) {
   const loadMoveProjectOptions = useCallback(async () => {
     if (!canManage) return;
     try {
-      const response = await api.get('/gitlab/delivery-tracking/meta');
+      const response = await api.get('/gitlab/delivery-tracking/move-projects');
       const dedup = new Map();
-      asArray(response.data?.target_teams).forEach((team) => {
-        const projectId = String(team?.project_id || '').trim();
+      asArray(response.data?.projects).forEach((project) => {
+        const projectId = String(project?.id || '').trim();
         if (!projectId || dedup.has(projectId)) return;
+        const pathWithNamespace = String(project?.path_with_namespace || '').trim();
+        const projectName = String(project?.name || '').trim();
         dedup.set(projectId, {
           value: projectId,
-          label: team?.name ? `${team.name} (${projectId})` : projectId
+          label: pathWithNamespace || projectName ? `${pathWithNamespace || projectName} (${projectId})` : projectId
         });
       });
       const options = Array.from(dedup.values()).sort((left, right) => left.label.localeCompare(right.label));

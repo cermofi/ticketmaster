@@ -30,6 +30,7 @@ from ticketmaster.services.gitlab_delivery_tracking import (
     edit_tracked_issue,
     get_delivery_issue_create_meta,
     get_tracked_issue_detail,
+    list_move_issue_projects,
     move_tracked_issue,
     normalize_sort,
     parse_updated_since,
@@ -235,6 +236,42 @@ def test_get_delivery_issue_create_meta_collects_live_fields() -> None:
     assert meta["milestones"][0]["title"] == "Sprint 27"
     assert len(meta["assignees"]) == 2
     assert meta["current_assignee_id"] == 77
+
+
+def test_list_move_issue_projects_uses_accessible_gitlab_projects() -> None:
+    patched = replace(
+        settings,
+        gitlab_base_url="https://gitlab.example.com",
+        gitlab_token="secret-token",
+        gitlab_delivery_project_id="team/delivery",
+    )
+    actor = SimpleNamespace(kind="internal")
+
+    class DummyClient:
+        def __init__(self, **kwargs):  # noqa: ANN003, ANN204
+            pass
+
+        def close(self) -> None:
+            return None
+
+        @staticmethod
+        def list_accessible_projects(*, search: str | None = None) -> list[dict]:
+            assert search is None
+            return [
+                {"id": 200, "name": "Project B", "path_with_namespace": "group-b/project-b", "web_url": "https://gitlab.example.com/group-b/project-b"},
+                {"id": 100, "name": "Project A", "path_with_namespace": "group-a/project-a", "web_url": "https://gitlab.example.com/group-a/project-a"},
+                {"id": 200, "name": "Project B duplicate", "path_with_namespace": "group-b/project-b", "web_url": "https://gitlab.example.com/group-b/project-b"},
+                {"id": None, "name": "Missing ID"},
+            ]
+
+    with (
+        patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched),
+        patch("ticketmaster.services.gitlab_delivery_tracking.GitLabReadOnlyClient", DummyClient),
+    ):
+        result = list_move_issue_projects(actor=actor)
+
+    assert [item["id"] for item in result["projects"]] == ["100", "200"]
+    assert result["projects"][0]["path_with_namespace"] == "group-a/project-a"
 
 
 def test_get_tracked_issue_detail_collects_issue_and_notes() -> None:
