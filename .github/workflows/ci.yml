@@ -135,9 +135,9 @@ jobs:
     needs: [changes, workflow-lint, backend-tests, frontend-tests]
     if: >-
       ${{
-        (needs.workflow-lint.result == 'success' || needs.workflow-lint.result == 'skipped') &&
-        (needs.backend-tests.result == 'success' || needs.backend-tests.result == 'skipped') &&
-        (needs.frontend-tests.result == 'success' || needs.frontend-tests.result == 'skipped')
+        (needs['workflow-lint'].result == 'success' || needs['workflow-lint'].result == 'skipped') &&
+        (needs['backend-tests'].result == 'success' || needs['backend-tests'].result == 'skipped') &&
+        (needs['frontend-tests'].result == 'success' || needs['frontend-tests'].result == 'skipped')
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 35

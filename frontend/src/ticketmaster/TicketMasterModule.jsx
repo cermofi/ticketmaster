@@ -19,11 +19,13 @@ export default class TicketMasterModule extends Module {
     super(app, 'TicketMasterModule');
 
     app.Router.addRoute({ path: '/', end: true, name: 'Tickets', component: GitLabDeliveryTrackingScreen, resource: '*' });
+    app.Router.addRoute({ path: '/tickets', end: true, name: 'Tickets', component: GitLabDeliveryTrackingScreen, resource: '*' });
+    app.Router.addRoute({ path: '/tickets/:trackedIssueId', end: true, name: 'Ticket detail', component: GitLabDeliveryIssueDetailScreen, resource: '*' });
     app.Router.addRoute({ path: '/delivery-tracking', end: true, name: 'Tickets', component: GitLabDeliveryTrackingScreen, resource: '*' });
     app.Router.addRoute({ path: '/delivery-tracking/:trackedIssueId', end: true, name: 'Ticket detail', component: GitLabDeliveryIssueDetailScreen, resource: '*' });
     app.Router.addRoute({ path: '/legacy-tickets', end: true, name: 'Legacy tickets', component: DashboardScreen, resource: '*' });
-    app.Router.addRoute({ path: '/tickets/new', end: true, name: 'Create ticket', component: NewTicketScreen, resource: '*' });
-    app.Router.addRoute({ path: '/tickets/:ticketId', end: true, name: 'Ticket detail', component: TicketDetailScreen, resource: '*' });
+    app.Router.addRoute({ path: '/legacy-tickets/new', end: true, name: 'Create legacy ticket', component: NewTicketScreen, resource: '*' });
+    app.Router.addRoute({ path: '/legacy-tickets/:ticketId', end: true, name: 'Legacy ticket detail', component: TicketDetailScreen, resource: '*' });
     app.Router.addRoute({ path: '/partner-overview', end: true, name: 'Partner overview', component: PartnerOverviewScreen, resource: '*' });
     app.Router.addRoute({ path: '/admin', end: true, name: 'Admin', component: AdminScreen, resource: '*' });
     app.Router.addRoute({ path: '/audit', end: true, name: 'Audit', component: AuditScreen, resource: '*' });

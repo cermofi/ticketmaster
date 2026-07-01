@@ -436,7 +436,7 @@ function IssueDetailPage({ user, trackedIssueId }) {
         <PageHeader
           title="Ticket detail"
           actions={(
-            <Button color="secondary" outline onClick={() => navigate('/delivery-tracking')}>
+            <Button color="secondary" outline onClick={() => navigate('/tickets')}>
               Back to tickets
             </Button>
           )}
@@ -452,7 +452,7 @@ function IssueDetailPage({ user, trackedIssueId }) {
         title={issue?.title || tracked?.delivery_title || 'Ticket detail'}
         actions={(
           <div className="d-flex gap-2">
-            <Button color="secondary" outline onClick={() => navigate('/delivery-tracking')}>
+            <Button color="secondary" outline onClick={() => navigate('/tickets')}>
               Back to tickets
             </Button>
             <Button
