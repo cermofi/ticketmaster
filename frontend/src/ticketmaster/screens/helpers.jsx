@@ -82,10 +82,15 @@ export function AbsoluteTimeCell({ value }) {
   return <span>{formatAbsoluteDateTime(value)}</span>;
 }
 
-export function MarkdownText({ content, className = '', emptyMessage = '' }) {
+export function MarkdownText({ content, renderedHtml = '', className = '', emptyMessage = '' }) {
   const text = typeof content === 'string' ? content : '';
+  const html = normalizeRenderedHtml(renderedHtml);
   const normalizedText = text.replace(/\r\n?/g, '\n');
   const normalizedClassName = className.trim();
+  if (html) {
+    // GitLab markdown API output is already sanitized and safe to render as HTML.
+    return <div className={normalizedClassName} dangerouslySetInnerHTML={{ __html: html }} />;
+  }
   if (!normalizedText.trim()) {
     if (!emptyMessage) return null;
     const emptyClassName = normalizedClassName ? `${normalizedClassName} tm-muted` : 'tm-muted';
@@ -107,6 +112,32 @@ export function MarkdownText({ content, className = '', emptyMessage = '' }) {
       {normalizedText}
     </ReactMarkdown>
   );
+}
+
+function normalizeRenderedHtml(value) {
+  const rawHtml = typeof value === 'string' ? value.trim() : '';
+  if (!rawHtml) return '';
+  if (typeof window === 'undefined' || typeof window.DOMParser !== 'function') return rawHtml;
+  try {
+    const parser = new window.DOMParser();
+    const documentRoot = parser.parseFromString(`<div>${rawHtml}</div>`, 'text/html');
+    const container = documentRoot.body.firstElementChild;
+    if (!container) return rawHtml;
+    container.querySelectorAll('a').forEach((link) => {
+      link.setAttribute('target', '_blank');
+      link.setAttribute('rel', 'noreferrer');
+    });
+    container.querySelectorAll('table').forEach((table) => {
+      if (table.parentElement?.classList.contains('tm-markdown-table-wrap')) return;
+      const wrapper = documentRoot.createElement('div');
+      wrapper.className = 'tm-markdown-table-wrap';
+      table.parentNode?.insertBefore(wrapper, table);
+      wrapper.appendChild(table);
+    });
+    return container.innerHTML;
+  } catch {
+    return rawHtml;
+  }
 }
 
 export function roleLabel(role) {

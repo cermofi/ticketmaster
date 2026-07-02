@@ -197,6 +197,28 @@ class GitLabReadOnlyClient:
             page = int(next_page)
         return notes
 
+    def render_markdown(self, text: str, *, project: str | None = None) -> str:
+        payload: dict[str, object] = {
+            "text": text,
+            "gfm": True,
+        }
+        project_ref = _string_or_none(project)
+        if project_ref:
+            payload["project"] = project_ref
+        try:
+            response = self._http.post("/markdown", json=payload)
+        except httpx.HTTPError as exc:
+            raise GitLabApiError("GitLab markdown render request failed") from exc
+        if response.status_code >= 400:
+            raise self._map_error(response)
+        response_payload = response.json()
+        if not isinstance(response_payload, dict):
+            raise GitLabApiError("GitLab markdown render payload is invalid")
+        html = response_payload.get("html")
+        if not isinstance(html, str):
+            raise GitLabApiError("GitLab markdown render response is missing html")
+        return html
+
     def get_project(self, project_id_or_path: str) -> dict:
         response = self._request(f"/projects/{quote_plus(str(project_id_or_path))}")
         payload = response.json()
@@ -969,27 +991,53 @@ def get_tracked_issue_detail(db: Session, *, actor: User, tracked_issue_id: str)
     source_issue = "target" if tracked.target_project_id and tracked.target_issue_iid else "delivery"
     client = GitLabReadOnlyClient(base_url=settings.gitlab_base_url, token=str(settings.gitlab_token))
     assignable_users_payload: list[dict] = []
+    issue_payload: dict = {}
+    issue_description_html: str | None = None
+    notes: list[dict] = []
     try:
         issue_payload = client.get_project_issue(project_id, issue_iid)
         notes_payload = client.get_issue_notes(project_id, issue_iid, sort="asc", order_by="created_at")
         detail_project_id = _string_or_none(issue_payload.get("project_id")) or project_id
+        markdown_project: str | None = None
+        try:
+            project_payload = client.get_project(detail_project_id)
+            markdown_project = _string_or_none(project_payload.get("path_with_namespace"))
+        except GitLabApiError as exc:
+            logger.info("gitlab detail project context unavailable: project_id=%s error=%s", detail_project_id, exc)
         try:
             assignable_users_payload = client.list_project_members(detail_project_id)
         except GitLabApiError as exc:
             logger.info("gitlab detail members unavailable: project_id=%s error=%s", detail_project_id, exc)
+        issue_description_html = _try_render_gitlab_markdown(
+            client=client,
+            text=issue_payload.get("description"),
+            project=markdown_project,
+            context="issue_description",
+        )
+        raw_notes = [note for note in notes_payload if isinstance(note, dict)]
+        if len(raw_notes) > DETAIL_NOTES_LIMIT:
+            raw_notes = raw_notes[-DETAIL_NOTES_LIMIT:]
+        notes = [
+            _normalize_issue_note(
+                note,
+                body_html=_try_render_gitlab_markdown(
+                    client=client,
+                    text=note.get("body"),
+                    project=markdown_project,
+                    context="issue_note",
+                ),
+            )
+            for note in raw_notes
+        ]
     except GitLabApiError as exc:
         raise ValidationError(f"GitLab issue detail unavailable: {exc}") from exc
     finally:
         client.close()
 
-    notes = [_normalize_issue_note(note) for note in notes_payload if isinstance(note, dict)]
-    if len(notes) > DETAIL_NOTES_LIMIT:
-        notes = notes[-DETAIL_NOTES_LIMIT:]
-
     return {
         "tracked_issue": serialize_tracked_issue(tracked),
         "source_issue": source_issue,
-        "issue": _normalize_issue_detail(issue_payload),
+        "issue": _normalize_issue_detail(issue_payload, description_html=issue_description_html),
         "notes": notes,
         "assignable_users": _normalize_project_members(assignable_users_payload),
     }
@@ -2452,7 +2500,26 @@ def _request_gitlab_issue_mutation(
     return payload
 
 
-def _normalize_issue_detail(raw: dict) -> dict:
+def _try_render_gitlab_markdown(
+    *,
+    client: GitLabReadOnlyClient,
+    text: object,
+    project: str | None,
+    context: str,
+) -> str | None:
+    if text is None:
+        return None
+    markdown_text = str(text)
+    if not markdown_text.strip():
+        return None
+    try:
+        return client.render_markdown(markdown_text, project=project)
+    except GitLabApiError as exc:
+        logger.info("gitlab markdown render unavailable: context=%s error=%s", context, exc)
+        return None
+
+
+def _normalize_issue_detail(raw: dict, *, description_html: str | None = None) -> dict:
     assignees = _normalize_assignees(raw.get("assignees"))
     if not assignees and isinstance(raw.get("assignee"), dict):
         assignees = _normalize_assignees([raw.get("assignee")])
@@ -2480,6 +2547,7 @@ def _normalize_issue_detail(raw: dict) -> dict:
         "project_id": _string_or_none(raw.get("project_id")),
         "title": _string_or_none(raw.get("title")) or "",
         "description": _string_or_none(raw.get("description")) or "",
+        "description_html": _string_or_none(description_html) or _string_or_none(raw.get("description_html")),
         "state": _string_or_none(raw.get("state")) or "opened",
         "issue_type": _string_or_none(raw.get("issue_type")) or "issue",
         "confidential": bool(raw.get("confidential")),
@@ -2503,12 +2571,13 @@ def _normalize_issue_detail(raw: dict) -> dict:
     }
 
 
-def _normalize_issue_note(raw: dict) -> dict:
+def _normalize_issue_note(raw: dict, *, body_html: str | None = None) -> dict:
     author_raw = raw.get("author")
     author = author_raw if isinstance(author_raw, dict) else {}
     return {
         "id": _string_or_none(raw.get("id")),
         "body": _string_or_none(raw.get("body")) or "",
+        "body_html": _string_or_none(body_html) or _string_or_none(raw.get("body_html")),
         "system": bool(raw.get("system")),
         "internal": bool(raw.get("internal")) or bool(raw.get("confidential")),
         "created_at": _string_or_none(raw.get("created_at")),
