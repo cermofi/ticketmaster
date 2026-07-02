@@ -1508,6 +1508,9 @@ body[data-tm-density="compact"] .tm-login-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
   gap: .85rem;
+  align-items: start;
+  min-width: 0;
+  overflow-x: clip;
 }
 
 .tm-delivery-detail-main,
@@ -1515,6 +1518,8 @@ body[data-tm-density="compact"] .tm-login-form {
   display: grid;
   gap: .85rem;
   align-content: start;
+  min-width: 0;
+  overflow-x: clip;
 }
 
 .tm-delivery-detail-block {
@@ -1522,6 +1527,7 @@ body[data-tm-density="compact"] .tm-login-form {
   border-radius: var(--tm-radius-sm);
   background: var(--tm-panel-soft);
   padding: .7rem .78rem;
+  min-width: 0;
 }
 
 .tm-delivery-detail-block-head {
@@ -2384,6 +2390,7 @@ body[data-tm-density="compact"] .tm-login-form {
 .tm-markdown {
   line-height: 1.55;
   overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 .tm-markdown > :first-child {
@@ -2435,6 +2442,7 @@ body[data-tm-density="compact"] .tm-login-form {
 
 .tm-markdown-table-wrap {
   width: 100%;
+  max-width: 100%;
   margin-bottom: .8rem;
   overflow-x: auto;
 }
@@ -2454,6 +2462,9 @@ body[data-tm-density="compact"] .tm-login-form {
 .tm-markdown td {
   border: 1px solid var(--tm-line);
   padding: .35rem .45rem;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .tm-ticket-description {
