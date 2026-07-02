@@ -483,6 +483,7 @@ function IssueDetailPage({ user, trackedIssueId }) {
                 <div className="tm-delivery-detail-block-head">Description</div>
                 <MarkdownText
                   content={issue?.description || ''}
+                  renderedHtml={issue?.description_html || ''}
                   className="tm-markdown tm-delivery-detail-description"
                   emptyMessage="No description."
                 />
@@ -507,6 +508,7 @@ function IssueDetailPage({ user, trackedIssueId }) {
                         {note.internal ? <span className="badge text-bg-warning mb-1">Internal note</span> : null}
                         <MarkdownText
                           content={note.body}
+                          renderedHtml={note.body_html || ''}
                           className="tm-markdown tm-delivery-note-body"
                           emptyMessage={note.system ? 'System note' : 'Empty note'}
                         />

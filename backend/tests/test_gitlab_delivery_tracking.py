@@ -361,6 +361,17 @@ def test_get_tracked_issue_detail_collects_issue_and_notes() -> None:
                 {"id": 88, "name": "John Doe", "username": "john", "web_url": "https://gitlab.example.com/john"},
             ]
 
+        @staticmethod
+        def get_project(project_id_or_path: str) -> dict:
+            assert project_id_or_path == "777"
+            return {"path_with_namespace": "team/target"}
+
+        @staticmethod
+        def render_markdown(text: str, *, project: str | None = None) -> str:
+            assert project == "team/target"
+            escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            return f"<p>{escaped}</p>"
+
     with (
         patch("ticketmaster.services.gitlab_delivery_tracking.settings", patched),
         patch("ticketmaster.services.gitlab_delivery_tracking.GitLabReadOnlyClient", DummyClient),
@@ -370,8 +381,10 @@ def test_get_tracked_issue_detail_collects_issue_and_notes() -> None:
     assert detail["source_issue"] == "target"
     assert detail["issue"]["title"] == "Target issue title"
     assert detail["issue"]["reference"] == "team/target#42"
+    assert detail["issue"]["description_html"] == "<p>## Body</p>"
     assert detail["issue"]["assignees"][0]["name"] == "Jane Doe"
     assert detail["notes"][0]["body"] == "First note"
+    assert detail["notes"][0]["body_html"] == "<p>First note</p>"
     assert detail["assignable_users"][0]["id"] == "77"
     assert detail["tracked_issue"]["delivery_issue_iid"] == "11"
 
