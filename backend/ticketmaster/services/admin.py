@@ -8,11 +8,12 @@ from sqlalchemy.orm import Session
 
 from ticketmaster.core.config import settings
 from ticketmaster.core.slug import slugify
-from ticketmaster.core.security import hash_password
+from ticketmaster.core.security import hash_password, verify_password
 from ticketmaster.models import Attachment, AuditLog, Client, ClientAssignment, Comment, CommentRevision, Partner, Ticket, TicketParticipant, TicketWatcher, User
 from ticketmaster.models.constants import PARTNER_ROLES
 from ticketmaster.models.entities import new_id
 from ticketmaster.services.audit import audit
+from ticketmaster.services.account import validate_password_policy
 from ticketmaster.services.errors import ConflictError, NotFoundError, PermissionDenied, ValidationError
 from ticketmaster.services.internal_roles import (
     get_internal_roles,
@@ -393,6 +394,40 @@ def send_password_reset(db: Session, *, user_id: str, actor: User | None = None,
         subject="TicketMaster password reset",
         body=f"Use this link to set a new password: {reset_url}",
         ticket_id=None,
+    )
+    return user
+
+
+def set_user_password(
+    db: Session,
+    *,
+    user_id: str,
+    new_password: str,
+    confirm_password: str,
+    actor: User | None = None,
+    source: str = "ui",
+) -> User:
+    user = db.get(User, user_id)
+    if not user:
+        raise NotFoundError("User not found")
+    if user.kind == "internal":
+        _require_internal_user_management(actor, target=user)
+    if new_password != confirm_password:
+        raise ValidationError("New password and confirmation do not match")
+    validate_password_policy(new_password)
+    if verify_password(new_password, user.password_hash):
+        raise ValidationError("New password must be different from current password")
+    user.password_hash = hash_password(new_password)
+    user.invitation_token = None
+    db.flush()
+    audit(
+        db,
+        entity_type="User",
+        entity_id=user.id,
+        action="user.password_set",
+        actor=actor,
+        source=source,
+        new_value={"email": user.email, "password_changed": True},
     )
     return user
 

@@ -81,7 +81,7 @@ def change_own_password(
         raise PermissionDenied("Current password is invalid")
     if new_password != confirm_password:
         raise ValidationError("New password and confirmation do not match")
-    _validate_password_policy(new_password)
+    validate_password_policy(new_password)
     if verify_password(new_password, user.password_hash):
         raise ValidationError("New password must be different from current password")
     user.password_hash = hash_password(new_password)
@@ -105,7 +105,7 @@ def _clean_name(value: str) -> str:
     return cleaned
 
 
-def _validate_password_policy(password: str) -> None:
+def validate_password_policy(password: str) -> None:
     if len(password) < _PASSWORD_MIN_LENGTH:
         raise ValidationError("Password must contain at least 8 characters")
     if not _LETTER_RE.search(password):

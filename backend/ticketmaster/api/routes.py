@@ -108,6 +108,13 @@ class UserUpdateBody(BaseModel):
     active: bool | None = None
 
 
+class UserSetPasswordBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    new_password: str = Field(min_length=1, max_length=300)
+    confirm_password: str = Field(min_length=1, max_length=300)
+
+
 class AccountUpdateBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -582,6 +589,20 @@ def users_password_reset(db: DbSession, user: CurrentUser, user_id: str) -> dict
     data = user_to_dict(row)
     data["reset_token"] = row.invitation_token
     return data
+
+
+@router.post("/users/{user_id}/password")
+def users_set_password(db: DbSession, user: CurrentUser, user_id: str, body: UserSetPasswordBody) -> dict:
+    admin.require_admin_or_dm(user)
+    admin.set_user_password(
+        db,
+        user_id=user_id,
+        new_password=body.new_password,
+        confirm_password=body.confirm_password,
+        actor=user,
+    )
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/users/{email}/deactivate")
