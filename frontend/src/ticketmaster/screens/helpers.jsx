@@ -84,8 +84,9 @@ export function AbsoluteTimeCell({ value }) {
 
 export function MarkdownText({ content, className = '', emptyMessage = '' }) {
   const text = typeof content === 'string' ? content : '';
+  const normalizedText = text.replace(/\r\n?/g, '\n');
   const normalizedClassName = className.trim();
-  if (!text.trim()) {
+  if (!normalizedText.trim()) {
     if (!emptyMessage) return null;
     const emptyClassName = normalizedClassName ? `${normalizedClassName} tm-muted` : 'tm-muted';
     return <p className={emptyClassName}>{emptyMessage}</p>;
@@ -95,10 +96,15 @@ export function MarkdownText({ content, className = '', emptyMessage = '' }) {
       className={normalizedClassName}
       remarkPlugins={[remarkGfm]}
       components={{
-        a: ({ ...props }) => <a {...props} target="_blank" rel="noreferrer" />
+        a: ({ ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
+        table: ({ children, ...props }) => (
+          <div className="tm-markdown-table-wrap">
+            <table {...props}>{children}</table>
+          </div>
+        )
       }}
     >
-      {text}
+      {normalizedText}
     </ReactMarkdown>
   );
 }
