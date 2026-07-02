@@ -145,8 +145,10 @@ function Admin({ user }) {
     try {
       await fn();
       await load();
+      return true;
     } catch (err) {
       setError(apiError(err));
+      return false;
     }
   };
 
@@ -165,9 +167,9 @@ function Admin({ user }) {
     submit(() => api.delete(`/users/${row.id}`));
   };
 
-  const sendPasswordReset = (row) => submit(async () => {
-    const response = await api.post(`/users/${row.id}/password-reset`);
-    setUserActionMessage(`Password reset email queued for ${row.email}. Dev token: ${response.data.reset_token}`);
+  const setUserPassword = (row, payload) => submit(async () => {
+    await api.post(`/users/${row.id}/password`, payload);
+    setUserActionMessage(`Password updated for ${row.email}.`);
   });
 
   return (
@@ -241,7 +243,7 @@ function Admin({ user }) {
         isOpen={Boolean(editingUser)}
         onClose={() => setEditingUser(null)}
         onSave={saveUser}
-        onPasswordReset={sendPasswordReset}
+        onSetPassword={setUserPassword}
         actionMessage={userActionMessage}
         clearActionMessage={() => setUserActionMessage('')}
       />
@@ -749,8 +751,9 @@ function ClientEditModal({ client, users, isOpen, onClose, onSave, submit: runAd
   );
 }
 
-function UserEditModal({ userRow, currentUser, isOpen, onClose, onSave, onPasswordReset, actionMessage, clearActionMessage }) {
+function UserEditModal({ userRow, currentUser, isOpen, onClose, onSave, onSetPassword, actionMessage, clearActionMessage }) {
   const [form, setForm] = useState({ email: '', name: '', roles: [], active: true });
+  const [passwordForm, setPasswordForm] = useState({ newPassword: '', confirmPassword: '' });
   const roleOptions = userRow?.kind === 'internal'
     ? ['Admin', 'DeliveryManager', 'L1', 'L2', 'L3']
     : ['responsible', 'technical'];
@@ -760,6 +763,7 @@ function UserEditModal({ userRow, currentUser, isOpen, onClose, onSave, onPasswo
     clearActionMessage();
     if (!userRow?.kind) {
       setForm({ email: '', name: '', roles: [], active: true });
+      setPasswordForm({ newPassword: '', confirmPassword: '' });
       return;
     }
     setForm({
@@ -768,6 +772,7 @@ function UserEditModal({ userRow, currentUser, isOpen, onClose, onSave, onPasswo
       roles: userRow.kind === 'internal' ? getInternalRoles(userRow) : [userRole(userRow)].filter(Boolean),
       active: userRow.active ?? true
     });
+    setPasswordForm({ newPassword: '', confirmPassword: '' });
   }, [userRow]);
 
   const submit = (event) => {
@@ -787,6 +792,17 @@ function UserEditModal({ userRow, currentUser, isOpen, onClose, onSave, onPasswo
       role: form.roles[0],
       active: form.active
     });
+  };
+
+  const submitPasswordChange = async () => {
+    if (!userRow?.id) return;
+    const changed = await onSetPassword(userRow, {
+      new_password: passwordForm.newPassword,
+      confirm_password: passwordForm.confirmPassword
+    });
+    if (changed) {
+      setPasswordForm({ newPassword: '', confirmPassword: '' });
+    }
   };
 
   return (
@@ -828,11 +844,39 @@ function UserEditModal({ userRow, currentUser, isOpen, onClose, onSave, onPasswo
               <span />
             </button>
           </div>
+          <hr />
+          <FormGroup className="mb-2">
+            <Label>New password</Label>
+            <Input
+              type="password"
+              value={passwordForm.newPassword}
+              autoComplete="new-password"
+              onChange={(event) => setPasswordForm({ ...passwordForm, newPassword: event.target.value })}
+            />
+          </FormGroup>
+          <FormGroup className="mb-0">
+            <Label>Confirm new password</Label>
+            <Input
+              type="password"
+              value={passwordForm.confirmPassword}
+              autoComplete="new-password"
+              onChange={(event) => setPasswordForm({ ...passwordForm, confirmPassword: event.target.value })}
+            />
+          </FormGroup>
+          <div className="tm-muted mt-2">
+            Password must contain at least 8 characters, one letter and one number.
+          </div>
           {actionMessage && <div className="alert alert-info tm-alert py-2 mt-3">{actionMessage}</div>}
         </ModalBody>
         <ModalFooter>
-          <Button outline color="secondary" type="button" disabled={!userRow?.active} onClick={() => onPasswordReset(userRow)}>
-            Send password reset
+          <Button
+            outline
+            color="secondary"
+            type="button"
+            disabled={!passwordForm.newPassword || !passwordForm.confirmPassword}
+            onClick={submitPasswordChange}
+          >
+            Set password
           </Button>
           <Button outline color="secondary" type="button" onClick={onClose}>Cancel</Button>
           <Button color="primary" type="submit" disabled={!form.email.trim() || !form.name.trim() || form.roles.length === 0}>Save</Button>
