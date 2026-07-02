@@ -133,12 +133,9 @@ jobs:
   docker-build-check:
     name: docker-build-check (${{ matrix.image_name }}, ${{ matrix.required_context }}, ${{ matrix.dockerfile }})
     needs: [changes, workflow-lint, backend-tests, frontend-tests]
-    if: >-
-      ${{
-        (needs['workflow-lint'].result == 'success' || needs['workflow-lint'].result == 'skipped') &&
-        (needs['backend-tests'].result == 'success' || needs['backend-tests'].result == 'skipped') &&
-        (needs['frontend-tests'].result == 'success' || needs['frontend-tests'].result == 'skipped')
-      }}
+    # Keep matrix checks materialized even when some upstream jobs are skipped.
+    # This prevents required-context deadlocks in branch protection.
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     strategy:
@@ -165,13 +162,32 @@ jobs:
             path_key: frontend
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - id: prereq_gate
+        name: Resolve upstream gate
+        run: |
+          upstream_ok="true"
+          for result in "${{ needs['workflow-lint'].result }}" "${{ needs['backend-tests'].result }}" "${{ needs['frontend-tests'].result }}"; do
+            case "${result}" in
+              success|skipped) ;;
+              *)
+                upstream_ok="false"
+                ;;
+            esac
+          done
+          echo "upstream_ok=${upstream_ok}" >> "$GITHUB_OUTPUT"
       - id: build_gate
         name: Resolve image build gate
         env:
-          BACKEND_CHANGED: ${{ needs.changes.outputs.backend }}
-          FRONTEND_CHANGED: ${{ needs.changes.outputs.frontend }}
-          DOCS_CHANGED: ${{ needs.changes.outputs.docs }}
+          UPSTREAM_OK: ${{ steps.prereq_gate.outputs.upstream_ok }}
+          BACKEND_CHANGED: ${{ needs.changes.outputs.backend || 'false' }}
+          FRONTEND_CHANGED: ${{ needs.changes.outputs.frontend || 'false' }}
+          DOCS_CHANGED: ${{ needs.changes.outputs.docs || 'false' }}
         run: |
+          if [ "${UPSTREAM_OK}" != "true" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "reason=upstream-checks-not-ready" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           changed="false"
           case "${{ matrix.path_key }}" in
             backend)
@@ -185,9 +201,17 @@ jobs:
               ;;
           esac
           echo "changed=${changed}" >> "$GITHUB_OUTPUT"
+          echo "reason=path-filter" >> "$GITHUB_OUTPUT"
       - name: Skip unchanged image build
         if: steps.build_gate.outputs.changed != 'true'
-        run: echo "Skipping ${{ matrix.image_name }} image build (no relevant changes)."
+        env:
+          SKIP_REASON: ${{ steps.build_gate.outputs.reason }}
+        run: |
+          reason="no relevant changes"
+          if [ "${SKIP_REASON}" = "upstream-checks-not-ready" ]; then
+            reason="upstream gate closed"
+          fi
+          echo "Skipping ${{ matrix.image_name }} image build (${reason})."
       - if: steps.build_gate.outputs.changed == 'true'
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
       - name: Docker build check (${{ matrix.image_name }})
